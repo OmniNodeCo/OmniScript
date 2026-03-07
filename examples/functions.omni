@@ -1,0 +1,35 @@
+-- Functions demo
+
+func greet(name) {
+    show("Hello, " + name + "!")
+}
+
+func add(a, b) {
+    return a + b
+}
+
+func factorial(n) {
+    if n <= 1 {
+        return 1
+    }
+    return n * factorial(n - 1)
+}
+
+func max(a, b) {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+func is_even(n) {
+    return n % 2 == 0
+}
+
+greet("OmniScript")
+show("3 + 7 = " + str(add(3, 7)))
+show("5! = " + str(factorial(5)))
+show("10! = " + str(factorial(10)))
+show("max(42, 17) = " + str(max(42, 17)))
+show("is_even(4) = " + str(is_even(4)))
+show("is_even(7) = " + str(is_even(7)))

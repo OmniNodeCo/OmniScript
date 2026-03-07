@@ -1,4 +1,4 @@
-# 🌀 OmniScript
+# OmniScript
 
 A custom programming language built from scratch.
 

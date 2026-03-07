@@ -1,0 +1,22 @@
+-- Loops demo
+
+show("=== Loop (range) ===")
+loop i in 1..6 {
+    show("Iteration: " + str(i))
+}
+
+show("=== While Loop ===")
+let count = 5
+while count > 0 {
+    show("Countdown: " + str(count))
+    count = count - 1
+}
+show("Liftoff!")
+
+show("=== Arrays ===")
+let fruits = ["apple", "banana", "cherry"]
+show(fruits)
+show("First: " + fruits[0])
+show("Length: " + str(len(fruits)))
+push(fruits, "date")
+show("After push: " + str(fruits))

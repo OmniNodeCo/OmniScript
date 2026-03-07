@@ -1,0 +1,6 @@
+-- Hello World in OmniScript
+show("Hello, World!")
+show("Welcome to OmniScript")
+
+let name = "Developer"
+show("Hello, " + name + "!")
