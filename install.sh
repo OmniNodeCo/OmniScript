@@ -5,8 +5,14 @@ set -eu
 REPOSITORY="${OMNISCRIPT_REPOSITORY:-OmniNodeCo/OmniScript}"
 BUNDLED_VERSION=0.2.0
 VERSION="${OMNISCRIPT_VERSION:-$BUNDLED_VERSION}"
+CHANNEL="${OMNISCRIPT_CHANNEL:-auto}"
 NIGHTLY_RUN="${OMNISCRIPT_NIGHTLY_RUN:-32046113765}"
 BIN_DIR="${OMNISCRIPT_BIN_DIR:-$HOME/.local/bin}"
+
+case "$CHANNEL" in
+    auto|release|nightly) ;;
+    *) echo "error: OMNISCRIPT_CHANNEL must be auto, release, or nightly" >&2; exit 1 ;;
+esac
 
 if ! command -v curl >/dev/null 2>&1; then
     echo "error: curl is required" >&2
@@ -39,11 +45,16 @@ fi
 TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/omniscript.XXXXXX")
 trap 'rm -rf "$TMP_DIR"' EXIT INT TERM
 
-echo "Looking for $ASSET in $REPOSITORY releases ($VERSION)"
-RELEASE_AVAILABLE=1
-curl -fsSL --retry 3 --connect-timeout 15 "$RELEASE_BASE/$ASSET" -o "$TMP_DIR/$ASSET" || RELEASE_AVAILABLE=0
-if [ "$RELEASE_AVAILABLE" -eq 1 ]; then
-    curl -fsSL --retry 3 --connect-timeout 15 "$RELEASE_BASE/SHA256SUMS" -o "$TMP_DIR/SHA256SUMS" || RELEASE_AVAILABLE=0
+RELEASE_AVAILABLE=0
+if [ "$CHANNEL" != "nightly" ]; then
+    echo "Looking for $ASSET in $REPOSITORY releases ($VERSION)"
+    RELEASE_AVAILABLE=1
+    curl -fsSL --retry 3 --connect-timeout 15 "$RELEASE_BASE/$ASSET" -o "$TMP_DIR/$ASSET" || RELEASE_AVAILABLE=0
+    if [ "$RELEASE_AVAILABLE" -eq 1 ]; then
+        curl -fsSL --retry 3 --connect-timeout 15 "$RELEASE_BASE/SHA256SUMS" -o "$TMP_DIR/SHA256SUMS" || RELEASE_AVAILABLE=0
+    fi
+else
+    echo "Installing $ASSET from the nightly channel"
 fi
 
 if [ "$RELEASE_AVAILABLE" -eq 1 ]; then
@@ -55,7 +66,11 @@ if [ "$RELEASE_AVAILABLE" -eq 1 ]; then
     VERIFY_FILE="$TMP_DIR/$ASSET"
 else
     rm -f "$TMP_DIR/$ASSET" "$TMP_DIR/SHA256SUMS"
-    if [ "$VERSION" != "latest" ] && [ "$VERSION" != "$BUNDLED_VERSION" ]; then
+    if [ "$CHANNEL" = "release" ]; then
+        echo "error: no matching OmniScript release was found" >&2
+        exit 1
+    fi
+    if [ "$CHANNEL" = "auto" ] && [ "$VERSION" != "latest" ] && [ "$VERSION" != "$BUNDLED_VERSION" ]; then
         echo "error: OmniScript release v$VERSION was not found" >&2
         exit 1
     fi
@@ -63,7 +78,11 @@ else
         echo "error: unzip is required to install the nightly build" >&2
         exit 1
     fi
-    echo "warning: release v$BUNDLED_VERSION is not published yet; installing verified run $NIGHTLY_RUN" >&2
+    if [ "$CHANNEL" = "nightly" ]; then
+        echo "installing verified nightly run $NIGHTLY_RUN" >&2
+    else
+        echo "warning: release v$BUNDLED_VERSION is not published yet; installing verified run $NIGHTLY_RUN" >&2
+    fi
     case "$ASSET" in
         omni-linux-arm64) EXPECTED=507596d9d9e9a84d441969d6893bcf72207956ea87c70fa15915bb1f14ab9d5d ;;
         omni-linux-x86_64) EXPECTED=78415236f3c00022f5162c3883f668dbec1197bc85bc118d39c5259341dff0b7 ;;

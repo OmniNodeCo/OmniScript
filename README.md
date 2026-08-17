@@ -29,7 +29,7 @@ OmniScript is not a transpiled dialect of another language. `.omni` source is to
 - Branches, loops, ranges, assertions, early return, break, and continue
 - Source modules plus built-in `math`, `text`, `json`, `path`, `random`, and beginner-friendly `gui` packages
 - Friendly source diagnostics with locations and call frames
-- `omni run`, `repl`, `check`, `fmt`, `test`, `init`, `tokens`, `ast`, `doctor`, and cached `update` checks
+- `omni run`, `repl`, `check`, `fmt`, `test`, `init`, `tokens`, `ast`, `doctor`, and interactive release/nightly updates
 - Binary-first Shell, Batch, and PowerShell installers with SHA-256 verification
 - Native Linux/Windows x86-64 and ARM64 executables plus an Apple Silicon macOS binary
 - Separate `build.yml` validation and `release.yml` publishing workflows

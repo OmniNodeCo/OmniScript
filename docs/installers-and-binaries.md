@@ -28,6 +28,8 @@ Overrides:
 
 ```bash
 OMNISCRIPT_VERSION=0.2.0 ./install.sh
+OMNISCRIPT_CHANNEL=nightly ./install.sh
+OMNISCRIPT_CHANNEL=release ./install.sh
 OMNISCRIPT_BIN_DIR="$HOME/bin" ./install.sh
 OMNISCRIPT_REPOSITORY=owner/fork ./install.sh
 ```

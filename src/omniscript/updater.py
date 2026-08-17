@@ -5,6 +5,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
+import subprocess
+import tempfile
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -14,7 +17,9 @@ from urllib.request import Request, urlopen
 
 
 DEFAULT_REPOSITORY = "OmniNodeCo/OmniScript"
+DEFAULT_INSTALLER_REF = "arena/01a00f9c-omniscript"
 DEFAULT_CACHE_SECONDS = 24 * 60 * 60
+NIGHTLY_RUN = "32046113765"
 
 
 class UpdateCheckError(Exception):
@@ -53,6 +58,73 @@ def clear_update_cache() -> bool:
         return True
     except FileNotFoundError:
         return False
+
+
+def install_update(
+    channel: str,
+    current_version: str,
+    *,
+    repository: str | None = None,
+    installer_ref: str | None = None,
+    opener: Callable[..., Any] = urlopen,
+) -> str:
+    """Run the verified platform installer for a release or nightly build."""
+
+    if channel not in {"release", "nightly"}:
+        raise UpdateCheckError("update channel must be 'release' or 'nightly'")
+    repository = repository or os.environ.get("OMNISCRIPT_REPOSITORY", DEFAULT_REPOSITORY)
+    installer_ref = installer_ref or os.environ.get("OMNISCRIPT_INSTALLER_REF", DEFAULT_INSTALLER_REF)
+    environment = os.environ.copy()
+    environment["OMNISCRIPT_CHANNEL"] = channel
+    environment["OMNISCRIPT_VERSION"] = "latest" if channel == "release" else current_version
+
+    if os.name == "nt":
+        powershell = shutil.which("powershell.exe") or shutil.which("pwsh")
+        if powershell is None:
+            raise UpdateCheckError("PowerShell is required to update OmniScript on Windows")
+        environment["OMNISCRIPT_WAIT_PID"] = str(os.getpid())
+        url = f"https://raw.githubusercontent.com/{repository}/{installer_ref}/scripts/install.ps1"
+        command = [
+            powershell,
+            "-NoLogo",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            f"(Invoke-RestMethod -UseBasicParsing -Uri '{url}') | Invoke-Expression",
+        ]
+        try:
+            subprocess.Popen(command, env=environment)
+        except OSError as error:
+            raise UpdateCheckError(f"could not start the Windows updater: {error}") from error
+        return "updater started; this OmniScript process will now exit so the executable can be replaced"
+
+    url = f"https://raw.githubusercontent.com/{repository}/{installer_ref}/install.sh"
+    try:
+        request = Request(url, headers={"User-Agent": f"OmniScript/{current_version}"})
+        with opener(request, timeout=15) as response:
+            installer = response.read()
+    except (HTTPError, URLError, OSError) as error:
+        raise UpdateCheckError(f"could not download the OmniScript installer: {error}") from error
+
+    path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(prefix="omniscript-update-", suffix=".sh", delete=False) as handle:
+            handle.write(installer)
+            path = Path(handle.name)
+        completed = subprocess.run(["/bin/sh", str(path)], env=environment, check=False)
+        if completed.returncode != 0:
+            raise UpdateCheckError(f"the OmniScript installer exited with status {completed.returncode}")
+    except OSError as error:
+        raise UpdateCheckError(f"could not run the OmniScript installer: {error}") from error
+    finally:
+        if path is not None:
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+    clear_update_cache()
+    return f"installed the {channel} channel successfully"
 
 
 def check_for_updates(

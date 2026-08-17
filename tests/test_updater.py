@@ -13,6 +13,7 @@ from unittest.mock import patch
 from omniscript.cli import main
 from omniscript.updater import (
     UpdateCheckError,
+    UpdateInfo,
     cache_directory,
     check_for_updates,
     clear_update_cache,
@@ -106,6 +107,45 @@ class UpdaterTests(unittest.TestCase):
                 with contextlib.redirect_stdout(output):
                     self.assertEqual(main(["update", "--clear-cache"]), 0)
                 self.assertIn("cleared", output.getvalue())
+
+    def test_interactive_update_can_choose_nightly(self) -> None:
+        output = io.StringIO()
+        with patch("builtins.input", return_value="2"):
+            with patch("omniscript.cli.install_update", return_value="nightly installed") as install:
+                with contextlib.redirect_stdout(output):
+                    self.assertEqual(main(["update"]), 0)
+        install.assert_called_once_with("nightly", "0.2.0")
+        self.assertIn("Nightly", output.getvalue())
+        self.assertIn("nightly installed", output.getvalue())
+
+    def test_explicit_release_channel_installs_latest_release(self) -> None:
+        info = UpdateInfo(
+            current_version="0.2.0",
+            latest_version="0.2.0",
+            update_available=False,
+            release_url="https://example.test/v0.2.0",
+            checked_at=1.0,
+        )
+        with patch("omniscript.cli.check_for_updates", return_value=info):
+            with patch("omniscript.cli.install_update", return_value="release installed") as install:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(main(["update", "--channel", "release"]), 0)
+        install.assert_called_once_with("release", "0.2.0")
+
+    def test_release_downgrade_requires_confirmation(self) -> None:
+        info = UpdateInfo(
+            current_version="0.2.0",
+            latest_version="0.1.0",
+            update_available=False,
+            release_url="https://example.test/v0.1.0",
+            checked_at=1.0,
+        )
+        with patch("omniscript.cli.check_for_updates", return_value=info):
+            with patch("builtins.input", return_value="n"):
+                with patch("omniscript.cli.install_update") as install:
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        self.assertEqual(main(["update", "--channel", "release"]), 0)
+        install.assert_not_called()
 
     def test_cache_directory_override(self) -> None:
         with patch.dict(os.environ, {"OMNISCRIPT_CACHE_DIR": "/tmp/custom-omni-cache"}):

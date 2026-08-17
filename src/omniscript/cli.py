@@ -20,7 +20,16 @@ from .formatter import format_source
 from .lexer import Lexer
 from .parser import Parser
 from .runtime import stringify
-from .updater import UpdateCheckError, cache_directory, check_for_updates, clear_update_cache
+from .updater import (
+    NIGHTLY_RUN,
+    UpdateCheckError,
+    UpdateInfo,
+    cache_directory,
+    check_for_updates,
+    clear_update_cache,
+    install_update,
+    is_newer_version,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -70,9 +79,16 @@ def build_parser() -> argparse.ArgumentParser:
     doctor = subcommands.add_parser("doctor", help="verify the local OmniScript installation")
     doctor.set_defaults(handler=_command_doctor)
 
-    update = subcommands.add_parser("update", help="check GitHub for a newer OmniScript release")
+    update = subcommands.add_parser("update", help="choose and install a release or nightly build")
+    update.add_argument(
+        "--channel",
+        choices=("release", "nightly"),
+        help="install this channel without showing the channel menu",
+    )
+    update.add_argument("--check", action="store_true", help="only check the latest release")
+    update.add_argument("--yes", "-y", action="store_true", help="allow a channel switch to an older version")
     update.add_argument("--force", action="store_true", help="ignore the 24-hour update cache")
-    update.add_argument("--json", action="store_true", dest="as_json", help="print machine-readable JSON")
+    update.add_argument("--json", action="store_true", dest="as_json", help="print release check JSON")
     update.add_argument("--clear-cache", action="store_true", help="clear cached update data and exit")
     update.set_defaults(handler=_command_update)
     return parser
@@ -303,11 +319,85 @@ def _command_update(arguments: argparse.Namespace) -> int:
         removed = clear_update_cache()
         print("update cache cleared" if removed else "update cache is already empty")
         return 0
+    if arguments.channel and (arguments.check or arguments.as_json):
+        raise OmniRuntimeError("--channel cannot be combined with --check or --json")
+
+    if arguments.check or arguments.as_json:
+        info = _get_update_info(arguments.force)
+        _print_update_info(info, arguments.as_json)
+        return 0
+
+    channel = arguments.channel or _choose_update_channel()
+    if channel == "check":
+        _print_update_info(_get_update_info(arguments.force), False)
+        return 0
+
+    if channel == "release":
+        info = _get_update_info(arguments.force)
+        if not info.release_found:
+            raise OmniRuntimeError("no published release is available; choose the nightly channel instead")
+        print(f"Selected release channel: OmniScript {info.latest_version}")
+        if is_newer_version(__version__, info.latest_version):
+            print(f"warning: release {info.latest_version} is older than your current {__version__}")
+            if not arguments.yes and not _confirm_downgrade():
+                print("update cancelled")
+                return 0
+    else:
+        print(f"Selected nightly channel: verified workflow run {NIGHTLY_RUN}")
+
     try:
-        info = check_for_updates(__version__, force=arguments.force)
+        result = install_update(channel, __version__)
     except UpdateCheckError as error:
         raise OmniRuntimeError(str(error)) from error
-    if arguments.as_json:
+    print(result)
+    return 0
+
+
+def _choose_update_channel() -> str:
+    print(f"OmniScript {__version__} updater")
+    print("  1) Release — latest published, stable build")
+    print("  2) Nightly — newest verified development build")
+    print("  3) Check only — do not install anything")
+    try:
+        choice = input("Choose 1, 2, or 3 [1]: ").strip().lower()
+    except (EOFError, KeyboardInterrupt) as error:
+        raise OmniRuntimeError(
+            "interactive update selection was cancelled",
+            hint="use --channel release, --channel nightly, or --check",
+        ) from error
+    choices = {
+        "": "release",
+        "1": "release",
+        "release": "release",
+        "2": "nightly",
+        "nightly": "nightly",
+        "3": "check",
+        "check": "check",
+    }
+    if choice not in choices:
+        raise OmniRuntimeError("choose 1 for release, 2 for nightly, or 3 to check only")
+    return choices[choice]
+
+
+def _confirm_downgrade() -> bool:
+    try:
+        return input("Switch to the older release channel anyway? [y/N]: ").strip().lower() in {
+            "y",
+            "yes",
+        }
+    except (EOFError, KeyboardInterrupt):
+        return False
+
+
+def _get_update_info(force: bool) -> UpdateInfo:
+    try:
+        return check_for_updates(__version__, force=force)
+    except UpdateCheckError as error:
+        raise OmniRuntimeError(str(error)) from error
+
+
+def _print_update_info(info: UpdateInfo, as_json: bool) -> None:
+    if as_json:
         print(json.dumps(info.to_dict(), indent=2, sort_keys=True))
     elif not info.release_found:
         source = "cached result" if info.from_cache else "GitHub"
@@ -317,10 +407,14 @@ def _command_update(arguments: argparse.Namespace) -> int:
         source = "cached result" if info.from_cache else "GitHub"
         print(f"update available: OmniScript {info.current_version} -> {info.latest_version} ({source})")
         print(info.release_url)
+    elif is_newer_version(info.current_version, info.latest_version):
+        print(
+            f"OmniScript {info.current_version} is newer than the published release "
+            f"{info.latest_version}"
+        )
     else:
         source = "cached result" if info.from_cache else "GitHub"
         print(f"OmniScript {info.current_version} is up to date ({source})")
-    return 0
 
 
 def _command_doctor(_arguments: argparse.Namespace) -> int:

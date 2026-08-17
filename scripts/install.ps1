@@ -1,8 +1,20 @@
 $ErrorActionPreference = "Stop"
 
+if ($env:OMNISCRIPT_WAIT_PID) {
+    $ParentProcess = Get-Process -Id ([int]$env:OMNISCRIPT_WAIT_PID) -ErrorAction SilentlyContinue
+    if ($ParentProcess) {
+        Write-Host "Waiting for the running OmniScript process to close..."
+        $ParentProcess | Wait-Process
+    }
+}
+
 $Repository = if ($env:OMNISCRIPT_REPOSITORY) { $env:OMNISCRIPT_REPOSITORY } else { "OmniNodeCo/OmniScript" }
 $BundledVersion = "0.2.0"
 $Version = if ($env:OMNISCRIPT_VERSION) { $env:OMNISCRIPT_VERSION } else { $BundledVersion }
+$Channel = if ($env:OMNISCRIPT_CHANNEL) { $env:OMNISCRIPT_CHANNEL.ToLowerInvariant() } else { "auto" }
+if ($Channel -notin @("auto", "release", "nightly")) {
+    throw "OMNISCRIPT_CHANNEL must be auto, release, or nightly"
+}
 $NightlyRun = if ($env:OMNISCRIPT_NIGHTLY_RUN) { $env:OMNISCRIPT_NIGHTLY_RUN } else { "32046113765" }
 $InstallDir = if ($env:OMNISCRIPT_INSTALL_DIR) { $env:OMNISCRIPT_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA "Programs\OmniScript" }
 $BinDir = if ($env:OMNISCRIPT_BIN_DIR) { $env:OMNISCRIPT_BIN_DIR } else { Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps" }
@@ -33,14 +45,19 @@ New-Item -ItemType Directory -Force -Path $Temporary | Out-Null
 try {
     $DownloadedExe = Join-Path $Temporary $Asset
     $ChecksumFile = Join-Path $Temporary "SHA256SUMS"
-    $ReleaseAvailable = $true
-    Write-Host "Looking for $Asset in $Repository releases ($Version)"
-    try {
-        Invoke-WebRequest -UseBasicParsing -Uri "$ReleaseBase/$Asset" -OutFile $DownloadedExe
-        Invoke-WebRequest -UseBasicParsing -Uri "$ReleaseBase/SHA256SUMS" -OutFile $ChecksumFile
-    } catch {
-        $ReleaseAvailable = $false
-        Remove-Item -Force -ErrorAction SilentlyContinue $DownloadedExe, $ChecksumFile
+    $ReleaseAvailable = $false
+    if ($Channel -ne "nightly") {
+        $ReleaseAvailable = $true
+        Write-Host "Looking for $Asset in $Repository releases ($Version)"
+        try {
+            Invoke-WebRequest -UseBasicParsing -Uri "$ReleaseBase/$Asset" -OutFile $DownloadedExe
+            Invoke-WebRequest -UseBasicParsing -Uri "$ReleaseBase/SHA256SUMS" -OutFile $ChecksumFile
+        } catch {
+            $ReleaseAvailable = $false
+            Remove-Item -Force -ErrorAction SilentlyContinue $DownloadedExe, $ChecksumFile
+        }
+    } else {
+        Write-Host "Installing $Asset from the nightly channel"
     }
 
     if ($ReleaseAvailable) {
@@ -51,10 +68,15 @@ try {
         $Actual = (Get-FileHash -Algorithm SHA256 $DownloadedExe).Hash.ToUpperInvariant()
         if ($Expected -ne $Actual) { throw "Checksum verification failed for $Asset" }
     } else {
-        if ($Version -ne "latest" -and $CleanVersion -ne $BundledVersion) {
+        if ($Channel -eq "release") { throw "No matching OmniScript release was found" }
+        if ($Channel -eq "auto" -and $Version -ne "latest" -and $CleanVersion -ne $BundledVersion) {
             throw "OmniScript release v$CleanVersion was not found"
         }
-        Write-Warning "Release v$BundledVersion is not published yet; installing its verified build from run $NightlyRun."
+        if ($Channel -eq "nightly") {
+            Write-Host "Installing verified nightly run $NightlyRun"
+        } else {
+            Write-Warning "Release v$BundledVersion is not published yet; installing its verified build from run $NightlyRun."
+        }
         $Archive = Join-Path $Temporary "$Asset.zip"
         $NightlyUrl = "https://nightly.link/$Repository/actions/runs/$NightlyRun/$Asset.zip"
         Invoke-WebRequest -UseBasicParsing -Uri $NightlyUrl -OutFile $Archive

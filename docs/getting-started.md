@@ -100,7 +100,7 @@ Use `.help`, `.vars`, and `.exit` for REPL commands.
 omni update
 ```
 
-The check reads GitHub Releases and caches the result for 24 hours. Use `omni update --force` to refresh immediately or `omni update --clear-cache` to remove the cached result.
+Choose **Release**, **Nightly**, or **Check only** from the menu. Release selects the latest published version; Nightly selects the newest verified development build. Use `omni update --check` without installing, `omni update --force --check` to refresh immediately, or `omni update --clear-cache` to remove cached release information.
 
 ## Next steps
 

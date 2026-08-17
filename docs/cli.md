@@ -53,16 +53,31 @@ Scaffold `omni.toml`, `src/main.omni`, `tests/main_test.omni`, and `.gitignore`.
 
 ## `omni update`
 
-Check GitHub Releases for a newer OmniScript version without installing anything. Results are cached for 24 hours under the platform cache directory.
+Open a small interactive menu that asks which channel to install:
+
+```text
+OmniScript 0.2.0 updater
+  1) Release — latest published, stable build
+  2) Nightly — newest verified development build
+  3) Check only — do not install anything
+Choose 1, 2, or 3 [1]:
+```
+
+For scripts or advanced use, skip the menu explicitly:
 
 ```bash
-omni update
-omni update --force       # bypass cached release information
-omni update --json        # machine-readable result
+omni update --channel release
+omni update --channel nightly
+omni update --channel release --yes  # permit an intentional downgrade
+omni update --check
+omni update --force --check   # bypass cached release information
+omni update --json            # machine-readable release check
 omni update --clear-cache
 ```
 
-Set `OMNISCRIPT_CACHE_DIR` to move the cache or `OMNISCRIPT_REPOSITORY=owner/repository` to check a fork. Network and malformed-release failures return a nonzero status with a readable diagnostic.
+Release information is cached for 24 hours. Windows starts the updater as a separate PowerShell process so the running executable can exit before replacement; Linux and macOS update synchronously. Every channel still uses the platform installer's SHA-256 verification.
+
+Set `OMNISCRIPT_CACHE_DIR` to move the cache, `OMNISCRIPT_REPOSITORY=owner/repository` to use a fork, or `OMNISCRIPT_INSTALLER_REF` to select another installer branch. Network and installer failures return a readable diagnostic.
 
 ## Inspection commands
 
