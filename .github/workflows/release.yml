@@ -1,0 +1,113 @@
+name: Publish OmniScript release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag matching pyproject.toml, such as v0.1.0
+        required: true
+        default: v0.1.0
+        type: string
+      prerelease:
+        description: Mark this as a prerelease
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+jobs:
+  validate:
+    name: Validate release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Verify version and tag
+        run: python scripts/verify_release.py "$RELEASE_TAG"
+      - name: Install OmniScript
+        run: python -m pip install -e .
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Check examples
+        run: omni check examples/hello.omni examples/tour.omni examples/fibonacci.omni examples/json_report.omni examples/lib/statistics.omni
+
+  build:
+    name: Package ${{ matrix.asset }}
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            binary_name: omni-linux-x86_64
+            asset: omni-linux-x86_64
+          - os: ubuntu-22.04-arm
+            binary_name: omni-linux-arm64
+            asset: omni-linux-arm64
+          - os: windows-latest
+            binary_name: omni-windows-x86_64
+            asset: omni-windows-x86_64.exe
+          - os: windows-11-arm
+            binary_name: omni-windows-arm64
+            asset: omni-windows-arm64.exe
+          - os: macos-14
+            binary_name: omni-macos-arm64
+            asset: omni-macos-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install build dependencies
+        run: python -m pip install -e ".[build]"
+      - name: Build and smoke-test executable
+        run: python scripts/build_executable.py --name "${{ matrix.binary_name }}" --asset "${{ matrix.asset }}" --output artifacts
+      - name: Ad-hoc sign macOS binary
+        if: runner.os == 'macOS'
+        run: codesign --force --deep --sign - "artifacts/${{ matrix.asset }}"
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: artifacts/${{ matrix.asset }}
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Create GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download executables
+        uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+      - name: Create checksums
+        working-directory: release
+        run: sha256sum omni-* > SHA256SUMS
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
+          prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            release/omni-*
+            release/SHA256SUMS
