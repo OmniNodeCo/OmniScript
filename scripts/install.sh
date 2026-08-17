@@ -3,8 +3,9 @@
 set -eu
 
 REPOSITORY="${OMNISCRIPT_REPOSITORY:-OmniNodeCo/OmniScript}"
-VERSION="${OMNISCRIPT_VERSION:-latest}"
-NIGHTLY_RUN="${OMNISCRIPT_NIGHTLY_RUN:-32034373761}"
+BUNDLED_VERSION=0.2.0
+VERSION="${OMNISCRIPT_VERSION:-$BUNDLED_VERSION}"
+NIGHTLY_RUN="${OMNISCRIPT_NIGHTLY_RUN:-32046113765}"
 BIN_DIR="${OMNISCRIPT_BIN_DIR:-$HOME/.local/bin}"
 
 if ! command -v curl >/dev/null 2>&1; then
@@ -54,7 +55,7 @@ if [ "$RELEASE_AVAILABLE" -eq 1 ]; then
     VERIFY_FILE="$TMP_DIR/$ASSET"
 else
     rm -f "$TMP_DIR/$ASSET" "$TMP_DIR/SHA256SUMS"
-    if [ "$VERSION" != "latest" ]; then
+    if [ "$VERSION" != "latest" ] && [ "$VERSION" != "$BUNDLED_VERSION" ]; then
         echo "error: OmniScript release v$VERSION was not found" >&2
         exit 1
     fi
@@ -62,11 +63,11 @@ else
         echo "error: unzip is required to install the nightly build" >&2
         exit 1
     fi
-    echo "warning: no GitHub release exists yet; installing verified nightly run $NIGHTLY_RUN" >&2
+    echo "warning: release v$BUNDLED_VERSION is not published yet; installing verified run $NIGHTLY_RUN" >&2
     case "$ASSET" in
-        omni-linux-arm64) EXPECTED=ab131448bf0cf12e1c9599c7371496d882e57b3ae1a125c57d85f05c1163c89f ;;
-        omni-linux-x86_64) EXPECTED=65629e6c4ac4e376b87916e9e109e1ecbe9c130dbec7d65ac6414d5157353099 ;;
-        omni-macos-arm64) EXPECTED=685432cb3356febc718584306700a5696bcc02b012384fdd92381002f0e5421b ;;
+        omni-linux-arm64) EXPECTED=507596d9d9e9a84d441969d6893bcf72207956ea87c70fa15915bb1f14ab9d5d ;;
+        omni-linux-x86_64) EXPECTED=78415236f3c00022f5162c3883f668dbec1197bc85bc118d39c5259341dff0b7 ;;
+        omni-macos-arm64) EXPECTED=ec4b77787c81b937ce8bdaf0c221157bc0bad07962f0d6425cce273340ad13fd ;;
         *) echo "error: no trusted nightly digest is registered for $ASSET" >&2; exit 1 ;;
     esac
     VERIFY_FILE="$TMP_DIR/$ASSET.zip"

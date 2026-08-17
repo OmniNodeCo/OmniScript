@@ -1,8 +1,9 @@
 $ErrorActionPreference = "Stop"
 
 $Repository = if ($env:OMNISCRIPT_REPOSITORY) { $env:OMNISCRIPT_REPOSITORY } else { "OmniNodeCo/OmniScript" }
-$Version = if ($env:OMNISCRIPT_VERSION) { $env:OMNISCRIPT_VERSION } else { "latest" }
-$NightlyRun = if ($env:OMNISCRIPT_NIGHTLY_RUN) { $env:OMNISCRIPT_NIGHTLY_RUN } else { "32034373761" }
+$BundledVersion = "0.2.0"
+$Version = if ($env:OMNISCRIPT_VERSION) { $env:OMNISCRIPT_VERSION } else { $BundledVersion }
+$NightlyRun = if ($env:OMNISCRIPT_NIGHTLY_RUN) { $env:OMNISCRIPT_NIGHTLY_RUN } else { "32046113765" }
 $InstallDir = if ($env:OMNISCRIPT_INSTALL_DIR) { $env:OMNISCRIPT_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA "Programs\OmniScript" }
 $BinDir = if ($env:OMNISCRIPT_BIN_DIR) { $env:OMNISCRIPT_BIN_DIR } else { Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps" }
 
@@ -14,17 +15,17 @@ $Architecture = switch ($Machine.ToUpperInvariant()) {
     default { throw "Unsupported Windows architecture: $Machine" }
 }
 $Asset = "omni-windows-$Architecture.exe"
+$CleanVersion = $Version -replace '^v', ''
 if ($Version -eq "latest") {
     $ReleaseBase = "https://github.com/$Repository/releases/latest/download"
 } else {
-    $CleanVersion = $Version -replace '^v', ''
     $ReleaseBase = "https://github.com/$Repository/releases/download/v$CleanVersion"
 }
 
 # GitHub's SHA-256 digest for each ZIP produced by the successful nightly build.
 $NightlyDigests = @{
-    "omni-windows-arm64.exe" = "e6b4c11d5e2fcd1010fbc74706f38e9dffef64548e8dbb497f6ec5065ffa26ae"
-    "omni-windows-x86_64.exe" = "71556c96fa103669901aa981d1f5df0827cb73298269cd4db45ebb98d7ae6996"
+    "omni-windows-arm64.exe" = "28c6e516b9243ed12c4005dd89ab18470e028ca4cdd537e5ec09f4551626b4b2"
+    "omni-windows-x86_64.exe" = "4c4bb26360cfff24dbaeeb5918b704bc6f42e04ccb056ea55d87bf988551f535"
 }
 
 $Temporary = Join-Path ([System.IO.Path]::GetTempPath()) ("omniscript-" + [guid]::NewGuid().ToString("N"))
@@ -50,8 +51,10 @@ try {
         $Actual = (Get-FileHash -Algorithm SHA256 $DownloadedExe).Hash.ToUpperInvariant()
         if ($Expected -ne $Actual) { throw "Checksum verification failed for $Asset" }
     } else {
-        if ($Version -ne "latest") { throw "OmniScript release v$CleanVersion was not found" }
-        Write-Warning "No GitHub release exists yet; installing the verified nightly build from run $NightlyRun."
+        if ($Version -ne "latest" -and $CleanVersion -ne $BundledVersion) {
+            throw "OmniScript release v$CleanVersion was not found"
+        }
+        Write-Warning "Release v$BundledVersion is not published yet; installing its verified build from run $NightlyRun."
         $Archive = Join-Path $Temporary "$Asset.zip"
         $NightlyUrl = "https://nightly.link/$Repository/actions/runs/$NightlyRun/$Asset.zip"
         Invoke-WebRequest -UseBasicParsing -Uri $NightlyUrl -OutFile $Archive
