@@ -14,7 +14,7 @@ Every tagged release built by `release.yml` contains:
 | Windows | x86-64 | `omni-windows-x86_64.exe` |
 | Windows | ARM64 | `omni-windows-arm64.exe` |
 
-`SHA256SUMS` contains a checksum for every released executable. All installers verify checksums before replacing an existing installation. When the installer's matching release is not published yet, it automatically falls back to the successful artifacts from workflow run `32053497470`; those artifact ZIPs are pinned to their GitHub-reported SHA-256 digests.
+`SHA256SUMS` contains a checksum for every released executable. All installers verify checksums before replacing an existing installation. When the installer's matching release is not published yet, it automatically falls back to the successful artifacts from workflow run `32066743090`; those artifact ZIPs are pinned to their GitHub-reported SHA-256 digests.
 
 ## Linux and macOS
 
