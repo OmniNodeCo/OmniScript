@@ -1,35 +1,53 @@
 $ErrorActionPreference = "Stop"
 
-$Python = if ($env:PYTHON) { $env:PYTHON } else { "python" }
-$InstallDir = if ($env:OMNISCRIPT_INSTALL_DIR) { $env:OMNISCRIPT_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA "OmniScript" }
+$Repository = if ($env:OMNISCRIPT_REPOSITORY) { $env:OMNISCRIPT_REPOSITORY } else { "OmniNodeCo/OmniScript" }
+$Version = if ($env:OMNISCRIPT_VERSION) { $env:OMNISCRIPT_VERSION } else { "latest" }
+$InstallDir = if ($env:OMNISCRIPT_INSTALL_DIR) { $env:OMNISCRIPT_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA "Programs\OmniScript" }
 $BinDir = if ($env:OMNISCRIPT_BIN_DIR) { $env:OMNISCRIPT_BIN_DIR } else { Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps" }
-$DefaultSource = "https://github.com/OmniNodeCo/OmniScript/archive/refs/heads/main.zip"
-$Source = if ($env:OMNISCRIPT_SOURCE) { $env:OMNISCRIPT_SOURCE } else { $DefaultSource }
 
-& $Python -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)"
-if ($LASTEXITCODE -ne 0) {
-    throw "Python 3.10 or newer is required."
+$Machine = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
+$Architecture = switch ($Machine.ToUpperInvariant()) {
+    "AMD64" { "x86_64" }
+    "X86_64" { "x86_64" }
+    "ARM64" { "arm64" }
+    default { throw "Unsupported Windows architecture: $Machine" }
+}
+$Asset = "omni-windows-$Architecture.exe"
+if ($Version -eq "latest") {
+    $ReleaseBase = "https://github.com/$Repository/releases/latest/download"
+} else {
+    $CleanVersion = $Version.TrimStart("v")
+    $ReleaseBase = "https://github.com/$Repository/releases/download/v$CleanVersion"
 }
 
-if (-not $env:OMNISCRIPT_SOURCE -and $PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot "..\pyproject.toml"))) {
-    $Source = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$Temporary = Join-Path ([System.IO.Path]::GetTempPath()) ("omniscript-" + [guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Force -Path $Temporary | Out-Null
+try {
+    $DownloadedExe = Join-Path $Temporary $Asset
+    $ChecksumFile = Join-Path $Temporary "SHA256SUMS"
+    Write-Host "Downloading $Asset from $Repository ($Version)"
+    Invoke-WebRequest -UseBasicParsing -Uri "$ReleaseBase/$Asset" -OutFile $DownloadedExe
+    Invoke-WebRequest -UseBasicParsing -Uri "$ReleaseBase/SHA256SUMS" -OutFile $ChecksumFile
+
+    $EscapedAsset = [regex]::Escape($Asset)
+    $ChecksumLine = Get-Content $ChecksumFile | Where-Object { $_ -match "\s+\*?$EscapedAsset$" } | Select-Object -First 1
+    if (-not $ChecksumLine) { throw "$Asset is missing from SHA256SUMS" }
+    $Expected = ($ChecksumLine -split "\s+")[0].ToUpperInvariant()
+    $Actual = (Get-FileHash -Algorithm SHA256 $DownloadedExe).Hash.ToUpperInvariant()
+    if ($Expected -ne $Actual) { throw "Checksum verification failed for $Asset" }
+
+    New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
+    $OmniExe = Join-Path $InstallDir "omni.exe"
+    Move-Item -Force $DownloadedExe $OmniExe
+
+    $Launcher = Join-Path $BinDir "omni.cmd"
+    $AliasLauncher = Join-Path $BinDir "omniscript.cmd"
+    "@echo off`r`n`"$OmniExe`" %*" | Set-Content -Encoding ASCII $Launcher
+    "@echo off`r`n`"$OmniExe`" %*" | Set-Content -Encoding ASCII $AliasLauncher
+
+    Write-Host "OmniScript installed to $OmniExe"
+    & $OmniExe --version
+} finally {
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $Temporary
 }
-
-Write-Host "Installing OmniScript from $Source"
-if (Test-Path $InstallDir) { Remove-Item -Recurse -Force $InstallDir }
-& $Python -m venv $InstallDir
-$VenvPython = Join-Path $InstallDir "Scripts\python.exe"
-& $VenvPython -m pip install --disable-pip-version-check --upgrade pip | Out-Null
-& $VenvPython -m pip install --disable-pip-version-check $Source
-
-New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
-$OmniExe = Join-Path $InstallDir "Scripts\omni.exe"
-$Launcher = Join-Path $BinDir "omni.cmd"
-$AliasLauncher = Join-Path $BinDir "omniscript.cmd"
-"@echo off`r`n`"$OmniExe`" %*" | Set-Content -Encoding ASCII $Launcher
-"@echo off`r`n`"$OmniExe`" %*" | Set-Content -Encoding ASCII $AliasLauncher
-
-Write-Host ""
-Write-Host "OmniScript installed successfully."
-Write-Host "  executable: $Launcher"
-& $OmniExe --version

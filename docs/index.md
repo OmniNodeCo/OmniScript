@@ -5,9 +5,10 @@ OmniScript is an original programming language and integrated toolchain. Source 
 ## Start here
 
 1. [Install OmniScript and run a program](getting-started.md).
-2. Work through the [language guide](language-guide.md).
-3. Learn the [CLI](cli.md) and [project/module model](modules-and-projects.md).
-4. Install the [VS Code extension](vscode.md).
+2. Learn about [native executables and installers](installers-and-binaries.md).
+3. Work through the [language guide](language-guide.md).
+4. Learn the [CLI](cli.md) and [project/module model](modules-and-projects.md).
+5. Install the [VS Code extension](vscode.md).
 
 ## Reference
 

@@ -2,20 +2,27 @@
 
 ## Requirements
 
-- Windows, macOS, or Linux
-- Python 3.10+
-
-The runtime has no third-party Python dependencies.
+- Windows, macOS, or Linux on x86-64 or ARM64
+- No separate runtime for a release executable
+- Python 3.10+ only when developing or installing from source
 
 ## Install
 
 ### One-line installer (macOS/Linux)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/install.sh | sh
 ```
 
-The installer creates an isolated environment under `~/.local/share/omniscript` and links `omni` into `~/.local/bin`. Ensure that directory is on `PATH`.
+The installer detects the OS and architecture, downloads the matching executable, verifies its SHA-256 checksum, and installs `omni` under `~/.local/bin`.
+
+### Command Prompt (Windows)
+
+From a downloaded copy or repository checkout:
+
+```bat
+install.bat
+```
 
 ### PowerShell (Windows)
 
@@ -23,7 +30,9 @@ The installer creates an isolated environment under `~/.local/share/omniscript` 
 irm https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/scripts/install.ps1 | iex
 ```
 
-The installer writes an isolated environment to `%LOCALAPPDATA%\OmniScript` and a launcher to `%LOCALAPPDATA%\Microsoft\WindowsApps` by default.
+The Windows installers verify and write `omni.exe` to `%LOCALAPPDATA%\Programs\OmniScript`, with command launchers under `%LOCALAPPDATA%\Microsoft\WindowsApps`.
+
+See [Installers and native executables](installers-and-binaries.md) for version overrides, release asset names, and local builds.
 
 ### From source
 

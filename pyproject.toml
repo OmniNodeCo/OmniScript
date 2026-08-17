@@ -24,6 +24,9 @@ classifiers = [
 ]
 dependencies = []
 
+[project.optional-dependencies]
+build = ["pyinstaller>=6.10,<7"]
+
 [project.scripts]
 omni = "omniscript.cli:main"
 omniscript = "omniscript.cli:main"

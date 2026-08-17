@@ -10,7 +10,8 @@ All notable changes to OmniScript are documented here. The format follows Keep a
 - Bindings, crafts, closures, shapes, control flow, collections, ranges, pipelines, modules, assertions, and diagnostics.
 - Built-in collection/file crafts and `math`, `text`, `json`, `path`, and `random` modules.
 - CLI with run, REPL, check, format, test, init, token, AST, and doctor commands.
-- POSIX shell and Windows PowerShell installers and uninstallers.
+- Binary-first POSIX shell, Windows Batch, and PowerShell installers and uninstallers.
+- PyInstaller build tooling and a release workflow for Linux, macOS, and Windows executables on x86-64 and ARM64.
 - Custom VS Code language extension with commands and snippets.
 - Language, CLI, standard-library, module, design, and embedding documentation.
 - Examples, unit tests, project metadata, Dockerfile, and cross-platform CI.

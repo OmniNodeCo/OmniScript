@@ -30,35 +30,41 @@ OmniScript is not a transpiled dialect of another language. `.omni` source is to
 - Source modules and built-in `math`, `text`, `json`, `path`, and `random` modules
 - Friendly source diagnostics with locations and call frames
 - `omni run`, `repl`, `check`, `fmt`, `test`, `init`, `tokens`, `ast`, and `doctor`
-- Shell and PowerShell installers, Python package metadata, and zero runtime dependencies
+- Binary-first Shell, Batch, and PowerShell installers with SHA-256 verification
+- Native Linux, macOS, and Windows executables for x86-64 and ARM64, built by `build.yml`
 - A custom VS Code extension with highlighting, snippets, Run, and Check commands
 - Public Python embedding API and a tested reference implementation
 
 ## Quick start
 
-OmniScript needs Python 3.10 or newer.
+Release installers download a self-contained executable, so Python is not required.
+
+Linux or macOS:
 
 ```bash
-# From a checkout
-python3 -m pip install -e .
+curl -fsSL https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/install.sh | sh
+```
 
-# Create, run, and test a project
+Windows Command Prompt from a checkout:
+
+```bat
+install.bat
+```
+
+Windows PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/scripts/install.ps1 | iex
+```
+
+To develop from source, use Python 3.10 or newer:
+
+```bash
+python3 -m pip install -e .
 omni init hello-omni
 cd hello-omni
 omni run
 omni test
-```
-
-Or install directly:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/scripts/install.sh | sh
-```
-
-PowerShell:
-
-```powershell
-irm https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/scripts/install.ps1 | iex
 ```
 
 Create `hello.omni`:
@@ -122,6 +128,7 @@ my-app/
 ## Documentation
 
 - [Getting started](docs/getting-started.md)
+- [Installers and native executables](docs/installers-and-binaries.md)
 - [Language guide](docs/language-guide.md)
 - [Grammar reference](docs/grammar.ebnf)
 - [Standard library](docs/standard-library.md)
@@ -142,6 +149,9 @@ python3 -m pip install -e .
 python3 -m unittest discover -s tests -v
 omni check examples/*.omni examples/lib/*.omni
 omni test examples/tests
+
+# Build a self-contained binary for this host
+./scripts/build_all_local.sh
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the language-change workflow. OmniScript is currently **0.1.0 alpha**: the language and tooling are functional, but the grammar may evolve before 1.0.

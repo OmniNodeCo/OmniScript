@@ -1,5 +1,5 @@
-include README.md LICENSE CHANGELOG.md
+include README.md LICENSE CHANGELOG.md install.sh install.bat uninstall.bat build.yml
 recursive-include docs *.md *.ebnf
 recursive-include examples *.omni
 recursive-include editors/vscode *.json *.js *.md
-recursive-include scripts *.sh *.ps1
+recursive-include scripts *.sh *.ps1 *.bat *.py

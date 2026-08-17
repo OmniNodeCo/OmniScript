@@ -1,4 +1,4 @@
-.PHONY: install test check examples format build
+.PHONY: install test check examples format build executable
 
 install:
 	python3 -m pip install -e .
@@ -19,3 +19,6 @@ format:
 
 build:
 	python3 -m build
+
+executable:
+	./scripts/build_all_local.sh
