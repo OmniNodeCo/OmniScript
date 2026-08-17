@@ -31,7 +31,7 @@ OmniScript is not a transpiled dialect of another language. `.omni` source is to
 - Friendly source diagnostics with locations and call frames
 - `omni run`, `repl`, `check`, `fmt`, `test`, `init`, `tokens`, `ast`, and `doctor`
 - Binary-first Shell, Batch, and PowerShell installers with SHA-256 verification
-- Native Linux, macOS, and Windows executables for x86-64 and ARM64, built by `build.yml`
+- Native Linux/Windows x86-64 and ARM64 executables plus an Apple Silicon macOS binary, built by `build.yml`
 - A custom VS Code extension with highlighting, snippets, Run, and Check commands
 - Public Python embedding API and a tested reference implementation
 

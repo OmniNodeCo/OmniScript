@@ -21,6 +21,10 @@ case "$(uname -m)" in
     arm64|aarch64) ARCH=arm64 ;;
     *) echo "error: unsupported architecture $(uname -m)" >&2; exit 1 ;;
 esac
+if [ "$OS" = "macos" ] && [ "$ARCH" != "arm64" ]; then
+    echo "error: prebuilt macOS releases support Apple Silicon ARM64 only" >&2
+    exit 1
+fi
 
 ASSET="omni-$OS-$ARCH"
 if [ "$VERSION" = "latest" ]; then

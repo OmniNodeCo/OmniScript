@@ -11,7 +11,7 @@ All notable changes to OmniScript are documented here. The format follows Keep a
 - Built-in collection/file crafts and `math`, `text`, `json`, `path`, and `random` modules.
 - CLI with run, REPL, check, format, test, init, token, AST, and doctor commands.
 - Binary-first POSIX shell, Windows Batch, and PowerShell installers and uninstallers.
-- PyInstaller build tooling and a release workflow for Linux, macOS, and Windows executables on x86-64 and ARM64.
+- PyInstaller build tooling and a release workflow for Linux/Windows x86-64 and ARM64 plus Apple Silicon macOS.
 - Custom VS Code language extension with commands and snippets.
 - Language, CLI, standard-library, module, design, and embedding documentation.
 - Examples, unit tests, project metadata, Dockerfile, and cross-platform CI.

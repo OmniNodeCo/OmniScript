@@ -17,7 +17,6 @@ class DistributionTests(unittest.TestCase):
         expected = {
             "omni-linux-x86_64",
             "omni-linux-arm64",
-            "omni-macos-x86_64",
             "omni-macos-arm64",
             "omni-windows-x86_64.exe",
             "omni-windows-arm64.exe",

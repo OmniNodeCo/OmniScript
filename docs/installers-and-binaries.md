@@ -10,7 +10,6 @@ Every tagged release built by `build.yml` contains:
 |---|---|---|
 | Linux | x86-64 | `omni-linux-x86_64` |
 | Linux | ARM64 | `omni-linux-arm64` |
-| macOS | Intel x86-64 | `omni-macos-x86_64` |
 | macOS | Apple Silicon ARM64 | `omni-macos-arm64` |
 | Windows | x86-64 | `omni-windows-x86_64.exe` |
 | Windows | ARM64 | `omni-windows-arm64.exe` |
@@ -76,7 +75,7 @@ The convenience launchers create an isolated `.build-venv` automatically. The bu
 `build.yml` is a complete GitHub Actions workflow. Install it at `.github/workflows/build.yml` to activate it. It performs three stages:
 
 1. tests Python 3.10 and 3.12 on Linux, macOS, and Windows;
-2. builds and smoke-tests all six OS/architecture executables in native runners;
+2. builds and smoke-tests all five supported OS/architecture executables in native runners;
 3. for tags matching `v*`, creates checksums and publishes every executable as a GitHub Release asset.
 
 Create a release after updating the package version:

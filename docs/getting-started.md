@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Windows, macOS, or Linux on x86-64 or ARM64
+- Linux or Windows on x86-64/ARM64, or Apple Silicon macOS
 - No separate runtime for a release executable
 - Python 3.10+ only when developing or installing from source
 
