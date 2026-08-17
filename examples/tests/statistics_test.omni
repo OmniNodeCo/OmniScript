@@ -1,0 +1,6 @@
+use "../lib/statistics" as stats
+
+assert stats.sum([]) == 0
+assert stats.sum([1, 2, 3, 4]) == 10
+assert stats.mean([2, 4, 6]) == 4
+assert stats.mean([]) == void

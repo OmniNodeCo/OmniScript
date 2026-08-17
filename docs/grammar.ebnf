@@ -1,0 +1,54 @@
+(* OmniScript 0.1 syntactic grammar. Newlines may terminate statements where
+   SEMICOLON appears; semicolons are optional before } and end of file. *)
+
+program       = { declaration }, EOF ;
+declaration   = variableDecl | craftDecl | shapeDecl | statement ;
+variableDecl  = ( "bind" | "seal" ), IDENTIFIER, ":=", expression, SEMICOLON ;
+craftDecl     = "craft", IDENTIFIER, parameters, block ;
+shapeDecl     = "shape", IDENTIFIER, parameters, "{", { craftDecl }, "}" ;
+parameters    = "(", [ parameter, { ",", parameter } ], ")" ;
+parameter     = IDENTIFIER, [ ":=", expression ] ;
+
+statement     = expressionStmt | block | whenStmt | whilstStmt | eachStmt
+              | returnStmt | breakStmt | continueStmt | emitStmt | assertStmt
+              | useStmt ;
+expressionStmt = expression, SEMICOLON ;
+block         = "{", { declaration }, "}" ;
+whenStmt      = "when", expression, block,
+                [ "otherwise", ( whenStmt | block ) ] ;
+whilstStmt    = "whilst", expression, block ;
+eachStmt      = "each", IDENTIFIER, [ ",", IDENTIFIER ], "in", expression, block ;
+returnStmt    = "return", [ expression ], SEMICOLON ;
+breakStmt     = "break", SEMICOLON ;
+continueStmt  = "continue", SEMICOLON ;
+emitStmt      = "emit", expression, { ",", expression }, SEMICOLON ;
+assertStmt    = "assert", expression, [ ",", expression ], SEMICOLON ;
+useStmt       = "use", STRING, [ "as", IDENTIFIER ], SEMICOLON ;
+
+expression    = assignment ;
+assignment    = conditional, [ "<-", assignment ] ;
+conditional   = pipeline, [ "?", expression, ":", conditional ] ;
+pipeline      = disjunction, { "|>", disjunction } ;
+disjunction   = conjunction, { ( "or" | "||" ), conjunction } ;
+conjunction   = coalescing, { ( "and" | "&&" ), coalescing } ;
+coalescing    = equality, { "??", equality } ;
+equality      = comparison, { ( "==" | "!=" ), comparison } ;
+comparison    = range, { ( "<" | "<=" | ">" | ">=" | "in" ), range } ;
+range         = term, { "..", term } ;
+term          = factor, { ( "+" | "-" ), factor } ;
+factor        = power, { ( "*" | "/" | "%" ), power } ;
+power         = unary, [ "**", power ] ;
+unary         = ( "not" | "!" | "+" | "-" ), unary | postfix ;
+postfix       = primary, { call | property | index } ;
+call          = "(", [ expression, { ",", expression } ], ")" ;
+property      = ".", IDENTIFIER ;
+index         = "[", expression, "]" ;
+primary       = NUMBER | STRING | "true" | "false" | "void" | IDENTIFIER
+              | "(", expression, ")" | list | map ;
+list          = "[", [ expression, { ",", expression } ], "]" ;
+map           = "{", [ mapEntry, { ",", mapEntry } ], "}" ;
+mapEntry      = ( IDENTIFIER | expression ), ":", expression ;
+
+IDENTIFIER    = ( LETTER | "_" ), { LETTER | DIGIT | "_" } ;
+NUMBER        = DECIMAL | HEXADECIMAL | BINARY | OCTAL ;
+STRING        = DOUBLE_QUOTED | SINGLE_QUOTED ;

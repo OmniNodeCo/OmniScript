@@ -1,0 +1,12 @@
+craft sum(values) {
+    bind total := 0
+    each value in values {
+        total <- total + value
+    }
+    return total
+}
+
+craft mean(values) {
+    when len(values) == 0 { return void }
+    return sum(values) / len(values)
+}

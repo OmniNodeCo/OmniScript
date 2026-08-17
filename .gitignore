@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+
+# OmniScript
+.omni-cache/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+
+# Packaged editor extension
+*.vsix

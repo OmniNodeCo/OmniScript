@@ -1,0 +1,47 @@
+{
+  "Mutable binding": {
+    "prefix": "bind",
+    "body": ["bind ${1:name} := ${2:value}"],
+    "description": "Create a mutable OmniScript binding"
+  },
+  "Sealed binding": {
+    "prefix": "seal",
+    "body": ["seal ${1:name} := ${2:value}"],
+    "description": "Create a sealed OmniScript binding"
+  },
+  "Craft": {
+    "prefix": "craft",
+    "body": ["craft ${1:name}(${2:parameters}) {", "    ${3:// body}", "}"],
+    "description": "Declare a craft"
+  },
+  "Shape": {
+    "prefix": "shape",
+    "body": ["shape ${1:Name}(${2:fields}) {", "    craft ${3:method}() {", "        ${4:return void}", "    }", "}"],
+    "description": "Declare a shape with a method"
+  },
+  "When branch": {
+    "prefix": "when",
+    "body": ["when ${1:condition} {", "    ${2:// body}", "} otherwise {", "    ${3:// fallback}", "}"],
+    "description": "Conditional branch"
+  },
+  "Each loop": {
+    "prefix": "each",
+    "body": ["each ${1:item}, ${2:index} in ${3:items} {", "    ${4:// body}", "}"],
+    "description": "Iterate values with an index"
+  },
+  "Whilst loop": {
+    "prefix": "whilst",
+    "body": ["whilst ${1:condition} {", "    ${2:// body}", "}"],
+    "description": "Conditional loop"
+  },
+  "Use module": {
+    "prefix": "use",
+    "body": ["use \"${1:module}\" as ${2:alias}"],
+    "description": "Import an OmniScript module"
+  },
+  "Assertion": {
+    "prefix": "assert",
+    "body": ["assert ${1:condition}, \"${2:message}\""],
+    "description": "Runtime/test assertion"
+  }
+}

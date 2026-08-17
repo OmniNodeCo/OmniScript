@@ -1,0 +1,79 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "OmniScript",
+  "scopeName": "source.omniscript",
+  "patterns": [
+    {"include": "#comments"},
+    {"include": "#strings"},
+    {"include": "#numbers"},
+    {"include": "#declarations"},
+    {"include": "#keywords"},
+    {"include": "#constants"},
+    {"include": "#operators"},
+    {"include": "#calls"}
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {"name": "comment.line.double-slash.omniscript", "begin": "//", "end": "$"},
+        {"name": "comment.line.number-sign.omniscript", "begin": "#", "end": "$"},
+        {"name": "comment.block.omniscript", "begin": "/\\*", "end": "\\*/", "patterns": [{"include": "#comments"}]}
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.omniscript",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [{"name": "constant.character.escape.omniscript", "match": "\\\\(?:[nrt0\\\\\"']|u[0-9A-Fa-f]{4})"}]
+        },
+        {
+          "name": "string.quoted.single.omniscript",
+          "begin": "'",
+          "end": "'",
+          "patterns": [{"name": "constant.character.escape.omniscript", "match": "\\\\(?:[nrt0\\\\\"']|u[0-9A-Fa-f]{4})"}]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {"name": "constant.numeric.hex.omniscript", "match": "\\b0[xX][0-9A-Fa-f_]+\\b"},
+        {"name": "constant.numeric.binary.omniscript", "match": "\\b0[bB][01_]+\\b"},
+        {"name": "constant.numeric.octal.omniscript", "match": "\\b0[oO][0-7_]+\\b"},
+        {"name": "constant.numeric.decimal.omniscript", "match": "\\b(?:[0-9][0-9_]*)(?:\\.[0-9_]+)?(?:[eE][+-]?[0-9_]+)?\\b"}
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {"match": "\\b(craft)\\s+([A-Za-z_][A-Za-z0-9_]*)", "captures": {"1": {"name": "storage.type.function.omniscript"}, "2": {"name": "entity.name.function.omniscript"}}},
+        {"match": "\\b(shape)\\s+([A-Za-z_][A-Za-z0-9_]*)", "captures": {"1": {"name": "storage.type.class.omniscript"}, "2": {"name": "entity.name.type.omniscript"}}},
+        {"match": "\\b(bind|seal)\\s+([A-Za-z_][A-Za-z0-9_]*)", "captures": {"1": {"name": "storage.type.omniscript"}, "2": {"name": "variable.other.readwrite.omniscript"}}},
+        {"match": "\\b(use)\\s+(\"[^\"]+\"|'[^']+')\\s+(as)\\s+([A-Za-z_][A-Za-z0-9_]*)", "captures": {"1": {"name": "keyword.control.import.omniscript"}, "2": {"name": "string.quoted.omniscript"}, "3": {"name": "keyword.control.import.omniscript"}, "4": {"name": "variable.other.omniscript"}}}
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {"name": "keyword.control.omniscript", "match": "\\b(?:when|otherwise|whilst|each|in|return|break|continue|emit|assert|use|as)\\b"},
+        {"name": "keyword.operator.logical.omniscript", "match": "\\b(?:and|or|not)\\b"}
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {"name": "constant.language.boolean.omniscript", "match": "\\b(?:true|false)\\b"},
+        {"name": "constant.language.void.omniscript", "match": "\\bvoid\\b"},
+        {"name": "variable.language.self.omniscript", "match": "\\bself\\b"}
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {"name": "keyword.operator.omniscript", "match": ":=|<-|\\|>|\\?\\?|\\.\\.|\\*\\*|==|!=|<=|>=|&&|\\|\\||[+\\-*/%<>!?:]"}
+      ]
+    },
+    "calls": {
+      "patterns": [
+        {"name": "entity.name.function.call.omniscript", "match": "\\b[A-Za-z_][A-Za-z0-9_]*(?=\\s*\\()"}
+      ]
+    }
+  }
+}

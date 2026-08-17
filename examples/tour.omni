@@ -1,0 +1,38 @@
+# OmniScript language tour
+use "math"
+use "text" as words
+use "./lib/statistics" as stats
+
+seal language := "OmniScript"
+bind release := {major: 0, minor: 1, stable: false}
+release.label <- text(release.major) + "." + text(release.minor)
+
+craft classify(value) {
+    when value < 0 { return "negative" }
+    otherwise when value == 0 { return "zero" }
+    otherwise { return "positive" }
+}
+
+shape Measurement(name, values) {
+    craft average() {
+        return stats.mean(self.values)
+    }
+
+    craft summary() {
+        return words.upper(self.name) + ": " + text(self.average())
+    }
+}
+
+bind samples := []
+each value, index in 1..5 {
+    push(samples, value ** 2)
+    emit "sample", index, value ** 2, classify(value)
+}
+
+seal measurement := Measurement("squares", samples)
+emit measurement.summary()
+emit "root of 81:", math.sqrt(81)
+emit "count through pipeline:", samples |> len |> text
+emit "release:", release.label, release.stable ? "stable" : "alpha"
+
+assert measurement.average() == 11, "mean of first five squares"

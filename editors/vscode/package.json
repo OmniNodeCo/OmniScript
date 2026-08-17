@@ -1,0 +1,96 @@
+{
+  "name": "omniscript-language",
+  "displayName": "OmniScript Language",
+  "description": "Language support, snippets, and run/check commands for .omni files",
+  "version": "0.1.0",
+  "publisher": "OmniNodeCo",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets"
+  ],
+  "keywords": [
+    "OmniScript",
+    "omni",
+    "language"
+  ],
+  "activationEvents": [
+    "onLanguage:omniscript",
+    "onCommand:omniscript.runFile",
+    "onCommand:omniscript.checkFile"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "omniscript",
+        "aliases": ["OmniScript", "omniscript", "omni"],
+        "extensions": [".omni"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "omniscript",
+        "scopeName": "source.omniscript",
+        "path": "./syntaxes/omniscript.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "omniscript",
+        "path": "./snippets/omniscript.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "omniscript.runFile",
+        "title": "OmniScript: Run Current File",
+        "icon": "$(play)"
+      },
+      {
+        "command": "omniscript.checkFile",
+        "title": "OmniScript: Check Current File",
+        "icon": "$(check)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "omniscript.runFile",
+          "when": "editorLangId == omniscript",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "omniscript.runFile",
+          "when": "editorLangId == omniscript",
+          "group": "omniscript@1"
+        },
+        {
+          "command": "omniscript.checkFile",
+          "when": "editorLangId == omniscript",
+          "group": "omniscript@2"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "OmniScript",
+      "properties": {
+        "omniscript.executable": {
+          "type": "string",
+          "default": "omni",
+          "description": "Path or command name for the OmniScript CLI."
+        }
+      }
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OmniNodeCo/OmniScript.git"
+  }
+}

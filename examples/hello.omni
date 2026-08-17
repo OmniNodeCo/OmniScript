@@ -1,0 +1,6 @@
+craft greet(name := "world") {
+    return "Hello, " + name + "!"
+}
+
+emit greet()
+emit greet("OmniScript")

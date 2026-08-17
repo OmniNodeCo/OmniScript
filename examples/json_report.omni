@@ -1,0 +1,13 @@
+use "json"
+use "text" as words
+
+craft add(left, right) {
+    return left + right
+}
+
+seal source := '{"project":"omniscript","scores":[8,9,10]}'
+bind report := json.parse(source)
+report.project <- words.upper(report.project)
+report.total <- reduce(report.scores, add, 0)
+
+emit json.stringify(report)
