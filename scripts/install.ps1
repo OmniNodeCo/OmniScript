@@ -15,7 +15,7 @@ $Channel = if ($env:OMNISCRIPT_CHANNEL) { $env:OMNISCRIPT_CHANNEL.ToLowerInvaria
 if ($Channel -notin @("auto", "release", "nightly")) {
     throw "OMNISCRIPT_CHANNEL must be auto, release, or nightly"
 }
-$NightlyRun = if ($env:OMNISCRIPT_NIGHTLY_RUN) { $env:OMNISCRIPT_NIGHTLY_RUN } else { "32052400359" }
+$NightlyRun = if ($env:OMNISCRIPT_NIGHTLY_RUN) { $env:OMNISCRIPT_NIGHTLY_RUN } else { "32053497470" }
 $InstallDir = if ($env:OMNISCRIPT_INSTALL_DIR) { $env:OMNISCRIPT_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA "Programs\OmniScript" }
 $BinDir = if ($env:OMNISCRIPT_BIN_DIR) { $env:OMNISCRIPT_BIN_DIR } else { Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps" }
 $CacheDir = if ($env:OMNISCRIPT_CACHE_DIR) { $env:OMNISCRIPT_CACHE_DIR } else { Join-Path $env:LOCALAPPDATA "OmniScript\Cache" }
@@ -37,8 +37,8 @@ if ($Version -eq "latest") {
 
 # GitHub's SHA-256 digest for each ZIP produced by the successful nightly build.
 $NightlyDigests = @{
-    "omni-windows-arm64.exe" = "6d784a2a8e3274414991a2a9ae4eb57d4996cad8d8dbf1b9152cc1ae531847e1"
-    "omni-windows-x86_64.exe" = "e93e06c4c2429cd48fcc59f79af6c672ea001431561c48aa1d82c70a9855f0c3"
+    "omni-windows-arm64.exe" = "d53a7b0ef3e369ffab4d00a4e03332762e6c12b007dc992b21b8f79fa317b9bc"
+    "omni-windows-x86_64.exe" = "4b5d46d9b2e51fe57976f473826b8dc352c61c159d5be06777902b64179c333e"
 }
 
 $Temporary = Join-Path ([System.IO.Path]::GetTempPath()) ("omniscript-" + [guid]::NewGuid().ToString("N"))
