@@ -6,7 +6,7 @@ REPOSITORY="${OMNISCRIPT_REPOSITORY:-OmniNodeCo/OmniScript}"
 BUNDLED_VERSION=0.2.0
 VERSION="${OMNISCRIPT_VERSION:-$BUNDLED_VERSION}"
 CHANNEL="${OMNISCRIPT_CHANNEL:-auto}"
-NIGHTLY_RUN="${OMNISCRIPT_NIGHTLY_RUN:-32051074252}"
+NIGHTLY_RUN="${OMNISCRIPT_NIGHTLY_RUN:-32051256064}"
 BIN_DIR="${OMNISCRIPT_BIN_DIR:-$HOME/.local/bin}"
 
 case "$CHANNEL" in
@@ -84,9 +84,9 @@ else
         echo "warning: release v$BUNDLED_VERSION is not published yet; installing verified run $NIGHTLY_RUN" >&2
     fi
     case "$ASSET" in
-        omni-linux-arm64) EXPECTED=337080ec360113daff60aef10455422f053714e6a597d1464dd735f12f1c59a1 ;;
-        omni-linux-x86_64) EXPECTED=890c6db5335a16be968f3d5eca674742e5b6e0ac3808f20cd338cd09cbf0bf1b ;;
-        omni-macos-arm64) EXPECTED=1e9e7e7b8768c979b7a2867daa414d2f9d941133f895dfccb99657602ae1e761 ;;
+        omni-linux-arm64) EXPECTED=a523df94332c09726133dbaad4318f5621fbe32540a7a4eac7a9c75491eead65 ;;
+        omni-linux-x86_64) EXPECTED=d86b749ac772783db18d3f8a488263e357ab05dbe419703545b3e5212c1944ec ;;
+        omni-macos-arm64) EXPECTED=7d1b4b6ddefe366000ab3868a74eafc808536415a87e8c347a366a1281215350 ;;
         *) echo "error: no trusted nightly digest is registered for $ASSET" >&2; exit 1 ;;
     esac
     VERIFY_FILE="$TMP_DIR/$ASSET.zip"
