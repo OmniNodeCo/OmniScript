@@ -110,13 +110,33 @@ class UpdaterTests(unittest.TestCase):
 
     def test_interactive_update_can_choose_nightly(self) -> None:
         output = io.StringIO()
+        info = UpdateInfo(
+            current_version="0.2.0",
+            latest_version="0.1.0",
+            update_available=False,
+            release_url="https://github.com/OmniNodeCo/OmniScript/releases/tag/v0.1.0",
+            checked_at=1.0,
+        )
         with patch("builtins.input", return_value="2"):
-            with patch("omniscript.cli.install_update", return_value="nightly installed") as install:
-                with contextlib.redirect_stdout(output):
-                    self.assertEqual(main(["update"]), 0)
+            with patch("omniscript.cli.check_for_updates", return_value=info) as check:
+                with patch("omniscript.cli.install_update", return_value="nightly installed") as install:
+                    with contextlib.redirect_stdout(output):
+                        self.assertEqual(main(["update"]), 0)
+        check.assert_called_once_with("0.2.0", force=False)
         install.assert_called_once_with("nightly", "0.2.0")
-        self.assertIn("Nightly", output.getvalue())
+        self.assertIn("Checking GitHub Releases", output.getvalue())
+        self.assertIn("Latest GitHub release: 0.1.0", output.getvalue())
         self.assertIn("nightly installed", output.getvalue())
+
+    def test_nightly_remains_available_when_github_release_check_fails(self) -> None:
+        output = io.StringIO()
+        with patch("builtins.input", return_value="2"):
+            with patch("omniscript.cli.check_for_updates", side_effect=UpdateCheckError("offline")):
+                with patch("omniscript.cli.install_update", return_value="nightly installed") as install:
+                    with contextlib.redirect_stdout(output):
+                        self.assertEqual(main(["update"]), 0)
+        install.assert_called_once_with("nightly", "0.2.0")
+        self.assertIn("GitHub release check failed: offline", output.getvalue())
 
     def test_explicit_release_channel_installs_latest_release(self) -> None:
         info = UpdateInfo(

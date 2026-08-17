@@ -326,13 +326,28 @@ def _command_update(arguments: argparse.Namespace) -> int:
         _print_update_info(info, arguments.as_json)
         return 0
 
-    channel = arguments.channel or _choose_update_channel()
+    github_info: UpdateInfo | None = None
+    github_error: OmniRuntimeError | None = None
+    if arguments.channel is None:
+        print("Checking GitHub Releases...")
+        try:
+            github_info = _get_update_info(arguments.force)
+        except OmniRuntimeError as error:
+            github_error = error
+        channel = _choose_update_channel(github_info, github_error)
+    else:
+        channel = arguments.channel
+
     if channel == "check":
-        _print_update_info(_get_update_info(arguments.force), False)
+        if github_error is not None:
+            raise github_error
+        _print_update_info(github_info or _get_update_info(arguments.force), False)
         return 0
 
     if channel == "release":
-        info = _get_update_info(arguments.force)
+        if github_error is not None:
+            raise github_error
+        info = github_info or _get_update_info(arguments.force)
         if not info.release_found:
             raise OmniRuntimeError("no published release is available; choose the nightly channel instead")
         print(f"Selected release channel: OmniScript {info.latest_version}")
@@ -352,8 +367,18 @@ def _command_update(arguments: argparse.Namespace) -> int:
     return 0
 
 
-def _choose_update_channel() -> str:
+def _choose_update_channel(
+    github_info: UpdateInfo | None,
+    github_error: OmniRuntimeError | None,
+) -> str:
     print(f"OmniScript {__version__} updater")
+    if github_info is not None and github_info.release_found:
+        print(f"Latest GitHub release: {github_info.latest_version}")
+        print(f"Release page: {github_info.release_url}")
+    elif github_info is not None:
+        print("Latest GitHub release: none published")
+    else:
+        print(f"GitHub release check failed: {github_error.message if github_error else 'unknown error'}")
     print("  1) Release — latest published, stable build")
     print("  2) Nightly — newest verified development build")
     print("  3) Check only — do not install anything")

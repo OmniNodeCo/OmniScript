@@ -56,7 +56,10 @@ Scaffold `omni.toml`, `src/main.omni`, `tests/main_test.omni`, and `.gitignore`.
 Open a small interactive menu that asks which channel to install:
 
 ```text
+Checking GitHub Releases...
 OmniScript 0.2.0 updater
+Latest GitHub release: 0.1.0
+Release page: https://github.com/OmniNodeCo/OmniScript/releases/tag/v0.1.0
   1) Release — latest published, stable build
   2) Nightly — newest verified development build
   3) Check only — do not install anything
@@ -75,7 +78,9 @@ omni update --json            # machine-readable release check
 omni update --clear-cache
 ```
 
-Release information is cached for 24 hours. Windows starts the updater as a separate PowerShell process so the running executable can exit before replacement; Linux and macOS update synchronously. Every channel still uses the platform installer's SHA-256 verification.
+Before showing the menu, OmniScript queries GitHub's latest-release API and displays the version and release page it found. Release information is cached for 24 hours. If GitHub's release API is temporarily unavailable, the menu reports the failure but still permits a Nightly installation.
+
+Windows starts the updater as a separate PowerShell process so the running executable can exit before replacement; Linux and macOS update synchronously. Every channel still uses the platform installer's SHA-256 verification.
 
 Set `OMNISCRIPT_CACHE_DIR` to move the cache, `OMNISCRIPT_REPOSITORY=owner/repository` to use a fork, or `OMNISCRIPT_INSTALLER_REF` to select another installer branch. Network and installer failures return a readable diagnostic.
 

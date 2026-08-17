@@ -8,7 +8,7 @@ All notable changes to OmniScript are documented here. The format follows Keep a
 
 - Beginner-friendly built-in `gui` package with automatic layout, common controls, dialogs, and ordinary craft callbacks.
 - GUI tutorial, complete example application, mocked desktop tests, and GUI modules in native executable builds.
-- Interactive `omni update` menu for choosing the verified release or nightly channel.
+- Interactive `omni update` menu that checks GitHub Releases, shows the latest published version, and offers verified release or nightly channels.
 
 ## [0.1.0] - 2026-08-17
 
