@@ -80,9 +80,9 @@ Two complete GitHub Actions workflows are included:
 Install them as `.github/workflows/build.yml` and `.github/workflows/release.yml`. A tag matching `v*` starts the release workflow. It can also be started manually with a tag and prerelease flag.
 
 ```bash
-python scripts/verify_release.py v0.1.0
-git tag v0.1.0
-git push origin v0.1.0
+python scripts/verify_release.py v0.2.0
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 The release publishing job alone receives `contents: write`; all validation and build jobs remain read-only.

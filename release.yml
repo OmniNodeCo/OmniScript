@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag matching pyproject.toml, such as v0.1.0
+        description: Release tag matching pyproject.toml, such as v0.2.0
         required: true
-        default: v0.1.0
+        default: v0.2.0
         type: string
       prerelease:
         description: Mark this as a prerelease

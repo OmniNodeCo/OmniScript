@@ -156,7 +156,7 @@ omni test examples/tests
 ./scripts/build_all_local.sh
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the language-change workflow. OmniScript is currently **0.1.0 alpha**: the language and tooling are functional, but the grammar may evolve before 1.0.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the language-change workflow. OmniScript is currently **0.2.0 alpha**: the language and tooling are functional, but the grammar may evolve before 1.0.
 
 ## License
 
