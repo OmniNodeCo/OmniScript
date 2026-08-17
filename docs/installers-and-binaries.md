@@ -90,13 +90,13 @@ The release publishing job alone receives `contents: write`; all validation and 
 ## Uninstall
 
 ```bash
-./scripts/uninstall.sh
+curl -fsSL https://raw.githubusercontent.com/OmniNodeCo/OmniScript/arena/01a00f9c-omniscript/scripts/uninstall.sh | sh
 ```
 
 Windows PowerShell:
 
 ```powershell
-.\scripts\uninstall.ps1
+irm https://raw.githubusercontent.com/OmniNodeCo/OmniScript/arena/01a00f9c-omniscript/scripts/uninstall.ps1 | iex
 ```
 
 Uninstallers remove the executable, command aliases, legacy installation data, and the update cache. Override the cache location with `OMNISCRIPT_CACHE_DIR` if needed.
