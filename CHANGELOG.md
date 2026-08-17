@@ -13,6 +13,7 @@ All notable changes to OmniScript are documented here. The format follows Keep a
 - Binary-first POSIX shell, Windows Batch, and PowerShell installers and uninstallers.
 - PyInstaller build tooling and separate build/release workflows for Linux/Windows x86-64 and ARM64 plus Apple Silicon macOS.
 - Cached `omni update` release checks and cache-aware uninstallers.
+- Beginner-friendly built-in `gui` package with automatic layout, controls, dialogs, and craft callbacks.
 - Custom VS Code language extension with commands and snippets.
 - Language, CLI, standard-library, module, design, and embedding documentation.
 - Examples, unit tests, project metadata, Dockerfile, and cross-platform CI.

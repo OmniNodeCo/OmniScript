@@ -41,7 +41,7 @@ use "math"
 use "json" as codec
 ```
 
-Available modules are `math`, `text`, `json`, `path`, and `random`. Their members are listed in the [standard library reference](standard-library.md).
+Available modules are `math`, `text`, `json`, `path`, `random`, and `gui`. Their members are listed in the [standard library reference](standard-library.md); the desktop package also has a dedicated [GUI guide](gui.md).
 
 ## Project manifest
 

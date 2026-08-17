@@ -62,8 +62,11 @@ assert found == ["item:1", "item:3", "item:5"]
         source = """
 use "math"
 use "text" as words
+use "gui"
 assert math.sqrt(81) == 9
 assert words.upper("omni") == "OMNI"
+assert kind(gui.available()) == "truth"
+assert kind(gui.window) == "native-craft"
 """
         self.run_source(source)
 

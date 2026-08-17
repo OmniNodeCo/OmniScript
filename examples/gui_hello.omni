@@ -1,0 +1,18 @@
+# A complete desktop app with one label, one input, and one button.
+use "gui"
+
+seal window := gui.window("Friendly Greeter", 420, 240)
+window.label("What is your name?")
+seal name := window.input()
+
+craft say_hello() {
+    seal person := name.get()
+    when person == "" {
+        window.error("Missing name", "Please type your name first.")
+        return
+    }
+    window.message("Hello", "Welcome, " + person + "!")
+}
+
+window.button("Say hello", say_hello)
+window.run()

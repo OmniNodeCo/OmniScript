@@ -640,6 +640,10 @@ class Interpreter:
             "path": OmniModule("path", path_members),
             "random": OmniModule("random", random_members),
         }
+        # Imported lazily to avoid making Tk a requirement for the core runtime.
+        from .gui import create_gui_module
+
+        self._builtin_modules["gui"] = create_gui_module()
 
 
 def _is_number(value: Any) -> bool:

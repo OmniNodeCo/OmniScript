@@ -14,6 +14,7 @@ OmniScript is an original programming language and integrated toolchain. Source 
 
 - [Formal grammar](grammar.ebnf)
 - [Standard library](standard-library.md)
+- [Simple desktop GUI package](gui.md)
 - [Embedding API](embedding.md)
 - [Design and semantics](design.md)
 

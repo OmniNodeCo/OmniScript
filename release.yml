@@ -39,7 +39,7 @@ jobs:
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
       - name: Check examples
-        run: omni check examples/hello.omni examples/tour.omni examples/fibonacci.omni examples/json_report.omni examples/lib/statistics.omni
+        run: omni check examples/hello.omni examples/tour.omni examples/fibonacci.omni examples/json_report.omni examples/gui_hello.omni examples/lib/statistics.omni
 
   build:
     name: Package ${{ matrix.asset }}

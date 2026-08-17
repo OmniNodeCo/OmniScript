@@ -80,3 +80,16 @@ Paths use host platform semantics.
 - `pick(sequence)` returns a random item.
 
 The random module is not suitable for cryptography.
+
+## `gui`
+
+The optional desktop package creates simple native windows with automatic vertical layout:
+
+```omni
+use "gui"
+seal window := gui.window("Hello", 400, 240)
+window.label("A small, readable app")
+window.run()
+```
+
+It includes labels, inputs, buttons, checkboxes, textboxes, dialogs, and ordinary craft callbacks. Use `gui.available()` to detect Tk support. See the [GUI package guide](gui.md) for the complete beginner-oriented API.

@@ -27,7 +27,7 @@ OmniScript is not a transpiled dialect of another language. `.omni` source is to
 - Numbers, truth values, text, lists, maps, `void`, first-class crafts, closures, and shape instances
 - Functions with defaults and recursion; mutable object/list/map data
 - Branches, loops, ranges, assertions, early return, break, and continue
-- Source modules and built-in `math`, `text`, `json`, `path`, and `random` modules
+- Source modules plus built-in `math`, `text`, `json`, `path`, `random`, and beginner-friendly `gui` packages
 - Friendly source diagnostics with locations and call frames
 - `omni run`, `repl`, `check`, `fmt`, `test`, `init`, `tokens`, `ast`, `doctor`, and cached `update` checks
 - Binary-first Shell, Batch, and PowerShell installers with SHA-256 verification
@@ -133,6 +133,7 @@ my-app/
 - [Language guide](docs/language-guide.md)
 - [Grammar reference](docs/grammar.ebnf)
 - [Standard library](docs/standard-library.md)
+- [Simple desktop GUI package](docs/gui.md)
 - [Modules and projects](docs/modules-and-projects.md)
 - [CLI reference](docs/cli.md)
 - [VS Code extension](docs/vscode.md)
