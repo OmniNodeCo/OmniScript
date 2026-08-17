@@ -37,7 +37,7 @@ class FakeResponse:
 
 class UpdaterTests(unittest.TestCase):
     def test_semantic_version_comparison(self) -> None:
-        self.assertTrue(is_newer_version("0.2.0", "0.1.9"))
+        self.assertTrue(is_newer_version("0.2.1", "0.1.9"))
         self.assertTrue(is_newer_version("1.0.0", "1.0.0-rc.1"))
         self.assertFalse(is_newer_version("v0.1.0", "0.1.0"))
         self.assertFalse(is_newer_version("0.1.0-beta.2", "0.1.0"))
@@ -51,23 +51,72 @@ class UpdaterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             with patch.dict(os.environ, {"OMNISCRIPT_CACHE_DIR": temporary}):
                 info = check_for_updates("0.1.0", force=True, opener=missing)
+                self.assertFalse((Path(temporary) / "update.json").exists())
         self.assertFalse(info.release_found)
         self.assertFalse(info.update_available)
+
+    def test_stale_negative_cache_never_hides_a_new_github_release(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            cache_file = Path(temporary) / "update.json"
+            cache_file.write_text(
+                json.dumps(
+                    {
+                        "repository": "OmniNodeCo/OmniScript",
+                        "latest_version": "0.1.0",
+                        "release_url": "https://example.test/releases",
+                        "checked_at": 100.0,
+                        "release_found": False,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            calls = 0
+
+            def opener(_request, timeout):
+                nonlocal calls
+                calls += 1
+                return FakeResponse(
+                    [
+                        {
+                            "tag_name": "v0.2.1",
+                            "html_url": "https://example.test/v0.2.1",
+                            "draft": False,
+                            "prerelease": False,
+                        }
+                    ]
+                )
+
+            with patch.dict(os.environ, {"OMNISCRIPT_CACHE_DIR": temporary}):
+                info = check_for_updates("0.2.0", opener=opener, now=lambda: 101.0)
+            self.assertEqual(calls, 1)
+            self.assertTrue(info.release_found)
+            self.assertEqual(info.latest_version, "0.2.1")
 
     def test_update_response_is_cached(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             with patch.dict(os.environ, {"OMNISCRIPT_CACHE_DIR": temporary}):
                 calls = 0
 
-                def opener(_request, timeout):
+                def opener(request, timeout):
                     nonlocal calls
                     self.assertEqual(timeout, 10)
+                    self.assertIn("api.github.com/repos/OmniNodeCo/OmniScript/releases?per_page=20", request.full_url)
                     calls += 1
                     return FakeResponse(
-                        {
-                            "tag_name": "v0.2.0",
-                            "html_url": "https://github.com/OmniNodeCo/OmniScript/releases/tag/v0.2.0",
-                        }
+                        [
+                            {
+                                "tag_name": "v0.3.0-beta.1",
+                                "html_url": "https://example.test/v0.3.0-beta.1",
+                                "draft": False,
+                                "prerelease": True,
+                            },
+                            {
+                                "tag_name": "v0.2.1",
+                                "html_url": "https://github.com/OmniNodeCo/OmniScript/releases/tag/v0.2.1",
+                                "draft": False,
+                                "prerelease": False,
+                            },
+                        ]
                     )
 
                 fresh = check_for_updates("0.1.0", opener=opener, now=lambda: 100.0)
@@ -111,7 +160,7 @@ class UpdaterTests(unittest.TestCase):
     def test_interactive_update_can_choose_nightly(self) -> None:
         output = io.StringIO()
         info = UpdateInfo(
-            current_version="0.2.0",
+            current_version="0.2.1",
             latest_version="0.1.0",
             update_available=False,
             release_url="https://github.com/OmniNodeCo/OmniScript/releases/tag/v0.1.0",
@@ -122,8 +171,8 @@ class UpdaterTests(unittest.TestCase):
                 with patch("omniscript.cli.install_update", return_value="nightly installed") as install:
                     with contextlib.redirect_stdout(output):
                         self.assertEqual(main(["update"]), 0)
-        check.assert_called_once_with("0.2.0", force=False)
-        install.assert_called_once_with("nightly", "0.2.0")
+        check.assert_called_once_with("0.2.1", force=False)
+        install.assert_called_once_with("nightly", "0.2.1")
         self.assertIn("Checking GitHub Releases", output.getvalue())
         self.assertIn("Latest GitHub release: 0.1.0", output.getvalue())
         self.assertIn("nightly installed", output.getvalue())
@@ -135,26 +184,26 @@ class UpdaterTests(unittest.TestCase):
                 with patch("omniscript.cli.install_update", return_value="nightly installed") as install:
                     with contextlib.redirect_stdout(output):
                         self.assertEqual(main(["update"]), 0)
-        install.assert_called_once_with("nightly", "0.2.0")
+        install.assert_called_once_with("nightly", "0.2.1")
         self.assertIn("GitHub release check failed: offline", output.getvalue())
 
     def test_explicit_release_channel_installs_latest_release(self) -> None:
         info = UpdateInfo(
-            current_version="0.2.0",
-            latest_version="0.2.0",
+            current_version="0.2.1",
+            latest_version="0.2.1",
             update_available=False,
-            release_url="https://example.test/v0.2.0",
+            release_url="https://example.test/v0.2.1",
             checked_at=1.0,
         )
         with patch("omniscript.cli.check_for_updates", return_value=info):
             with patch("omniscript.cli.install_update", return_value="release installed") as install:
                 with contextlib.redirect_stdout(io.StringIO()):
                     self.assertEqual(main(["update", "--channel", "release"]), 0)
-        install.assert_called_once_with("release", "0.2.0")
+        install.assert_called_once_with("release", "0.2.1")
 
     def test_release_downgrade_requires_confirmation(self) -> None:
         info = UpdateInfo(
-            current_version="0.2.0",
+            current_version="0.2.1",
             latest_version="0.1.0",
             update_available=False,
             release_url="https://example.test/v0.1.0",

@@ -27,7 +27,7 @@ The script detects the OS and CPU, downloads the matching executable, verifies i
 Overrides:
 
 ```bash
-OMNISCRIPT_VERSION=0.2.0 ./install.sh
+OMNISCRIPT_VERSION=0.2.1 ./install.sh
 OMNISCRIPT_CHANNEL=nightly ./install.sh
 OMNISCRIPT_CHANNEL=release ./install.sh
 OMNISCRIPT_BIN_DIR="$HOME/bin" ./install.sh
@@ -82,9 +82,9 @@ Two complete GitHub Actions workflows are included:
 Install them as `.github/workflows/build.yml` and `.github/workflows/release.yml`. A tag matching `v*` starts the release workflow. It can also be started manually with a tag and prerelease flag.
 
 ```bash
-python scripts/verify_release.py v0.2.0
-git tag v0.2.0
-git push origin v0.2.0
+python scripts/verify_release.py v0.2.1
+git tag v0.2.1
+git push origin v0.2.1
 ```
 
 The release publishing job alone receives `contents: write`; all validation and build jobs remain read-only.

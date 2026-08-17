@@ -143,13 +143,17 @@ def check_for_updates(
         if cached is not None:
             return cached
 
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": f"OmniScript/{current_version}",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    github_token = os.environ.get("GITHUB_TOKEN")
+    if github_token:
+        headers["Authorization"] = f"Bearer {github_token}"
     request = Request(
-        f"https://api.github.com/repos/{repository}/releases/latest",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "User-Agent": f"OmniScript/{current_version}",
-            "X-GitHub-Api-Version": "2022-11-28",
-        },
+        f"https://api.github.com/repos/{repository}/releases?per_page=20",
+        headers=headers,
     )
     release_found = True
     try:
@@ -157,10 +161,7 @@ def check_for_updates(
             payload = json.loads(response.read().decode("utf-8"))
     except HTTPError as error:
         if error.code == 404:
-            payload = {
-                "tag_name": current_version,
-                "html_url": f"https://github.com/{repository}/releases",
-            }
+            payload = []
             release_found = False
         else:
             raise UpdateCheckError(f"GitHub returned HTTP {error.code} while checking for updates") from error
@@ -169,10 +170,35 @@ def check_for_updates(
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise UpdateCheckError(f"could not read update information: {error}") from error
 
-    latest = str(payload.get("tag_name", "")).lstrip("v")
-    release_url = str(payload.get("html_url", ""))
-    if not latest or not release_url:
-        raise UpdateCheckError("GitHub's latest release response is missing tag_name or html_url")
+    if isinstance(payload, list):
+        # GitHub orders this endpoint newest-first. Drafts and prereleases do not
+        # belong to the user-selected Release channel.
+        release = next(
+            (
+                item
+                for item in payload
+                if isinstance(item, dict)
+                and not bool(item.get("draft"))
+                and not bool(item.get("prerelease"))
+            ),
+            None,
+        )
+    elif isinstance(payload, dict):
+        # Kept for compatibility with GitHub API proxies that return one release.
+        release = payload
+    else:
+        raise UpdateCheckError("GitHub's releases response was not a list or object")
+
+    if release is None:
+        latest = current_version
+        release_url = f"https://github.com/{repository}/releases"
+        release_found = False
+    else:
+        latest = str(release.get("tag_name", "")).lstrip("v")
+        release_url = str(release.get("html_url", ""))
+        if not latest or not release_url:
+            raise UpdateCheckError("a GitHub release is missing tag_name or html_url")
+
     info = UpdateInfo(
         current_version=current_version,
         latest_version=latest,
@@ -182,7 +208,11 @@ def check_for_updates(
         from_cache=False,
         release_found=release_found,
     )
-    _write_cache(cache_file, repository, info)
+    if release_found:
+        _write_cache(cache_file, repository, info)
+    else:
+        # Never cache a negative lookup: a release can be published seconds later.
+        clear_update_cache()
     return info
 
 
@@ -217,6 +247,10 @@ def _read_cache(
             return None
         checked_at = float(payload["checked_at"])
         if timestamp - checked_at > cache_seconds:
+            return None
+        # Older versions cached a 404 for 24 hours. Negative release lookups are
+        # intentionally ignored so a newly published release appears immediately.
+        if not bool(payload.get("release_found", True)):
             return None
         latest = str(payload["latest_version"])
         release_url = str(payload["release_url"])

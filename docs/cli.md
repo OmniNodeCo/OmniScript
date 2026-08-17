@@ -57,7 +57,7 @@ Open a small interactive menu that asks which channel to install:
 
 ```text
 Checking GitHub Releases...
-OmniScript 0.2.0 updater
+OmniScript 0.2.1 updater
 Latest GitHub release: 0.1.0
 Release page: https://github.com/OmniNodeCo/OmniScript/releases/tag/v0.1.0
   1) Release — latest published, stable build

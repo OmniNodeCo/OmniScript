@@ -348,6 +348,9 @@ def _command_update(arguments: argparse.Namespace) -> int:
         if github_error is not None:
             raise github_error
         info = github_info or _get_update_info(arguments.force)
+        if not info.release_found and not arguments.force:
+            print("Refreshing GitHub Releases before selecting the release channel...")
+            info = _get_update_info(True)
         if not info.release_found:
             raise OmniRuntimeError("no published release is available; choose the nightly channel instead")
         print(f"Selected release channel: OmniScript {info.latest_version}")

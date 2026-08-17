@@ -9,7 +9,7 @@ if ($env:OMNISCRIPT_WAIT_PID) {
 }
 
 $Repository = if ($env:OMNISCRIPT_REPOSITORY) { $env:OMNISCRIPT_REPOSITORY } else { "OmniNodeCo/OmniScript" }
-$BundledVersion = "0.2.0"
+$BundledVersion = "0.2.1"
 $Version = if ($env:OMNISCRIPT_VERSION) { $env:OMNISCRIPT_VERSION } else { $BundledVersion }
 $Channel = if ($env:OMNISCRIPT_CHANNEL) { $env:OMNISCRIPT_CHANNEL.ToLowerInvariant() } else { "auto" }
 if ($Channel -notin @("auto", "release", "nightly")) {
@@ -18,6 +18,7 @@ if ($Channel -notin @("auto", "release", "nightly")) {
 $NightlyRun = if ($env:OMNISCRIPT_NIGHTLY_RUN) { $env:OMNISCRIPT_NIGHTLY_RUN } else { "32052400359" }
 $InstallDir = if ($env:OMNISCRIPT_INSTALL_DIR) { $env:OMNISCRIPT_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA "Programs\OmniScript" }
 $BinDir = if ($env:OMNISCRIPT_BIN_DIR) { $env:OMNISCRIPT_BIN_DIR } else { Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps" }
+$CacheDir = if ($env:OMNISCRIPT_CACHE_DIR) { $env:OMNISCRIPT_CACHE_DIR } else { Join-Path $env:LOCALAPPDATA "OmniScript\Cache" }
 
 $Machine = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
 $Architecture = switch ($Machine.ToUpperInvariant()) {
@@ -100,6 +101,8 @@ try {
     $AliasLauncher = Join-Path $BinDir "omniscript.cmd"
     "@echo off`r`n`"$OmniExe`" %*" | Set-Content -Encoding ASCII $Launcher
     "@echo off`r`n`"$OmniExe`" %*" | Set-Content -Encoding ASCII $AliasLauncher
+    # Remove negative/stale GitHub release checks after replacing the executable.
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $CacheDir
 
     Write-Host "OmniScript installed to $OmniExe"
     & $OmniExe --version

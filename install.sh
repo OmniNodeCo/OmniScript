@@ -3,11 +3,12 @@
 set -eu
 
 REPOSITORY="${OMNISCRIPT_REPOSITORY:-OmniNodeCo/OmniScript}"
-BUNDLED_VERSION=0.2.0
+BUNDLED_VERSION=0.2.1
 VERSION="${OMNISCRIPT_VERSION:-$BUNDLED_VERSION}"
 CHANNEL="${OMNISCRIPT_CHANNEL:-auto}"
 NIGHTLY_RUN="${OMNISCRIPT_NIGHTLY_RUN:-32052400359}"
 BIN_DIR="${OMNISCRIPT_BIN_DIR:-$HOME/.local/bin}"
+CACHE_DIR="${OMNISCRIPT_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/omniscript}"
 
 case "$CHANNEL" in
     auto|release|nightly) ;;
@@ -111,6 +112,8 @@ mkdir -p "$BIN_DIR"
 chmod 755 "$TMP_DIR/$ASSET"
 mv "$TMP_DIR/$ASSET" "$BIN_DIR/omni"
 ln -sf "$BIN_DIR/omni" "$BIN_DIR/omniscript"
+# A newly published release must not be hidden by an older cached 404.
+rm -rf "$CACHE_DIR"
 if [ "$OS" = "macos" ] && command -v xattr >/dev/null 2>&1; then
     xattr -d com.apple.quarantine "$BIN_DIR/omni" 2>/dev/null || true
 fi

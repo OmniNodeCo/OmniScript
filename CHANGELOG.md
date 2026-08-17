@@ -2,6 +2,13 @@
 
 All notable changes to OmniScript are documented here. The format follows Keep a Changelog and versioning follows Semantic Versioning.
 
+## [0.2.1] - 2026-08-17
+
+### Fixed
+
+- Update checks now query GitHub's releases API directly and ignore stale cached 404 responses.
+- Installers clear update metadata after replacing OmniScript, so newly published releases appear immediately.
+
 ## [0.2.0] - 2026-08-17
 
 ### Added
