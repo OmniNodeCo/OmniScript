@@ -45,15 +45,29 @@ Controls are added vertically in the order these methods are called.
 
 | Method | Result |
 |---|---|
+| `window.heading(text)` | Large heading control |
 | `window.label(text)` | Text label control |
+| `window.status(text)` | Muted status text control |
 | `window.input(value := "")` | One-line text control |
 | `window.button(text, action)` | Button that calls a zero-argument craft |
 | `window.checkbox(text, checked := false)` | Truth-value control |
 | `window.textbox(value := "", height := 8)` | Multiline text control |
+| `window.dropdown(options, selected := first)` | Simple option selector |
+| `window.listbox(items := [])` | Selectable, editable list |
+| `window.slider(min, max, value := min)` | Numeric slider |
+| `window.progress(value := 0)` | Progress bar from 0 to 100 |
+| `window.separator()` | Horizontal separator |
 | `window.space(size := 8)` | Add simple vertical spacing |
 | `window.message(title, text)` | Show an information dialog |
 | `window.error(title, text)` | Show an error dialog |
 | `window.confirm(title, text)` | Ask a yes/no question and return truth |
+| `window.open_file(title := "Open file")` | Choose a file path or return `void` |
+| `window.save_file(title := "Save file")` | Choose a save path or return `void` |
+| `window.choose_folder()` | Choose a folder or return `void` |
+| `window.choose_color(initial := "#ffffff")` | Choose a color or return `void` |
+| `window.after(milliseconds, action)` | Run a craft later |
+| `window.on_close(action)` | Set the close-window craft |
+| `window.themes()` / `theme(name)` | List or select a native theme |
 | `window.set_title(title)` | Change the title |
 | `window.set_size(width, height)` | Change the window size |
 | `window.close()` | Close the window |
@@ -66,9 +80,10 @@ Labels, inputs, checkboxes, and textboxes return a control with:
 - `control.get()` — read its current value;
 - `control.set(value)` — replace its value;
 - `control.enable()` and `control.disable()`;
-- `control.focus()` — move keyboard focus to it.
+- `control.focus()` — move keyboard focus to it;
+- `control.hide()` and `control.show()`.
 
-Buttons return `enable`, `disable`, and `focus` methods.
+Buttons return the enable, disable, focus, hide, and show methods. Dropdowns also provide `set_options(list)`. Listboxes provide `items()`, `set(list)`, `add(value)`, `remove(index)`, and `clear()`.
 
 ```omni
 seal accepted := window.checkbox("I understand")
@@ -85,6 +100,29 @@ craft save() {
 
 window.button("Save", save)
 ```
+
+## Advanced controls without advanced layout code
+
+```omni
+seal app := gui.window("Dashboard", 600, 500)
+app.heading("Dashboard")
+seal category := app.dropdown(["Work", "Personal"], "Work")
+seal tasks := app.listbox([])
+seal slider := app.slider(0, 100, 25)
+seal progress := app.progress(25)
+seal status := app.status("Ready")
+
+craft add_task() {
+    tasks.add("[" + category.get() + "] New task")
+    progress.set(slider.get())
+    status.set("Task added")
+}
+
+app.button("Add", add_task)
+app.run()
+```
+
+The package keeps automatic vertical layout even for advanced controls. See `examples/gui_dashboard.omni` for a complete dashboard with tasks, priority, progress, folders, and dialogs.
 
 ## Events and errors
 

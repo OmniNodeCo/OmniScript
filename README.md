@@ -27,7 +27,7 @@ OmniScript is not a transpiled dialect of another language. `.omni` source is to
 - Numbers, truth values, text, lists, maps, `void`, first-class crafts, closures, and shape instances
 - Functions with defaults and recursion; mutable object/list/map data
 - Branches, loops, ranges, assertions, early return, break, and continue
-- Source modules plus built-in `math`, `text`, `json`, `path`, `random`, and beginner-friendly `gui` packages
+- Useful built-in packages: `http`, `csv`, `crypto`, `date`, `system`, `data`, `math`, `text`, `json`, `path`, `random`, and advanced-but-easy `gui`
 - Friendly source diagnostics with locations and call frames
 - `omni run`, `repl`, `check`, `fmt`, `test`, `init`, `tokens`, `ast`, `doctor`, and interactive release/nightly updates
 - Binary-first Shell, Batch, and PowerShell installers with SHA-256 verification
@@ -133,7 +133,8 @@ my-app/
 - [Language guide](docs/language-guide.md)
 - [Grammar reference](docs/grammar.ebnf)
 - [Standard library](docs/standard-library.md)
-- [Simple desktop GUI package](docs/gui.md)
+- [Useful built-in packages](docs/packages.md)
+- [Advanced, easy desktop GUI package](docs/gui.md)
 - [Modules and projects](docs/modules-and-projects.md)
 - [CLI reference](docs/cli.md)
 - [VS Code extension](docs/vscode.md)
@@ -156,7 +157,7 @@ omni test examples/tests
 ./scripts/build_all_local.sh
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the language-change workflow. OmniScript is currently **0.2.1 alpha**: the language and tooling are functional, but the grammar may evolve before 1.0.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the language-change workflow. OmniScript is currently **0.3.0 alpha**: the language and tooling are functional, but the grammar may evolve before 1.0.
 
 ## License
 

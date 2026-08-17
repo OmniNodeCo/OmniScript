@@ -81,9 +81,13 @@ Paths use host platform semantics.
 
 The random module is not suitable for cryptography.
 
+## Utility package collection
+
+OmniScript also includes dependency-free `http`, `csv`, `crypto`, `date`, `system`, and `data` packages. They cover web requests, spreadsheet data, hashes/tokens, dates, host information/processes, and common list transformations. See [Useful built-in packages](packages.md) for their complete APIs and examples.
+
 ## `gui`
 
-The optional desktop package creates simple native windows with automatic vertical layout:
+The optional desktop package creates native windows with automatic vertical layout and both basic and advanced controls:
 
 ```omni
 use "gui"

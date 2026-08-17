@@ -17,7 +17,7 @@ Get-ChildItem Env: | Where-Object { $_.Name -like "_PYI_*" } | ForEach-Object {
 $env:PYINSTALLER_RESET_ENVIRONMENT = "1"
 
 $Repository = if ($env:OMNISCRIPT_REPOSITORY) { $env:OMNISCRIPT_REPOSITORY } else { "OmniNodeCo/OmniScript" }
-$BundledVersion = "0.2.1"
+$BundledVersion = "0.3.0"
 $Version = if ($env:OMNISCRIPT_VERSION) { $env:OMNISCRIPT_VERSION } else { $BundledVersion }
 $Channel = if ($env:OMNISCRIPT_CHANNEL) { $env:OMNISCRIPT_CHANNEL.ToLowerInvariant() } else { "auto" }
 if ($Channel -notin @("auto", "release", "nightly")) {

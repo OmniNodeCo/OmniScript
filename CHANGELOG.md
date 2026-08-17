@@ -2,6 +2,14 @@
 
 All notable changes to OmniScript are documented here. The format follows Keep a Changelog and versioning follows Semantic Versioning.
 
+## [0.3.0] - 2026-08-17
+
+### Added
+
+- Dependency-free `http`, `csv`, `crypto`, `date`, `system`, and `data` utility packages.
+- Advanced easy-layout GUI controls: headings, status text, dropdowns, listboxes, sliders, progress bars, themes, timers, and native file/color dialogs.
+- Package guide, advanced GUI dashboard, utility package example, and complete mocked tests.
+
 ## [0.2.1] - 2026-08-17
 
 ### Fixed

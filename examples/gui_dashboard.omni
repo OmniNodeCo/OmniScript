@@ -1,0 +1,44 @@
+# An advanced-looking app that stays easy to read.
+use "gui"
+
+seal app := gui.window("Project Dashboard", 620, 560)
+app.heading("Project Dashboard")
+app.label("Create and track a task without writing layout code.")
+app.separator()
+
+app.label("New task")
+seal task_name := app.input()
+app.label("Priority")
+seal priority := app.dropdown(["Low", "Normal", "High"], "Normal")
+seal tasks := app.listbox([])
+seal completion := app.slider(0, 100, 0)
+seal progress := app.progress(0)
+seal status := app.status("Ready")
+
+craft add_task() {
+    seal name := task_name.get()
+    when name == "" {
+        app.error("Missing task", "Type a task name first.")
+        return
+    }
+    tasks.add("[" + priority.get() + "] " + name)
+    task_name.set("")
+    status.set("Task added")
+}
+
+craft update_progress() {
+    progress.set(completion.get())
+    status.set("Progress: " + text(integer(completion.get())) + "%")
+}
+
+craft choose_project() {
+    seal folder := app.choose_folder()
+    when folder != void {
+        status.set("Project: " + folder)
+    }
+}
+
+app.button("Add task", add_task)
+app.button("Update progress", update_progress)
+app.button("Choose project folder", choose_project)
+app.run()

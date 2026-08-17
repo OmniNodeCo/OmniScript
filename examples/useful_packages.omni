@@ -1,0 +1,29 @@
+# OmniScript's useful built-in package collection.
+use "data"
+use "csv" as table
+use "crypto"
+use "date"
+use "system"
+
+seal scores := [10, 8, 10, 6]
+emit "unique:", data.unique(scores)
+emit "average:", data.average(scores)
+emit "groups:", data.chunk(scores, 2)
+
+seal records := [
+    {name: "Ada", score: 10},
+    {name: "Lin", score: 8}
+]
+seal csv_text := table.stringify(records)
+emit csv_text
+emit table.parse(csv_text)
+
+emit "sha256:", crypto.sha256("OmniScript")
+emit "token:", crypto.token(16)
+emit "now:", date.format(date.now())
+emit "system:", system.info()
+
+# HTTP is just as direct when network access is wanted:
+# use "http"
+# seal response := http.get("https://api.example.com/items")
+# emit response.status, response.body

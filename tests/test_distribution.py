@@ -52,7 +52,7 @@ class DistributionTests(unittest.TestCase):
             validate_target(f"omni-{system}-not-this-machine")
 
     def test_release_tag_must_match_declared_version(self) -> None:
-        self.assertEqual(verify("v0.2.1"), "0.2.1")
+        self.assertEqual(verify("v0.3.0"), "0.3.0")
         with self.assertRaises(SystemExit):
             verify("v9.9.9")
 
