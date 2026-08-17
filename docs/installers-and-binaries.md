@@ -14,12 +14,12 @@ Every tagged release built by `build.yml` contains:
 | Windows | x86-64 | `omni-windows-x86_64.exe` |
 | Windows | ARM64 | `omni-windows-arm64.exe` |
 
-`SHA256SUMS` contains a checksum for every executable. All installers verify that checksum before replacing an existing installation.
+`SHA256SUMS` contains a checksum for every released executable. All installers verify checksums before replacing an existing installation. Until the first tagged release is published, the installers automatically fall back to the successful artifacts from workflow run `32032755910`; those artifact ZIPs are pinned to their GitHub-reported SHA-256 digests.
 
 ## Linux and macOS
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/OmniNodeCo/OmniScript/arena/01a00f9c-omniscript/install.sh | sh
 ```
 
 The script detects the OS and CPU, downloads the matching executable, verifies it, and installs `omni` plus an `omniscript` alias under `~/.local/bin`.
@@ -45,7 +45,7 @@ The Batch launcher invokes the checksum-verifying PowerShell installer. It insta
 PowerShell can also be used directly:
 
 ```powershell
-irm https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/OmniNodeCo/OmniScript/arena/01a00f9c-omniscript/scripts/install.ps1 | iex
 ```
 
 The Windows installer supports the `OMNISCRIPT_VERSION`, `OMNISCRIPT_REPOSITORY`, `OMNISCRIPT_INSTALL_DIR`, and `OMNISCRIPT_BIN_DIR` environment variables.

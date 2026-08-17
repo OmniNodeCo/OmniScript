@@ -42,7 +42,7 @@ Release installers download a self-contained executable, so Python is not requir
 Linux or macOS:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/OmniNodeCo/OmniScript/arena/01a00f9c-omniscript/install.sh | sh
 ```
 
 Windows Command Prompt from a checkout:
@@ -54,7 +54,7 @@ install.bat
 Windows PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/OmniNodeCo/OmniScript/arena/01a00f9c-omniscript/scripts/install.ps1 | iex
 ```
 
 To develop from source, use Python 3.10 or newer:

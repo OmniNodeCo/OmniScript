@@ -11,7 +11,7 @@
 ### One-line installer (macOS/Linux)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/OmniNodeCo/OmniScript/arena/01a00f9c-omniscript/install.sh | sh
 ```
 
 The installer detects the OS and architecture, downloads the matching executable, verifies its SHA-256 checksum, and installs `omni` under `~/.local/bin`.
@@ -27,7 +27,7 @@ install.bat
 ### PowerShell (Windows)
 
 ```powershell
-irm https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/OmniNodeCo/OmniScript/arena/01a00f9c-omniscript/scripts/install.ps1 | iex
 ```
 
 The Windows installers verify and write `omni.exe` to `%LOCALAPPDATA%\Programs\OmniScript`, with command launchers under `%LOCALAPPDATA%\Microsoft\WindowsApps`.
