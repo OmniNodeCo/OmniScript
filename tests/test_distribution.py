@@ -43,6 +43,8 @@ class DistributionTests(unittest.TestCase):
             self.assertTrue(os.access(ROOT / "install.sh", os.X_OK))
         self.assertIn("OMNISCRIPT_CACHE_DIR", (ROOT / "scripts/uninstall.sh").read_text())
         self.assertIn("OMNISCRIPT_CACHE_DIR", (ROOT / "scripts/uninstall.ps1").read_text())
+        self.assertIn("PYINSTALLER_RESET_ENVIRONMENT", (ROOT / "install.sh").read_text())
+        self.assertIn("PYINSTALLER_RESET_ENVIRONMENT", (ROOT / "scripts/install.ps1").read_text())
 
     def test_builder_rejects_a_mislabeled_native_asset(self) -> None:
         system = {"Linux": "linux", "Darwin": "macos", "Windows": "windows"}[platform.system()]

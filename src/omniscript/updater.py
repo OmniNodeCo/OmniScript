@@ -59,6 +59,20 @@ def clear_update_cache() -> bool:
         return False
 
 
+def _installer_environment(channel: str, current_version: str) -> dict[str, str]:
+    environment = os.environ.copy()
+    # Private PyInstaller variables identify the currently running one-file
+    # archive. Passing them through PowerShell/sh to a different executable
+    # triggers: "Security validation failure: parent process has different executable".
+    for name in list(environment):
+        if name.startswith("_PYI_"):
+            environment.pop(name, None)
+    environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    environment["OMNISCRIPT_CHANNEL"] = channel
+    environment["OMNISCRIPT_VERSION"] = "latest" if channel == "release" else current_version
+    return environment
+
+
 def install_update(
     channel: str,
     current_version: str,
@@ -73,9 +87,7 @@ def install_update(
         raise UpdateCheckError("update channel must be 'release' or 'nightly'")
     repository = repository or os.environ.get("OMNISCRIPT_REPOSITORY", DEFAULT_REPOSITORY)
     installer_ref = installer_ref or os.environ.get("OMNISCRIPT_INSTALLER_REF", DEFAULT_INSTALLER_REF)
-    environment = os.environ.copy()
-    environment["OMNISCRIPT_CHANNEL"] = channel
-    environment["OMNISCRIPT_VERSION"] = "latest" if channel == "release" else current_version
+    environment = _installer_environment(channel, current_version)
 
     if os.name == "nt":
         powershell = shutil.which("powershell.exe") or shutil.which("pwsh")

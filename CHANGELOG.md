@@ -8,6 +8,7 @@ All notable changes to OmniScript are documented here. The format follows Keep a
 
 - Update checks now query GitHub's releases API directly and ignore stale cached 404 responses.
 - Installers clear update metadata after replacing OmniScript, so newly published releases appear immediately.
+- Self-updates now reset private PyInstaller bootloader state before validating the replacement executable.
 
 ## [0.2.0] - 2026-08-17
 

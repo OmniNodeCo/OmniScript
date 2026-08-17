@@ -80,7 +80,7 @@ omni update --clear-cache
 
 Before showing the menu, OmniScript queries GitHub's latest-release API and displays the version and release page it found. Release information is cached for 24 hours. If GitHub's release API is temporarily unavailable, the menu reports the failure but still permits a Nightly installation.
 
-Windows starts the updater as a separate PowerShell process so the running executable can exit before replacement; Linux and macOS update synchronously. Every channel still uses the platform installer's SHA-256 verification.
+Windows starts the updater as a separate PowerShell process so the running executable can exit before replacement. The updater also removes private PyInstaller parent-process state before starting the new executable, preventing cross-archive security validation failures. Linux and macOS update synchronously. Every channel still uses the platform installer's SHA-256 verification.
 
 Set `OMNISCRIPT_CACHE_DIR` to move the cache, `OMNISCRIPT_REPOSITORY=owner/repository` to use a fork, or `OMNISCRIPT_INSTALLER_REF` to select another installer branch. Network and installer failures return a readable diagnostic.
 

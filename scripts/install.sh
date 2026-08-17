@@ -2,6 +2,11 @@
 # Install a self-contained OmniScript release binary on Linux or macOS.
 set -eu
 
+# Do not pass one-file PyInstaller bootloader state from the old executable to
+# the replacement executable's smoke test.
+unset _PYI_APPLICATION_HOME_DIR _PYI_ARCHIVE_FILE _PYI_PARENT_PROCESS_LEVEL _PYI_SPLASH_IPC 2>/dev/null || true
+export PYINSTALLER_RESET_ENVIRONMENT=1
+
 REPOSITORY="${OMNISCRIPT_REPOSITORY:-OmniNodeCo/OmniScript}"
 BUNDLED_VERSION=0.2.1
 VERSION="${OMNISCRIPT_VERSION:-$BUNDLED_VERSION}"

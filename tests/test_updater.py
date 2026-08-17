@@ -14,6 +14,7 @@ from omniscript.cli import main
 from omniscript.updater import (
     UpdateCheckError,
     UpdateInfo,
+    _installer_environment,
     cache_directory,
     check_for_updates,
     clear_update_cache,
@@ -215,6 +216,20 @@ class UpdaterTests(unittest.TestCase):
                     with contextlib.redirect_stdout(io.StringIO()):
                         self.assertEqual(main(["update", "--channel", "release"]), 0)
         install.assert_not_called()
+
+    def test_installer_environment_resets_pyinstaller_bootloader_state(self) -> None:
+        inherited = {
+            "_PYI_ARCHIVE_FILE": "old-omni.exe",
+            "_PYI_APPLICATION_HOME_DIR": "old-temp",
+            "UNCHANGED_VALUE": "yes",
+        }
+        with patch.dict(os.environ, inherited, clear=True):
+            environment = _installer_environment("nightly", "0.2.1")
+        self.assertNotIn("_PYI_ARCHIVE_FILE", environment)
+        self.assertNotIn("_PYI_APPLICATION_HOME_DIR", environment)
+        self.assertEqual(environment["PYINSTALLER_RESET_ENVIRONMENT"], "1")
+        self.assertEqual(environment["OMNISCRIPT_CHANNEL"], "nightly")
+        self.assertEqual(environment["UNCHANGED_VALUE"], "yes")
 
     def test_cache_directory_override(self) -> None:
         with patch.dict(os.environ, {"OMNISCRIPT_CACHE_DIR": "/tmp/custom-omni-cache"}):

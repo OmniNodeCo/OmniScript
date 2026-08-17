@@ -6,7 +6,15 @@ if ($env:OMNISCRIPT_WAIT_PID) {
         Write-Host "Waiting for the running OmniScript process to close..."
         $ParentProcess | Wait-Process
     }
+    Remove-Item Env:OMNISCRIPT_WAIT_PID -ErrorAction SilentlyContinue
 }
+
+# A PyInstaller one-file executable passes private bootloader state to child
+# processes. It must not reach a newly replaced executable with another archive.
+Get-ChildItem Env: | Where-Object { $_.Name -like "_PYI_*" } | ForEach-Object {
+    Remove-Item "Env:$($_.Name)"
+}
+$env:PYINSTALLER_RESET_ENVIRONMENT = "1"
 
 $Repository = if ($env:OMNISCRIPT_REPOSITORY) { $env:OMNISCRIPT_REPOSITORY } else { "OmniNodeCo/OmniScript" }
 $BundledVersion = "0.2.1"
