@@ -20,6 +20,7 @@ from .formatter import format_source
 from .lexer import Lexer
 from .parser import Parser
 from .runtime import stringify
+from .updater import UpdateCheckError, cache_directory, check_for_updates, clear_update_cache
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -68,12 +69,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor = subcommands.add_parser("doctor", help="verify the local OmniScript installation")
     doctor.set_defaults(handler=_command_doctor)
+
+    update = subcommands.add_parser("update", help="check GitHub for a newer OmniScript release")
+    update.add_argument("--force", action="store_true", help="ignore the 24-hour update cache")
+    update.add_argument("--json", action="store_true", dest="as_json", help="print machine-readable JSON")
+    update.add_argument("--clear-cache", action="store_true", help="clear cached update data and exit")
+    update.set_defaults(handler=_command_update)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    commands = {"run", "repl", "check", "fmt", "test", "init", "tokens", "ast", "doctor"}
+    commands = {"run", "repl", "check", "fmt", "test", "init", "tokens", "ast", "doctor", "update"}
     # Friendly shorthand: `omni hello.omni` is the same as `omni run hello.omni`.
     if argv and argv[0] not in commands and not argv[0].startswith("-"):
         argv.insert(0, "run")
@@ -291,12 +298,38 @@ def _jsonable(value: Any) -> Any:
     return value
 
 
+def _command_update(arguments: argparse.Namespace) -> int:
+    if arguments.clear_cache:
+        removed = clear_update_cache()
+        print("update cache cleared" if removed else "update cache is already empty")
+        return 0
+    try:
+        info = check_for_updates(__version__, force=arguments.force)
+    except UpdateCheckError as error:
+        raise OmniRuntimeError(str(error)) from error
+    if arguments.as_json:
+        print(json.dumps(info.to_dict(), indent=2, sort_keys=True))
+    elif not info.release_found:
+        source = "cached result" if info.from_cache else "GitHub"
+        print(f"no published OmniScript release is available yet ({source})")
+        print(info.release_url)
+    elif info.update_available:
+        source = "cached result" if info.from_cache else "GitHub"
+        print(f"update available: OmniScript {info.current_version} -> {info.latest_version} ({source})")
+        print(info.release_url)
+    else:
+        source = "cached result" if info.from_cache else "GitHub"
+        print(f"OmniScript {info.current_version} is up to date ({source})")
+    return 0
+
+
 def _command_doctor(_arguments: argparse.Namespace) -> int:
     checks = [
         ("OmniScript", __version__),
         ("Python", sys.version.split()[0]),
         ("Executable", sys.executable),
         ("Working directory", os.getcwd()),
+        ("Update cache", str(cache_directory())),
     ]
     for label, value in checks:
         print(f"ok  {label}: {value}")

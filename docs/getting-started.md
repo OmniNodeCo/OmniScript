@@ -94,6 +94,14 @@ radius
 
 Use `.help`, `.vars`, and `.exit` for REPL commands.
 
+## Check for updates
+
+```bash
+omni update
+```
+
+The check reads GitHub Releases and caches the result for 24 hours. Use `omni update --force` to refresh immediately or `omni update --clear-cache` to remove the cached result.
+
 ## Next steps
 
 Read the [language guide](language-guide.md), then run `omni examples/tour.omni` from the repository.

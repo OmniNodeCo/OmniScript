@@ -51,11 +51,24 @@ omni test examples/tests
 
 Scaffold `omni.toml`, `src/main.omni`, `tests/main_test.omni`, and `.gitignore`. Use `.` for the current directory. The command refuses to write into a nonempty directory unless `--force` is supplied.
 
+## `omni update`
+
+Check GitHub Releases for a newer OmniScript version without installing anything. Results are cached for 24 hours under the platform cache directory.
+
+```bash
+omni update
+omni update --force       # bypass cached release information
+omni update --json        # machine-readable result
+omni update --clear-cache
+```
+
+Set `OMNISCRIPT_CACHE_DIR` to move the cache or `OMNISCRIPT_REPOSITORY=owner/repository` to check a fork. Network and malformed-release failures return a nonzero status with a readable diagnostic.
+
 ## Inspection commands
 
 - `omni tokens file.omni` prints source positions, token kinds, lexemes, and decoded literals.
 - `omni ast file.omni` prints the parsed AST as JSON.
-- `omni doctor` displays environment information and runs a toolchain self-test.
+- `omni doctor` displays environment and update-cache information, then runs a toolchain self-test.
 - `omni --version` prints the toolchain version.
 
 ## Exit codes

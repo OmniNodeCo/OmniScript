@@ -1,43 +1,49 @@
-name: Build native executables
+name: Publish OmniScript release
 
 on:
   push:
-    branches: [main, "arena/**"]
-  pull_request:
+    tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag matching pyproject.toml, such as v0.1.0
+        required: true
+        default: v0.1.0
+        type: string
+      prerelease:
+        description: Mark this as a prerelease
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: read
 
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
 jobs:
-  test:
-    name: Test on ${{ matrix.os }} / Python ${{ matrix.python }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python: ["3.10", "3.12"]
-    runs-on: ${{ matrix.os }}
+  validate:
+    name: Validate release
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
-          python-version: ${{ matrix.python }}
+          python-version: "3.12"
           cache: pip
+      - name: Verify version and tag
+        run: python scripts/verify_release.py "$RELEASE_TAG"
       - name: Install OmniScript
         run: python -m pip install -e .
-      - name: Unit tests
+      - name: Run unit tests
         run: python -m unittest discover -s tests -v
       - name: Check examples
         run: omni check examples/hello.omni examples/tour.omni examples/fibonacci.omni examples/json_report.omni examples/lib/statistics.omni
-      - name: Run OmniScript tests
-        run: omni test examples/tests
-      - name: Toolchain doctor
-        run: omni doctor
 
   build:
-    name: Build ${{ matrix.asset }}
-    needs: test
+    name: Package ${{ matrix.asset }}
+    needs: validate
     strategy:
       fail-fast: false
       matrix:
@@ -78,3 +84,30 @@ jobs:
           path: artifacts/${{ matrix.asset }}
           if-no-files-found: error
           retention-days: 30
+
+  release:
+    name: Create GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download executables
+        uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+      - name: Create checksums
+        working-directory: release
+        run: sha256sum omni-* > SHA256SUMS
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
+          prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            release/omni-*
+            release/SHA256SUMS

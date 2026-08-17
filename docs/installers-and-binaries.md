@@ -4,7 +4,7 @@ OmniScript releases provide self-contained executables. End users do **not** nee
 
 ## Release assets
 
-Every tagged release built by `build.yml` contains:
+Every tagged release built by `release.yml` contains:
 
 | Operating system | Architecture | Asset |
 |---|---|---|
@@ -72,20 +72,20 @@ The convenience launchers create an isolated `.build-venv` automatically. The bu
 
 ## Automated builds and releases
 
-`build.yml` is a complete GitHub Actions workflow. Install it at `.github/workflows/build.yml` to activate it. It performs three stages:
+Two complete GitHub Actions workflows are included:
 
-1. tests Python 3.10 and 3.12 on Linux, macOS, and Windows;
-2. builds and smoke-tests all five supported OS/architecture executables in native runners;
-3. for tags matching `v*`, creates checksums and publishes every executable as a GitHub Release asset.
+- `build.yml` tests Python 3.10/3.12 on Linux, macOS, and Windows, then builds and smoke-tests all five supported executable assets.
+- `release.yml` validates the release tag against both version declarations, repeats the tests, builds all native assets, generates `SHA256SUMS`, and publishes a GitHub Release.
 
-Create a release after updating the package version:
+Install them as `.github/workflows/build.yml` and `.github/workflows/release.yml`. A tag matching `v*` starts the release workflow. It can also be started manually with a tag and prerelease flag.
 
 ```bash
+python scripts/verify_release.py v0.1.0
 git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The release job requires `contents: write`; regular test and build jobs use read-only repository permissions.
+The release publishing job alone receives `contents: write`; all validation and build jobs remain read-only.
 
 ## Uninstall
 
@@ -98,3 +98,5 @@ Windows PowerShell:
 ```powershell
 .\scripts\uninstall.ps1
 ```
+
+Uninstallers remove the executable, command aliases, legacy installation data, and the update cache. Override the cache location with `OMNISCRIPT_CACHE_DIR` if needed.
