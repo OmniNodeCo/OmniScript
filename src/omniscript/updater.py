@@ -19,7 +19,6 @@ from urllib.request import Request, urlopen
 DEFAULT_REPOSITORY = "OmniNodeCo/OmniScript"
 DEFAULT_INSTALLER_REF = "arena/01a00f9c-omniscript"
 DEFAULT_CACHE_SECONDS = 24 * 60 * 60
-NIGHTLY_RUN = "32046113765"
 
 
 class UpdateCheckError(Exception):

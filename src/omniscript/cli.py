@@ -21,7 +21,6 @@ from .lexer import Lexer
 from .parser import Parser
 from .runtime import stringify
 from .updater import (
-    NIGHTLY_RUN,
     UpdateCheckError,
     UpdateInfo,
     cache_directory,
@@ -343,7 +342,7 @@ def _command_update(arguments: argparse.Namespace) -> int:
                 print("update cancelled")
                 return 0
     else:
-        print(f"Selected nightly channel: verified workflow run {NIGHTLY_RUN}")
+        print("Selected nightly channel: newest verified development build")
 
     try:
         result = install_update(channel, __version__)
