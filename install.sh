@@ -4,7 +4,7 @@ set -eu
 
 REPOSITORY="${OMNISCRIPT_REPOSITORY:-OmniNodeCo/OmniScript}"
 VERSION="${OMNISCRIPT_VERSION:-latest}"
-NIGHTLY_RUN="${OMNISCRIPT_NIGHTLY_RUN:-32032755910}"
+NIGHTLY_RUN="${OMNISCRIPT_NIGHTLY_RUN:-32034373761}"
 BIN_DIR="${OMNISCRIPT_BIN_DIR:-$HOME/.local/bin}"
 
 if ! command -v curl >/dev/null 2>&1; then
@@ -64,9 +64,9 @@ else
     fi
     echo "warning: no GitHub release exists yet; installing verified nightly run $NIGHTLY_RUN" >&2
     case "$ASSET" in
-        omni-linux-arm64) EXPECTED=77c2842bbf125fd3649f2d26e68db53671b6c8ee65c68baaf77dbfbc9c042205 ;;
-        omni-linux-x86_64) EXPECTED=2bb2f37f5d9cfc0d8309796bbcaf1e629a578093bb42b4eeec8a5be5c6437b72 ;;
-        omni-macos-arm64) EXPECTED=6ec71c65ff41b7095f0b47b41f05210bc8e7c937ff67743f759f40cae3e5cb47 ;;
+        omni-linux-arm64) EXPECTED=ab131448bf0cf12e1c9599c7371496d882e57b3ae1a125c57d85f05c1163c89f ;;
+        omni-linux-x86_64) EXPECTED=65629e6c4ac4e376b87916e9e109e1ecbe9c130dbec7d65ac6414d5157353099 ;;
+        omni-macos-arm64) EXPECTED=685432cb3356febc718584306700a5696bcc02b012384fdd92381002f0e5421b ;;
         *) echo "error: no trusted nightly digest is registered for $ASSET" >&2; exit 1 ;;
     esac
     VERIFY_FILE="$TMP_DIR/$ASSET.zip"
