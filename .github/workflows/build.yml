@@ -20,8 +20,8 @@ jobs:
         python: ["3.10", "3.12"]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
           cache: pip
@@ -43,22 +43,25 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             binary_name: omni-linux-x86_64
             asset: omni-linux-x86_64
+          - os: ubuntu-22.04-arm
+            binary_name: omni-linux-arm64
+            asset: omni-linux-arm64
           - os: windows-latest
             binary_name: omni-windows-x86_64
             asset: omni-windows-x86_64.exe
-          - os: macos-13
-            binary_name: omni-macos-x86_64
-            asset: omni-macos-x86_64
+          - os: windows-11-arm
+            binary_name: omni-windows-arm64
+            asset: omni-windows-arm64.exe
           - os: macos-14
             binary_name: omni-macos-arm64
             asset: omni-macos-arm64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
