@@ -23,3 +23,20 @@ packages = ["omniscript", "omniscript.stdlib"]
 
 [tool.setuptools.package-data]
 omniscript = ["std/*.omni"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+extend-exclude = ["extras"]
+
+[tool.ruff.lint]
+# E9 is syntax-level mistakes; F is pyflakes -- undefined names, dead imports,
+# unused locals, duplicate arguments. Style rules are deliberately left out:
+# this source is formatted by hand and reads the way it is written.
+select = ["E9", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+# methods.py registers one method per type through a decorator, so `def len`
+# appears once for str, once for list, once for map and so on. That is the
+# design of the registry, not a redefinition bug.
+"omniscript/stdlib/methods.py" = ["F811"]

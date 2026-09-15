@@ -17,13 +17,12 @@ import os as _os
 import shlex as _shlex
 import shutil as _shutil
 import subprocess as _sp
-import sys as _sys
 import time as _time
 from glob import glob as _glob
 
-from ..errors import OmniRuntimeError, OmniTypeError
+from ..errors import OmniRuntimeError
 from ..values import HostObject, NativeFunction, collect_signature, to_repr, to_string, truthy
-from .core import BUILTINS, as_int, as_num, omni
+from .core import as_int, as_num, omni
 
 # --------------------------------------------------------------------- cmd
 COMMAND_METHODS: dict[str, NativeFunction] = {}

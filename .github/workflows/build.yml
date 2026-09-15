@@ -1,0 +1,265 @@
+# Continuous integration for OmniScript.
+#
+#   lint     cheap static checks -- pyflakes, compile-everything, metadata and
+#            workflow validity
+#   test     both test suites plus every example, on a matrix of operating
+#            systems and Python versions
+#   package  build the distributions, then install the wheel somewhere clean
+#            and use it the way a real user would
+#
+# The interpreter has no third-party dependencies, so the test matrix installs
+# nothing at all; only the lint and package jobs need pip.
+
+name: build
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install ruff
+        run: python -m pip install --upgrade pip ruff
+
+      - name: Ruff (syntax errors, undefined names, dead imports)
+        run: ruff check --output-format=github .
+
+      - name: Every module compiles
+        run: python -m compileall -q omniscript tests
+
+      - name: Project metadata is well formed
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, pathlib, tomllib
+
+          meta = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
+          project = meta["project"]
+          version = project["version"]
+          assert project["name"] == "omniscript-lang", project["name"]
+          assert meta["build-system"]["build-backend"] == "setuptools.build_meta"
+          assert {"omni", "omniscript"} <= set(project["scripts"]), project["scripts"]
+          assert project["requires-python"] == ">=3.10", project["requires-python"]
+          print(f"pyproject ok -- {project['name']} {version}")
+
+          # One source of truth for the version: nothing may drift apart.
+          stdlib = pathlib.Path("omniscript/stdlib/__init__.py").read_text()
+          assert f'VERSION = "{version}"' in stdlib, "stdlib VERSION != pyproject"
+          print(f"version ok -- stdlib/__init__.py agrees on {version}")
+
+          for path in sorted(pathlib.Path("extras/vscode").rglob("*.json")):
+              json.loads(path.read_text())
+              print("json ok --", path)
+          PY
+
+      - name: Workflows are well formed
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib
+
+          import yaml
+
+          for path in sorted(pathlib.Path(".github/workflows").glob("*.y*ml")):
+              doc = yaml.safe_load(path.read_text())
+              jobs = doc.get("jobs") or {}
+              assert jobs, f"{path}: no jobs"
+              for name, job in jobs.items():
+                  assert job.get("runs-on"), f"{path}: {name} has no runs-on"
+                  assert job.get("steps"), f"{path}: {name} has no steps"
+                  for step in job["steps"]:
+                      assert step.get("name"), f"{path}: {name} has an unnamed step"
+                      assert step.get("uses") or step.get("run"), f"{path}: empty step"
+              print(f"yaml ok -- {path.name}: {', '.join(jobs)}")
+          PY
+
+      - name: The launcher is executable
+        run: |
+          set -euo pipefail
+          test -x omni
+          head -1 omni | grep -q '^#!/'
+          echo "launcher ok -- $(head -1 omni)"
+
+  test:
+    name: Test (${{ matrix.os }}, Python ${{ matrix.python }})
+    needs: lint
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ["ubuntu-latest", "macos-latest"]
+        python: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Show the environment
+        run: |
+          python --version
+          ./omni --version
+          ./omni -e 'print("running on ${platform()} ${os}, OmniScript ${version}")'
+
+      - name: Interpreter test suite (unittest)
+        run: python -m unittest discover -s tests -v
+
+      - name: Language test suite (./omni test)
+        run: ./omni test
+
+      - name: Every example runs
+        run: |
+          set -euo pipefail
+          for f in examples/*.omni; do
+            echo "::group::$f"
+            ./omni "$f"
+            echo "::endgroup::"
+          done
+
+      - name: Docs reach every built-in
+        run: |
+          set -euo pipefail
+          header="$(./omni docs | head -1)"
+          echo "$header"
+          count="$(printf '%s' "$header" | grep -oE '[0-9]+' | tail -1)"
+          test "$count" -ge 250 || { echo "::error::only $count built-ins"; exit 1; }
+          for name in print draw cmd parallel_map date read_json regex_replace chart; do
+            ./omni docs "$name" | head -1
+          done
+
+      - name: A drawn picture is a real, complete PNG
+        run: |
+          set -euo pipefail
+          ./omni -e 'let c = draw(48, 32)
+          c.rect(0, 0, 48, 32, "#1f6feb")
+          c.circle(24, 16, 10, "#ffffff")
+          c.text(4, 4, "ci", "#0b0b0b")
+          c.save("ci-check.png")'
+          python - <<'PY'
+          import pathlib, struct, zlib
+
+          data = pathlib.Path("ci-check.png").read_bytes()
+          assert data[:8] == b"\x89PNG\r\n\x1a\n", "missing PNG signature"
+          pos, kinds, idat = 8, [], b""
+          while pos < len(data):
+              size, kind = struct.unpack(">I4s", data[pos:pos + 8])
+              body = data[pos + 8:pos + 8 + size]
+              stored = struct.unpack(">I", data[pos + 8 + size:pos + 12 + size])[0]
+              assert zlib.crc32(kind + body) & 0xFFFFFFFF == stored, f"bad CRC in {kind}"
+              kinds.append(kind.decode())
+              if kind == b"IDAT":
+                  idat += body
+              pos += 12 + size
+          assert kinds[0] == "IHDR" and kinds[-1] == "IEND", kinds
+          width, height, depth, colour = struct.unpack(">IIBB", data[16:26])
+          raw = zlib.decompress(idat)
+          stride = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}[colour] * depth // 8
+          assert len(raw) == height * (1 + width * stride), (len(raw), width, height)
+          print(f"PNG ok -- {width}x{height}, depth {depth}, colour type {colour}, "
+                f"{len(raw)} bytes of pixels, chunks: {' '.join(kinds)}")
+          PY
+
+      - name: The standard library modules load
+        run: |
+          set -euo pipefail
+          ./omni -e 'use std/math
+          use std/text
+          use std/list
+          use std/stats
+          print("std ok:", factorial(10), summary([1, 2, 3, 4, 100]).median,
+                slug("Hello Continuous Integration"))'
+
+      - name: Collect example output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: example-output-${{ matrix.os }}-py${{ matrix.python }}
+          path: |
+            .preview/**
+            *.png
+          if-no-files-found: ignore
+          retention-days: 3
+
+  package:
+    name: Package
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install the build front-end
+        run: python -m pip install --upgrade pip build
+
+      - name: Build the sdist and the wheel
+        run: python -m build
+
+      - name: The wheel carries the standard library
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import glob, zipfile
+
+          for path in sorted(glob.glob("dist/*")):
+              print(path)
+          wheel = glob.glob("dist/*.whl")[0]
+          names = zipfile.ZipFile(wheel).namelist()
+          std = sorted(n.rsplit("/", 1)[-1] for n in names if n.endswith(".omni"))
+          assert std, f"no std/*.omni inside {wheel}"
+          print(f"{wheel} ships: {', '.join(std)}")
+          PY
+
+      - name: Install the wheel into a clean venv and use it
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/pip install --quiet dist/*.whl
+          # Run from outside the checkout so nothing resolves to local sources.
+          cd /tmp
+          /tmp/smoke/bin/omni --version
+          /tmp/smoke/bin/omni -e 'print("wheel ok:", 6 * 7, [1, 2, 3].map((x) -> x * x),
+                                   "a,b".split(",").join("-"))'
+          /tmp/smoke/bin/omniscript -e 'use std/stats
+          print("std ok:", stdev([2, 4, 6]), percentile([1, 2, 3, 4], 75))'
+          /tmp/smoke/bin/omni -e 'let c = draw(16, 16)
+          c.rect(0, 0, 16, 16, "#ff8800")
+          c.save("smoke.png")
+          print("graphics ok:", file_info("smoke.png").size, "bytes")'
+
+      - name: Upload the distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+          retention-days: 14

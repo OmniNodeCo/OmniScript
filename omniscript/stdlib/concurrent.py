@@ -10,7 +10,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 
 from ..errors import OmniError, OmniRuntimeError, OmniTypeError
-from ..values import HostObject, NativeFunction, collect_signature, to_string, truthy
+from ..values import HostObject, collect_signature, to_string, truthy
 from .core import as_int, is_callable, omni
 
 

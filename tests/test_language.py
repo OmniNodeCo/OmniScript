@@ -15,7 +15,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from omniscript import make_interpreter  # noqa: E402
 from omniscript.errors import (OmniError, OmniNameError, OmniRuntimeError,  # noqa: E402
                                OmniSyntaxError, OmniTypeError)
-from omniscript.values import to_repr, type_name  # noqa: E402
 
 
 def run(src: str, collect_output: bool = True):
@@ -374,8 +373,6 @@ c.at(0, 0)
         self.assertEqual(r, [255.0, 0.0, 0.0, 255.0])
 
     def test_png_is_valid(self):
-        import struct
-        import zlib
         r, out, interp = run('''
 let c = draw(8, 8)
 c.rect(0, 0, 8, 8, "#ff0000")

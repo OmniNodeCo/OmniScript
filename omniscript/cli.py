@@ -20,7 +20,6 @@ from .errors import OmniError, OmniRuntimeError, OmniThrow, describe
 from .interp import Interpreter
 from .lexer import tokenize
 from .parser import parse
-from .stdlib import install
 from .values import to_repr, to_string
 
 BANNER = r"""

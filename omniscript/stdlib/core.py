@@ -10,10 +10,10 @@ import math
 import random
 import time
 import unicodedata
-from datetime import datetime, timezone
+from datetime import datetime
 
 from ..errors import OmniRuntimeError, OmniTypeError
-from ..values import (HostObject, NativeFunction, OmniClass, OmniFunction, OmniObject,
+from ..values import (HostObject, NativeFunction, OmniFunction, OmniObject,
                       OmniRange, collect_signature, fmt_num, omni_eq, to_repr, to_string,
                       truthy, type_name)
 
@@ -275,7 +275,7 @@ def _sorted(interp, value, by=None, desc=False):
     """sorted(items, by: fn|key, desc: false) -- a new, ordered list."""
     items = list(interp.iterate(value))
     key = None
-    from .methods import _capacity, _sort_items
+    from .methods import _capacity
     if by is not None and not isinstance(by, str) and _capacity(by) == 2:
         import functools
 

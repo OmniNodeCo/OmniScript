@@ -1,5 +1,7 @@
 # OmniScript
 
+[![build](https://github.com/OmniNodeCo/OmniScript/actions/workflows/build.yml/badge.svg)](https://github.com/OmniNodeCo/OmniScript/actions/workflows/build.yml)
+
 **A small language for doing big things in few lines.**
 
 OmniScript is a from-scratch programming language with its own syntax, its own
@@ -254,16 +256,65 @@ omniscript/           the language itself
     dates.py          date(), date ranges, and the Date type
   std/                importable .omni modules: math, text, list, stats
 examples/             10 runnable programs (outputs land in .preview/)
-tests/                78 interpreter cases + 24 in-language @test cases
+tests/                122 interpreter cases + 34 in-language @test cases
 extras/vscode/        syntax highlighting for VS Code / Cursor
+.github/workflows/    build.yml (CI) and release.yml (tagged releases)
 ```
 
 ## Testing
 
 ```bash
-python3 -m unittest discover -s tests   # the interpreter test suite
-./omni test                             # the language's own @test suite
+python3 -m unittest discover -s tests   # 122 interpreter cases
+./omni test                             # the language's own 34 @test cases
 ```
+
+Both suites also run every time the examples do:
+
+```bash
+for f in examples/*.omni; do ./omni "$f"; done
+```
+
+## Continuous integration
+
+`.github/workflows/build.yml` runs on every push to `main` and on every pull
+request:
+
+| job | what it does |
+| --- | --- |
+| `lint` | ruff (pyflakes rules), `compileall`, metadata and workflow validity |
+| `test` | both suites, all 10 examples, `docs`, and a PNG that is decoded chunk by chunk -- on ubuntu and macOS, Python 3.10 to 3.13 |
+| `package` | builds the sdist and wheel, installs the wheel in a clean venv and runs it |
+
+Linting is deliberately narrow: `select = ["E9", "F"]` in `pyproject.toml`
+catches real mistakes (undefined names, dead imports, unused locals) and leaves
+the hand-formatted source alone. `methods.py` is exempt from `F811` because it
+defines `len`, `map` and friends once per type through a decorator.
+
+## Releasing
+
+`.github/workflows/release.yml` runs when a version tag is pushed:
+
+```bash
+# 1. bump both of these to the same value
+#      VERSION in omniscript/stdlib/__init__.py
+#      version in pyproject.toml
+git commit -am "Release 1.1.0"
+git tag v1.1.0
+git push origin v1.1.0
+```
+
+The workflow refuses to continue unless the tag, `pyproject.toml` and
+`omniscript.__version__` all agree, re-runs the full test suite on the tagged
+commit, builds and installs the wheel somewhere clean, records `SHA256SUMS.txt`
+and opens a GitHub Release with the wheel, the sdist and the checksums attached.
+The release notes fill themselves in from the tree -- line counts, built-in
+counts, example counts and test counts are measured, not typed.
+
+Publishing to PyPI is opt-in and off by default: add a repository variable
+`PYPI_PUBLISH` set to `true` and configure trusted publishing for the project on
+pypi.org, and the final job uploads with an OIDC token instead of a stored API
+key. You can also run the workflow by hand from the Actions tab against a tag
+that already exists.
 
 ## License
 

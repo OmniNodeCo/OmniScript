@@ -147,7 +147,7 @@ class Parser:
         t = self.eat(kind)
         if t is None:
             cur = self.cur()
-            got = f"`{cur.value}`" if cur.value is not None else f"end of input"
+            got = f"`{cur.value}`" if cur.value is not None else "end of input"
             self.fail(f"expected {what or kind} but found {got}", cur)
         return t  # type: ignore[return-value]
 

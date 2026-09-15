@@ -105,8 +105,7 @@ class OmniContinue(Exception):
 
 def describe(value) -> str:
     """Human readable one-line description of an OmniScript value."""
-    from .values import (HostObject, NativeFunction, OmniClass, OmniFunction,
-                       OmniObject)
+    from .values import NativeFunction, OmniClass, OmniFunction, OmniObject
 
     if value is None:
         return "null"
