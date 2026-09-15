@@ -166,16 +166,10 @@ jobs:
           builtins="$(./omni docs | head -1 | grep -oE '[0-9]+' | tail -1)"
           examples="$(ls -1 examples/*.omni | wc -l | tr -d ' ')"
           cases="$(./omni test 2>&1 | tail -1 | grep -oE '^[0-9]+')"
-          pythons="$(python - <<'PY'
-          import pathlib
-
-          import yaml
-
-          ci = yaml.safe_load(pathlib.Path(".github/workflows/build.yml").read_text())
-          versions = ci["jobs"]["test"]["strategy"]["matrix"]["python"]
-          print(f"{versions[0]} to {versions[-1]}")
-          PY
-          )"
+          # The tested range comes out of build.yml, so the notes cannot drift
+          # from the matrix. Plain shell: no PyYAML on a bare setup-python.
+          versions="$(grep -oE '"3\.[0-9]+"' .github/workflows/build.yml | tr -d '"' | sort -V -u)"
+          pythons="$(printf '%s to %s' "$(echo "$versions" | head -1)" "$(echo "$versions" | tail -1)")"
           {
             echo "loc=$loc"
             echo "builtins=$builtins"
