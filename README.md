@@ -38,6 +38,7 @@ picture saved to /you/hello.png (320x200)
 | run a program, keep its text  | `cmd("git status").out`               |
 | draw a bar chart to PNG       | `chart(values, kind: "bar").save("c.png")` |
 | do 8 slow things at once      | `parallel_map(items, fn, workers: 8)` |
+| work with dates               | `date("2026-09-15") + days(3)`        |
 | group rows by a column        | `rows.group_by("region")`             |
 | safe navigation through nulls | `config?.db?.host ?? "localhost"`     |
 | match and unpack data         | `match row { {name, age} when age > 18 => ... }` |
@@ -213,7 +214,10 @@ forget to save is written for you when the program ends.
   anything iterable (with `for k, v in map`), `while`, `do while`, `break`,
   `continue`, `match` with guards and patterns, `try`/`catch`/`finally`.
 * **Classes** – fields with defaults, `new` constructors, methods with
-  `self`, single inheritance with `: Parent`, `is` / `isnt` type tests.
+  `self`, single inheritance with `: Parent`, `is` / `isnt` type tests, and
+  operator overloading through `__add__`, `__eq__`, `__lt__` and friends.
+* **Dates** – `date("2026-09-15") + days(3)`, `d.format("%A, %d %B")`,
+  `d.diff(other, "days")`, `date_range(...)`, all with no imports.
 * **Operators** – arithmetic (`/` exact, `//` whole-number), comparison that
   **chains** (`1 < x < 10`), `and`/`or`/`not`, bitwise, `**`, `++`/`--`, `+=`
   and friends, ternary `? :`, elvis `??`, optional chaining `?.`, pipelines
@@ -247,8 +251,9 @@ omniscript/           the language itself
     net.py            http_*, download, regex_*
     graphics.py       canvas rasteriser, PNG writer, chart()
     concurrent.py     parallel(), parallel_map(), spawn()
-  std/                importable .omni modules: math, text, list
-examples/             9 runnable programs (outputs land in .preview/)
+    dates.py          date(), date ranges, and the Date type
+  std/                importable .omni modules: math, text, list, stats
+examples/             10 runnable programs (outputs land in .preview/)
 tests/                78 interpreter cases + 24 in-language @test cases
 extras/vscode/        syntax highlighting for VS Code / Cursor
 ```

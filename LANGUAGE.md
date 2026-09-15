@@ -380,6 +380,30 @@ for an unmatched value is a runtime error, telling you to add `_ => ...`.
 
 ---
 
+## 6b. Dates
+
+```omni
+let d = date("2026-09-15")          # or date() for right now
+d.year                              # 2026
+d.weekday                           # "Tuesday"
+d.weekend                           # false
+d.iso                               # "2026-09-15"
+d.format("%A, %d %B %Y")            # "Tuesday, 15 September 2026"
+
+d + days(3)                         # 2026-09-18   (also hours(), minutes(), weeks())
+d.add(months: 1, days: -14)         # a new Date; the old one never changes
+d.start_of("month")                 # 2026-09-01
+date("2026-11-18").diff(d, "days")  # 64 -- `a.diff(b)` is `a - b` in that unit
+d - date("2026-09-01")              # 1209600 seconds
+date("2026-09-01") < d              # dates compare and sort normally
+date_range("2026-01-01", "2026-01-31")   # every day of January
+```
+
+`date()` reads ISO dates and datetimes, `15/09/2026`, `September 15, 2026`,
+epoch numbers, or any text plus a format (`date(text, "%d/%m/%Y")`). Other
+fields: `month day hour minute second millisecond weekday_num day_of_year
+leap_year timestamp datetime`, plus `.to_map()` for all of them at once.
+
 ## 7. Classes
 
 ```omni
@@ -412,6 +436,25 @@ c is Shape        # true
 * `super` refers to the parent class inside a method.
 * Define `str()`, `eq()`, `len()` or `iter()` on a class and the language
   itself will use them for printing, `==`, `len()` and `for`.
+* Define `__add__`, `__sub__`, `__mul__`, `__div__`, `__mod__`, `__pow__`,
+  `__lt__`, `__le__`, `__gt__`, `__ge__`, `__eq__` or `__ne__` and your class
+  works with the matching operator. Add `__radd__`, `__rmul__`, ... for the
+  reflected case where the object is on the right:
+
+```omni
+class Vec {
+  x = 0
+  y = 0
+  new(x, y) { self.x = x; self.y = y }
+  fn __add__(o) { new Vec(self.x + o.x, self.y + o.y) }
+  fn __mul__(k) { new Vec(self.x * k, self.y * k) }
+  fn __rmul__(k) { self.__mul__(k) }      # so `3 * v` works too
+  fn str() { "(${self.x}, ${self.y})" }
+}
+
+new Vec(1, 2) + new Vec(3, 4)    # (4, 6)
+3 * new Vec(1, 2)                # (3, 6)
+```
 
 ---
 
@@ -473,10 +516,14 @@ use std/list as L                # ...then L.transpose(m)
 A module’s top-level `let`/`fn`/`class` definitions become its exports. Names
 starting with `__` stay private.
 
-`std/math`, `std/text` and `std/list` ship with the language and hold the
-helpers that are useful but not universal: `factorial`, `is_prime`,
-`primes_below`, `combinations`, `initials`, `truncate`, `pluralize`, `box`,
-`cumulative`, `transpose`, `moving_average`, `pairwise`, `most_common`.
+Four modules ship with the language:
+
+| module       | what is in it |
+| ------------ | ------------- |
+| `std/math`   | `factorial`, `combinations`, `is_prime`, `primes_below`, `clamp01`, `deg`, `rad`, `moving_total` |
+| `std/text`   | `initials`, `truncate`, `pluralize`, `center_text`, `box` |
+| `std/list`   | `cumulative`, `transpose`, `moving_average`, `pairwise`, `most_common` |
+| `std/stats`  | `variance`, `stdev`, `percentile`, `quartiles`, `iqr`, `zscore`, `normalize`, `correlation`, `summary` |
 
 ---
 
@@ -550,7 +597,8 @@ About 290 names are in scope in every program. Groups include:
 * **Maps** – `keys values entries has get merge pick omit deep_copy`
 * **Math** – `abs round floor ceil sqrt pow exp log sin cos tan atan2 hypot
   clamp lerp sign gcd lcm rand rand_int choice shuffle seed pi e tau`
-* **Time** – `now today timestamp sleep stopwatch elapsed wait_for`
+* **Time** – `now today timestamp sleep stopwatch elapsed wait_for date
+  date_range days hours minutes weeks`
 * **System** – `cmd cmd_print which cwd chdir home hostname platform env args
   arg exit_code`
 * **Files** – `exists is_file is_dir remove remove_dir mkdir copy move list_dir

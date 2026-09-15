@@ -32,7 +32,8 @@ CONSTANTS = {
 
 
 def install(interp) -> None:
-    from . import concurrent, core, graphics, methods, net, system  # noqa: F401
+    from . import (concurrent, core, dates, graphics, methods, net,  # noqa: F401
+                     system)
 
     for nf in core.BUILTINS:
         interp.globals.define(nf.name, nf)

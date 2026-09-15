@@ -697,3 +697,72 @@ class DestructuringParameterTests(unittest.TestCase):
 
     def test_spread_after_a_parenthesised_list(self):
         self.assertEqual(value("[*([1, 2]), 3]"), [1.0, 2.0, 3.0])
+
+
+class OperatorHookTests(unittest.TestCase):
+    VEC = """
+    class Vec {
+      x = 0
+      y = 0
+      new(x, y) { self.x = x; self.y = y }
+      fn __add__(o) { new Vec(self.x + o.x, self.y + o.y) }
+      fn __mul__(k) { new Vec(self.x * k, self.y * k) }
+      fn __rmul__(k) { new Vec(self.x * k, self.y * k) }
+      fn __eq__(o) { self.x == o.x and self.y == o.y }
+      fn __lt__(o) { self.x < o.x }
+      fn str() { "(${self.x}, ${self.y})" }
+    }
+    """
+
+    def test_classes_can_overload_operators(self):
+        self.assertEqual(value(self.VEC + "str(new Vec(1, 2) + new Vec(3, 4))"), "(4, 6)")
+        self.assertEqual(value(self.VEC + "str(new Vec(1, 2) * 3)"), "(3, 6)")
+        self.assertEqual(value(self.VEC + "str(3 * new Vec(1, 2))"), "(3, 6)")
+        self.assertTrue(value(self.VEC + "new Vec(1, 1) == new Vec(1, 1)"))
+        self.assertTrue(value(self.VEC + "new Vec(1, 1) < new Vec(2, 2)"))
+
+    def test_plain_values_are_unaffected(self):
+        self.assertEqual(value("1 + 2"), 3.0)
+        self.assertEqual(value('"a" + "b"'), "ab")
+        self.assertEqual(value("[1] + [2]"), [1.0, 2.0])
+        self.assertEqual(value("{a: 1} + {b: 2}"), {"a": 1.0, "b": 2.0})
+
+
+class DateTests(unittest.TestCase):
+    def test_fields_and_formatting(self):
+        src = 'let d = date("2026-09-15")\n'
+        self.assertEqual(value(src + "d.year"), 2026.0)
+        self.assertEqual(value(src + "d.weekday"), "Tuesday")
+        self.assertEqual(value(src + "d.iso"), "2026-09-15")
+        self.assertEqual(value(src + 'd.format("%d/%m/%Y")'), "15/09/2026")
+        self.assertEqual(value(src + "str(d)"), "2026-09-15")
+        self.assertEqual(value('str(date("2026-09-15 13:45:30"))'), "2026-09-15T13:45:30")
+
+    def test_parsing_several_shapes(self):
+        for text in ("2026-09-15", "2026/09/15", "15/09/2026", "September 15, 2026"):
+            self.assertEqual(value(f'date("{text}").iso'), "2026-09-15", text)
+        self.assertEqual(value('date("15-09-2026", "%d-%m-%Y").iso'), "2026-09-15")
+        self.assertEqual(value("date(1789329600).year"), 2026.0)
+
+    def test_arithmetic_and_comparison(self):
+        src = 'let d = date("2026-09-15")\n'
+        self.assertEqual(value(src + "str(d + days(3))"), "2026-09-18")
+        self.assertEqual(value(src + "str(d - days(1))"), "2026-09-14")
+        self.assertEqual(value(src + 'd.diff(date("2026-09-01"), "days")'), 14.0)
+        self.assertEqual(value(src + "d.add(months: 1).iso"), "2026-10-15")
+        self.assertEqual(value('date("2026-01-31").add(months: 1).iso'), "2026-02-28")
+        self.assertTrue(value(src + 'date("2026-09-01") < d'))
+        self.assertEqual(value(src + 'd - date("2026-09-01")'), 14 * 86400.0)
+
+    def test_ranges_and_helpers(self):
+        self.assertEqual(value('date_range("2026-01-01", "2026-01-04").map((d) -> d.day)'),
+                         [1.0, 2.0, 3.0, 4.0])
+        self.assertEqual(value("hours(2)"), 7200.0)
+        self.assertEqual(value("minutes(90)"), 5400.0)
+        self.assertEqual(value("weeks(1)"), 604800.0)
+        self.assertEqual(value('date("2026-09-15").start_of("month").iso'), "2026-09-01")
+
+    def test_bad_dates_report_clearly(self):
+        with self.assertRaises(Exception) as ctx:
+            run('date("not a date")')
+        self.assertIn("cannot read", str(ctx.exception))

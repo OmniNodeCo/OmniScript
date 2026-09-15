@@ -529,6 +529,20 @@ class Interpreter:
     def e_const(self, node: A.Const, env):
         return node.value
 
+    def dunder(self, obj, name: str):
+        """Find an operator hook such as `__add__` on an object, if it has one."""
+        if isinstance(obj, OmniObject):
+            m = obj.klass.lookup(name)
+            if m is None:
+                return None
+            return BoundMethod(obj, m, obj.klass)
+        if isinstance(obj, HostObject):
+            got = obj.methods.get(name)
+            if got is None:
+                return None
+            return BoundNative(obj, got)
+        return None
+
     def e_chain_compare(self, node: A.ChainCompare, env):
         """`1 < x < 10` -- every pair must hold, each operand evaluated once."""
         left = self.eval(node.operands[0], env)
@@ -668,6 +682,15 @@ class Interpreter:
 
         left = self.eval(node.left, env)
         right = self.eval(node.right, env)
+
+        hook = OPERATOR_HOOKS.get(op)
+        if hook is not None:
+            mine = self.dunder(left, hook)
+            if mine is not None:
+                return self.call_value(mine, [right], {}, node)
+            theirs = self.dunder(right, "__r" + hook[2:])
+            if theirs is not None:
+                return self.call_value(theirs, [left], {}, node)
 
         if op == "==":
             if isinstance(left, OmniObject) and isinstance(right, OmniObject):
@@ -1465,6 +1488,16 @@ def sig_of(params) -> str:
         else:
             parts.append(p["name"])
     return "(" + ", ".join(parts) + ")"
+
+
+# `a + b` on an object calls its `__add__`; `1 + obj` calls the object's
+# `__radd__`. Classes get operator overloading for free.
+OPERATOR_HOOKS = {
+    "+": "__add__", "-": "__sub__", "*": "__mul__", "/": "__div__",
+    "//": "__idiv__", "%": "__mod__", "**": "__pow__",
+    "<": "__lt__", "<=": "__le__", ">": "__gt__", ">=": "__ge__",
+    "==": "__eq__", "!=": "__ne__",
+}
 
 
 Interpreter._dispatch = {

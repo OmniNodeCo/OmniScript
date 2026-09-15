@@ -75,6 +75,14 @@ BODY_STOP = ("RBRACKET", "RPAREN", "COMMA", "NEWLINE", "SEMI", "EOF", "RBRACE",
 SOFT_ENDS = {"else", "catch", "finally", "when"}
 
 
+def reserved_word_hint(tok) -> str | None:
+    """Explain why `let when = 1` cannot work."""
+    if tok.kind == "KW":
+        return (f"`{tok.value}` is a reserved word, so it cannot be a name -- "
+                f"try `{tok.value}_` or something more specific")
+    return None
+
+
 def pattern_label(pattern) -> str:
     """A readable name for a destructuring parameter, used in signatures.
 
@@ -335,14 +343,16 @@ class Parser:
                     self.pos += 1
                     names.append(PBind(nt.value, line=nt.line, col=nt.col))
                 else:
-                    self.fail(f"expected a variable name but found `{nt.value}`")
+                    self.fail(f"expected a variable name but found `{nt.value}`",
+                              nt, reserved_word_hint(nt))
                 if self.at("COLON") and self.peek().kind in ("IDENT", "KW"):
                     self.pos += 1
                     self.parse_type_name()
                 if not self.eat("COMMA"):
                     break
             return names
-        self.fail(f"expected a variable name but found `{t.value}`")
+        self.fail(f"expected a variable name but found `{t.value}`", t,
+                  reserved_word_hint(t))
         return []  # unreachable
 
     def parse_list_pattern(self):
@@ -1223,12 +1233,15 @@ class Parser:
         OmniScript has no labelled statements, so `name:` straight after `{`
         can only mean a map literal.
         """
-        nxt = self.peek()
+        j = self.significant_after(self.pos + 1)
+        if j is None:
+            return False
+        nxt = self.toks[j]
         if nxt.kind in ("STAR", "POWER"):
             return True                      # `{*other}` / `{**other}` spread
         if nxt.kind == "LBRACKET":
             # `{[expr]: value}` -- a computed key, so still a map
-            depth, k = 0, self.pos + 1
+            depth, k = 0, j
             while k < len(self.toks):
                 kind = self.toks[k].kind
                 if kind == "LBRACKET":
@@ -1236,16 +1249,23 @@ class Parser:
                 elif kind == "RBRACKET":
                     depth -= 1
                     if depth == 0:
-                        return k + 1 < len(self.toks) and \
-                            self.toks[k + 1].kind == "COLON"
+                        after = self.significant_after(k + 1)
+                        return after is not None and self.toks[after].kind == "COLON"
                 elif kind == "EOF":
                     break
                 k += 1
             return False
         if nxt.kind in ("IDENT", "STR", "NUM", "SIGVAR") or \
                 (nxt.kind == "KW" and nxt.value in ("true", "false", "null")):
-            return self.peek(2).kind == "COLON"
+            after = self.significant_after(j + 1)
+            return after is not None and self.toks[after].kind == "COLON"
         return False
+
+    def significant_after(self, index: int):
+        """The next index at or after `index` that is not a blank line."""
+        while index < len(self.toks) and self.toks[index].kind in ("NEWLINE", "SEMI"):
+            index += 1
+        return index if index < len(self.toks) else None
 
     def parse_list_lit(self):
         t = self.expect("LBRACKET", "`[`")

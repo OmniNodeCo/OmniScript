@@ -157,3 +157,36 @@ fn parameters_can_be_patterns() {
   let g = fn (x) { x * 2 }
   assert_eq(g(4), 8)
 }
+
+@test
+fn classes_can_overload_operators() {
+  class Vec {
+    x = 0
+    y = 0
+    new(x, y) { self.x = x; self.y = y }
+    fn __add__(o) { new Vec(self.x + o.x, self.y + o.y) }
+    fn __mul__(k) { new Vec(self.x * k, self.y * k) }
+    fn __rmul__(k) { new Vec(self.x * k, self.y * k) }
+    fn __eq__(o) { self.x == o.x and self.y == o.y }
+    fn str() { "(${self.x}, ${self.y})" }
+  }
+  assert_eq(str(new Vec(1, 2) + new Vec(3, 4)), "(4, 6)")
+  assert_eq(str(new Vec(1, 2) * 3), "(3, 6)")
+  assert_eq(str(3 * new Vec(1, 2)), "(3, 6)")
+  assert_true(new Vec(1, 1) == new Vec(1, 1))
+}
+
+@test
+fn dates_read_add_and_compare() {
+  let d = date("2026-09-15")
+  assert_eq(d.year, 2026)
+  assert_eq(d.weekday, "Tuesday")
+  assert_eq(d.format("%d/%m/%Y"), "15/09/2026")
+  assert_eq(str(d + days(3)), "2026-09-18")
+  assert_eq(d.add(months: 1).iso, "2026-10-15")
+  assert_eq(d.diff(date("2026-09-01"), "days"), 14)
+  assert_true(date("2026-09-01") < d)
+  assert_eq(date("15/09/2026").iso, "2026-09-15")
+  assert_eq(date("2026-01-31").add(months: 1).iso, "2026-02-28")
+  assert_eq(date_range("2026-01-01", "2026-01-03").len(), 3)
+}

@@ -1,0 +1,59 @@
+# Descriptive statistics over a list of numbers.
+#   use std/stats
+#   print(summary([4, 8, 15, 16, 23, 42]))
+
+fn variance(xs, sample = true) {
+  if xs.len() < 2 { return 0 }
+  let m = xs.avg()
+  let n = sample ? xs.len() - 1 : xs.len()
+  xs.sum((x) -> (x - m) ** 2) / n
+}
+
+fn stdev(xs, sample = true) { sqrt(variance(xs, sample)) }
+
+fn percentile(xs, p) {
+  let sorted = xs.sort()
+  let rank = clamp(p, 0, 100) / 100 * (sorted.len() - 1)
+  let low = int(rank)
+  let high = min(low + 1, sorted.len() - 1)
+  sorted[low] + (sorted[high] - sorted[low]) * (rank - low)
+}
+
+fn quartiles(xs) {
+  {q1: percentile(xs, 25), median: percentile(xs, 50), q3: percentile(xs, 75)}
+}
+
+fn iqr(xs) { percentile(xs, 75) - percentile(xs, 25) }
+
+fn zscore(xs, x) {
+  let s = stdev(xs)
+  s == 0 ? 0 : (x - xs.avg()) / s
+}
+
+fn normalize(xs) {
+  let low = xs.min()
+  let span = xs.max() - low
+  span == 0 ? xs.map((_) -> 0) : xs.map((x) -> (x - low) / span)
+}
+
+fn correlation(xs, ys) {
+  if xs.len() != ys.len() or xs.len() < 2 { return 0 }
+  let mx = xs.avg()
+  let my = ys.avg()
+  mut top = 0
+  mut dx = 0
+  mut dy = 0
+  for i in 0..xs.len() {
+    let a = xs[i] - mx
+    let b = ys[i] - my
+    top += a * b
+    dx += a * a
+    dy += b * b
+  }
+  dx == 0 or dy == 0 ? 0 : top / sqrt(dx * dy)
+}
+
+fn summary(xs) {
+  merge({count: xs.len(), min: xs.min(), max: xs.max(), sum: xs.sum(),
+         mean: round_to(xs.avg(), 4), stdev: round_to(stdev(xs), 4)}, quartiles(xs))
+}
