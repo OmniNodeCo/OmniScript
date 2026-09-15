@@ -264,11 +264,37 @@ def _regex_test(interp, text, pattern):
     return _re.search(to_string(pattern), to_string(text)) is not None
 
 
+_DOLLAR_REF = _re.compile(r"\$(?:\{(\w+)\}|<(\w+)>|(\d+)|(\w+))")
+
+
+def _replacement_text(rep):
+    """Accept `$1`, `${1}`, `$name`, `${name}` and `$<name>` as group refs.
+
+    Python's own `\\1` and `\\g<name>` spellings keep working too.
+    """
+    if "$" not in rep:
+        return rep
+
+    def swap(m):
+        target = m.group(1) or m.group(2) or m.group(3) or m.group(4)
+        return f"\\g<{target}>"
+
+    return _DOLLAR_REF.sub(swap, rep).replace("$$", "$")
+
+
 @omni("regex_replace")
 def _regex_replace(interp, text, pattern, replacement, count=0.0):
-    """regex_replace(text, r"\\s+", " ") -- swap every match."""
-    return _re.sub(to_string(pattern), to_string(replacement), to_string(text),
-                   count=as_int(count, "count"))
+    """regex_replace(text, r"\\s+", " ") -- swap every match.
+
+    In the replacement, `$1` (or `\\1`) means "capture group 1" and
+    `${name}` (or `$<name>`) means a named group.
+    """
+    try:
+        return _re.sub(to_string(pattern), _replacement_text(to_string(replacement)),
+                       to_string(text), count=as_int(count, "count"))
+    except _re.error as exc:
+        raise OmniRuntimeError(f"the replacement is not valid: {exc}",
+                               hint="use `$1`, `${name}` or plain text") from None
 
 
 @omni("regex_split")

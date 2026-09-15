@@ -68,8 +68,11 @@ pip install -e .
 ./omni examples/01_hello.omni         # ...same thing, shorter
 ./omni -e 'print(2 ** 10)'            # run a one-liner
 ./omni repl                           # interactive prompt
+./omni check file.omni                # syntax check without running
+./omni ast -e 'let x = 1 + 2 * 3'     # print the syntax tree
+./omni tokens -e '1..3'               # print the token stream
 ./omni test                           # run every @test in the project
-./omni docs                           # list all ~250 built-ins
+./omni docs                           # list all 290 built-ins
 ./omni docs chart                     # explain one of them
 ```
 
@@ -232,7 +235,7 @@ omniscript/           the language itself
     concurrent.py     parallel(), parallel_map(), spawn()
   std/                importable .omni modules: math, text, list
 examples/             runnable showcase programs (outputs land in .preview/)
-tests/                test_language.py (57 cases) + core_test.omni (12 cases)
+tests/                78 interpreter cases + 24 in-language @test cases
 extras/vscode/        syntax highlighting for VS Code / Cursor
 ```
 

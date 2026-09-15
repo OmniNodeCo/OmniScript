@@ -1070,6 +1070,10 @@ class Interpreter:
                                            node.line, node.col)
             fn = self.get_member(obj, callee.name, callee, env)
             if fn is _MISSING:
+                if callee.optional:
+                    return None      # `cfg?.missing()` stays null instead of raising
+                self.member_error(obj, callee.name, callee)
+            if fn is _MISSING:
                 self.member_error(obj, callee.name, node)
             if isinstance(fn, (OmniFunction,)):
                 return self.call_function(fn, args, kwargs, node, self_obj=self_obj)

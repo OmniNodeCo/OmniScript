@@ -337,17 +337,23 @@ def _unique(interp, value):
 
 @omni("flatten", alias=("flat",))
 def _flatten(interp, value, depth=1.0):
-    """flatten(items, depth: 1) -- unwrap nested lists."""
+    """flatten(items, depth: 1) -- unwrap nested lists; depth: -1 unwraps all of them."""
     d = as_int(depth, "depth")
     items = list(interp.iterate(value))
-    for _ in range(d):
+    passes = 0
+    while d < 0 or passes < d:
         out = []
+        changed = False
         for v in items:
             if isinstance(v, list):
                 out.extend(v)
+                changed = True
             else:
                 out.append(v)
         items = out
+        passes += 1
+        if not changed:
+            break
     return items
 
 

@@ -68,7 +68,8 @@ let doc = """
 """
 ```
 
-Escapes: `\n \t \r \\ \' \" \0 \x41 \u{1F600}`.
+Escapes: `\n \t \r \\ \' \" \0 \a \b \f \v \e \x41 \u{1F600}`.
+`\$` prints a literal dollar sign, so `"\${not interpolated}"` stays as typed.
 
 Interpolation, two spellings of the same thing:
 
@@ -141,9 +142,14 @@ let xs = [10, 20, 30, 40]
 xs[0]        # 10
 xs[-1]       # 40
 xs[1..3]     # [20, 30]
+xs[..2]      # [10, 20]     open start
+xs[..=2]     # [10, 20, 30] open start, inclusive end
+xs[2..]      # [30, 40]     open end
 xs[::-1]     # [40, 30, 20, 10]
 "hello"[1]   # "e"
 ```
+
+Range bounds may be arithmetic: `[0..xs.len() - 1]` means `0..(xs.len() - 1)`.
 
 ---
 
@@ -211,7 +217,9 @@ Notes:
 * `+` joins text when either side is text, and concatenates lists.
 * `?? ` returns the left side unless it is `null`.
 * `?:` returns the left side unless it is falsy.
-* `?.` stops the chain at `null`: `config?.db?.host ?? "localhost"`.
+* `?.` stops the chain at `null` **and** at a missing key — including calls:
+  `config?.db?.host ?? "localhost"` and `config?.refresh()` both yield `null`
+  instead of raising.
 * `is` / `isnt` test types (`num str bool list map fn null range obj any int`)
   or classes: `x is Point`.
 * `|>` feeds the left value in as the **first** argument; `||>` feeds it in as
@@ -241,6 +249,14 @@ greet(punctuation: "?", who: "ada")   # by keyword, any order
 * A body’s **last expression** is the return value; `return` exits early.
 * `*rest` collects extra positional arguments; `**extra` collects unknown
   keywords. Parameters after `*rest` are keyword-only.
+* Sorting callbacks may declare **one** parameter (a key function) or **two**
+  (a comparator):
+
+```omni
+people.sort("age", desc: true)                 # by a field name
+people.sort((p) -> p.age)                      # by a computed key
+people.sort((a, b) -> len(a.name) - len(b.name))   # by comparing two
+```
 * Lambdas: `(x) -> x * 2` for one expression, `(x) -> { ... }` for a block.
   `fn (x) { ... }` also works.
 * Closures capture their surroundings and keep them alive.
@@ -339,6 +355,7 @@ c is Shape        # true
 ```
 
 * Methods take `self` implicitly; fields live on `self`.
+* `new Point(1, 2).length()` chains: the object is built first.
 * Without a `new`, `new Class(a, b)` assigns arguments to fields in
   declaration order, and keywords by name.
 * `super` refers to the parent class inside a method.
@@ -445,9 +462,13 @@ plain function, so pick the style you like.
 ```
 
 Common list methods: `len size push pop shift unshift insert remove at first
-last contains index_of take drop slice reverse sort unique flatten join concat
-map filter reject reduce each find some every sum avg min max chunk zip pairs
-group_by to_map sample shuffle clear counts flat_map take_while drop_while`.
+last contains index_of take drop slice reverse sort sort_by unique flatten
+join concat map map_each filter reject reduce each find some every sum avg
+min max chunk zip pairs group_by to_map sample shuffle clear counts flat_map
+take_while drop_while`.
+
+`flatten()` unwraps one level; `flatten(depth: 2)` unwraps two;
+`flatten(depth: -1)` unwraps all of them.
 
 Common text methods: `len upper lower title capitalize trim split replace
 contains starts_with ends_with index_of chars words lines bytes repeat
@@ -466,7 +487,7 @@ times up_to down_to is_even is_odd between percent_of gcd format ordinal`.
 
 ## 12. Built-in index
 
-About 250 names are in scope in every program. Groups include:
+About 290 names are in scope in every program. Groups include:
 
 * **I/O** – `print show input read write append read_lines write_lines read_csv
   write_csv read_json write_json table exit`
@@ -486,7 +507,10 @@ About 250 names are in scope in every program. Groups include:
 * **Network** – `http http_get http_post http_put http_patch http_delete
   download ping http_get_all url_encode url_decode url_parts`
 * **Patterns** – `regex regex_all regex_named regex_test regex_replace
-  regex_split regex_escape`
+  regex_split regex_escape`. In a replacement, `$1`, `${1}`, `\1`, `$name`,
+  `${name}` and `$<name>` all mean a capture group; `$$` is a literal `$`.
+  `regex_all(text, pattern, groups: true)` returns the groups instead of the
+  whole match.
 * **Drawing** – `draw window window_size chart sparkline progress_bar rgb hsl
   mix_colors palette save_picture`
 * **Concurrency** – `parallel parallel_map spawn repeat_for`

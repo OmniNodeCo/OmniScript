@@ -16,7 +16,7 @@ import sys
 import time
 
 from . import __version__
-from .errors import OmniError, OmniThrow, describe
+from .errors import OmniError, OmniRuntimeError, OmniThrow, describe
 from .interp import Interpreter
 from .lexer import tokenize
 from .parser import parse
@@ -204,39 +204,50 @@ def _unfinished(source: str) -> bool:
 
 
 # ------------------------------------------------------------------- check
+def _source_of(args):
+    """The program to inspect: either `-e code` or the contents of a file."""
+    inline = getattr(args, "eval", None)
+    path = getattr(args, "file", None)
+    if inline:
+        return inline, "<-e>"
+    if not path:
+        raise OmniRuntimeError("give me a file to read, or use `-e \"code\"`")
+    full = os.path.abspath(path)
+    if not os.path.isfile(full):
+        raise OmniRuntimeError(f"cannot find `{path}`")
+    with open(full, "r", encoding="utf-8") as fh:
+        return fh.read(), path
+
+
 def cmd_check(args) -> int:
-    path = os.path.abspath(args.file)
-    with open(path, "r", encoding="utf-8") as fh:
-        src = fh.read()
     interp = make_interp(args)
     try:
+        src, path = _source_of(args)
         parse(src, path)
     except OmniError as err:
-        return report(interp, err, path)
-    interp.out(f"{args.file}: syntax is fine")
+        return report(interp, err, getattr(args, "file", None) or "<-e>")
+    interp.out(f"{path}: syntax is fine")
     return 0
 
 
 def cmd_tokens(args) -> int:
-    with open(args.file, "r", encoding="utf-8") as fh:
-        src = fh.read()
     interp = make_interp(args)
     try:
-        for tok in tokenize(src, args.file):
+        src, path = _source_of(args)
+        for tok in tokenize(src, path):
             print(f"{tok.line:4}:{tok.col:<4} {tok.kind:10} {tok.value!r}")
     except OmniError as err:
-        return report(interp, err, args.file)
+        return report(interp, err, getattr(args, "file", None) or "<-e>")
     return 0
 
 
 def cmd_ast(args) -> int:
-    with open(args.file, "r", encoding="utf-8") as fh:
-        src = fh.read()
     interp = make_interp(args)
     try:
-        program = parse(src, args.file)
+        src, path = _source_of(args)
+        program = parse(src, path)
     except OmniError as err:
-        return report(interp, err, args.file)
+        return report(interp, err, getattr(args, "file", None) or "<-e>")
     for node in program:
         print(repr(node))
     return 0
@@ -369,17 +380,20 @@ def build_parser() -> argparse.ArgumentParser:
     repl.set_defaults(func=cmd_repl)
 
     check = sub.add_parser("check", help="check syntax without running")
-    check.add_argument("file")
+    check.add_argument("file", nargs="?")
+    check.add_argument("-e", "--eval", help="inspect this code instead of a file")
     common(check)
     check.set_defaults(func=cmd_check)
 
     toks = sub.add_parser("tokens", help="print the token stream (debugging)")
-    toks.add_argument("file")
+    toks.add_argument("file", nargs="?")
+    toks.add_argument("-e", "--eval", help="inspect this code instead of a file")
     common(toks)
     toks.set_defaults(func=cmd_tokens)
 
     astp = sub.add_parser("ast", help="print the syntax tree (debugging)")
-    astp.add_argument("file")
+    astp.add_argument("file", nargs="?")
+    astp.add_argument("-e", "--eval", help="inspect this code instead of a file")
     common(astp)
     astp.set_defaults(func=cmd_ast)
 

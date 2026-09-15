@@ -647,16 +647,22 @@ def unique(self):
 
 @method("list")
 def flatten(self, depth=1.0):
-    """unwrap nested lists"""
+    """unwrap nested lists; depth: -1 unwraps all of them"""
     items = list(_need(self, list, "flatten"))
-    for _ in range(as_int(depth, "depth")):
-        out = []
+    limit = as_int(depth, "depth")
+    passes = 0
+    while limit < 0 or passes < limit:
+        out, changed = [], False
         for v in items:
             if isinstance(v, list):
                 out.extend(v)
+                changed = True
             else:
                 out.append(v)
         items = out
+        passes += 1
+        if not changed:
+            break
     return items
 
 

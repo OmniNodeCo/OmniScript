@@ -527,3 +527,72 @@ class NewSyntaxTests(unittest.TestCase):
         with self.assertRaises(Exception):
             run("assert_eq(1, 2)")
         self.assertTrue(value("assert_throws(() -> error('x'))"))
+
+
+class HardeningTests(unittest.TestCase):
+    """Edge cases found by the torture script."""
+
+    def test_optional_call_on_a_missing_key(self):
+        self.assertIsNone(value("let m = {a: 1}\nm?.missing()"))
+        self.assertEqual(value('let m = {a: 1}\nm?.missing() ?? "none"'), "none")
+        with self.assertRaises(Exception):
+            run("let m = {a: 1}\nm.missing()")
+
+    def test_flatten_depth(self):
+        self.assertEqual(value("[1,[2,[3,[4]]]].flatten()"), [1.0, 2.0, [3.0, [4.0]]])
+        self.assertEqual(value("[1,[2,[3,[4]]]].flatten(depth: -1)"),
+                         [1.0, 2.0, 3.0, 4.0])
+        self.assertEqual(value("flatten([1,[2,[3]]], depth: 2)"), [1.0, 2.0, 3.0])
+
+    def test_regex_replacement_groups(self):
+        self.assertEqual(value(r'regex_replace("2026-09-15", r"(\d+)-(\d+)-(\d+)", "$3/$2/$1")'),
+                         "15/09/2026")
+        self.assertEqual(value(r'regex_replace("2026-09-15", r"(\d+)-(\d+)-(\d+)", "\\3")'),
+                         "15")
+        self.assertEqual(
+            value(r'regex_replace("ada lovelace", r"(?P<f>\w+) (?P<l>\w+)", "\${l}, \${f}")'),
+            "lovelace, ada")
+        self.assertEqual(value(r'regex_replace("a b c", r" ", "_", count: 1)'), "a_b c")
+
+    def test_regex_all_groups(self):
+        self.assertEqual(value(r'regex_all("a1 b22", r"([a-z])(\d+)", groups: true)'),
+                         [["a", "1"], ["b", "22"]])
+
+    def test_escaped_dollar_is_literal(self):
+        self.assertEqual(value(r'print_me = "\${x}"'), "${x}")
+        self.assertEqual(value('let x = 1\n"${x}"'), "1")
+
+    def test_new_then_method_chain(self):
+        src = """
+        class P { x = 0; y = 0
+          new(x, y) { self.x = x; self.y = y }
+          fn sum() { self.x + self.y } }
+        new P(2, 3).sum()
+        """
+        self.assertEqual(value(src), 5.0)
+
+    def test_protocol_hooks(self):
+        src = """
+        class Bag {
+          items = []
+          new(*xs) { self.items = list(xs) }
+          fn len() { self.items.len() }
+          fn iter() { self.items }
+          fn eq(other) { self.items == other.items }
+          fn str() { "Bag(${self.items.len()})" }
+        }
+        let b = new Bag(1, 2, 3)
+        mut total = 0
+        for x in b { total += x }
+        [str(b), len(b), b == new Bag(1, 2, 3), total]
+        """
+        self.assertEqual(value(src), ["Bag(3)", 3.0, True, 6.0])
+
+    def test_closures_capture_per_iteration(self):
+        src = "let fns = []\nfor i in 1..=3 { fns.push(() -> i) }\nfns.map((f) -> f())"
+        self.assertEqual(value(src), [1.0, 2.0, 3.0])
+
+    def test_try_inside_map(self):
+        src = 'let safe = (a, b) -> try { a / b } catch e { "err" }\n' \
+              '[1, 0, 2].map((x) -> safe(10, x))'
+        self.assertEqual(value(src), [10.0, "err", 5.0])
