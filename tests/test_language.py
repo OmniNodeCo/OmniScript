@@ -664,3 +664,36 @@ class LayoutTests(unittest.TestCase):
         # ...while a brace that is not a map still opens a block
         self.assertEqual(value("let f = (x) -> { let y = x + 1; y * 10 }\nf(4)"), 50.0)
         self.assertEqual(value("let g = (x) -> {x * 2}\ng(4)"), 8.0)
+
+
+class DestructuringParameterTests(unittest.TestCase):
+    def test_list_and_map_parameters(self):
+        self.assertEqual(value("fn dist([x1, y1], [x2, y2]) { ((x2-x1)**2 + (y2-y1)**2) ** 0.5 }\n"
+                               "dist([0, 0], [3, 4])"), 5.0)
+        self.assertEqual(value('fn show({name, age}) { "${name} is ${age}" }\n'
+                               'show({name: "ada", age: 36})'), "ada is 36")
+        self.assertEqual(value('fn rename({name: who}) { who }\nrename({name: "grace"})'),
+                         "grace")
+        self.assertEqual(value("fn head([first, *rest]) { [first, rest] }\nhead([1, 2, 3])"),
+                         [1.0, [2.0, 3.0]])
+
+    def test_patterns_in_lambdas(self):
+        self.assertEqual(value("[[1, 2], [3, 4]].map(([a, b]) -> a * b)"), [2.0, 12.0])
+        self.assertEqual(value("[{n: 1}, {n: 2}].map(({n}) -> n * 10)"), [10.0, 20.0])
+        self.assertEqual(value("let f = ([a, b]) -> a + b\nf([2, 3])"), 5.0)
+
+    def test_block_body_without_an_arrow(self):
+        self.assertEqual(value("let g = fn (x) { x * 2 }\ng(4)"), 8.0)
+        self.assertEqual(value("(fn (a, b) { a - b })(9, 4)"), 5.0)
+
+    def test_pattern_default(self):
+        self.assertEqual(value("fn total([a, b] = [10, 20]) { a + b }\n[total(), total([1, 1])]"),
+                         [30.0, 2.0])
+
+    def test_missing_pattern_argument_is_reported_by_shape(self):
+        with self.assertRaises(Exception) as ctx:
+            run("fn dist([x1, y1], [x2, y2]) { x1 }\ndist([0, 0])")
+        self.assertIn("[x2, y2]", str(ctx.exception))
+
+    def test_spread_after_a_parenthesised_list(self):
+        self.assertEqual(value("[*([1, 2]), 3]"), [1.0, 2.0, 3.0])

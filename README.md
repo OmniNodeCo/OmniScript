@@ -203,10 +203,12 @@ forget to save is written for you when the program ends.
   `${...}` and `\{...}` interpolation, lists, maps, ranges (`1..10`,
   `1..=10`, `1..10..2`), booleans, `null`.
 * **Bindings** – `let` (immutable) and `mut` (mutable), destructuring
-  (`let [a, *rest] = ...`, `let {name, age} = ...`).
-* **Functions** – defaults, keyword arguments, `*rest` / `**extra`, closures,
-  lambdas (`(x) -> x * 2` or `(x) -> { ... }`), implicit last-expression
-  return, `@memo`, `@test`, `@main`, `@deprecated`.
+  (`let [a, *rest] = ...`, `let {name, age} = ...`, `a, b = b, a`).
+* **Functions** – defaults, keyword arguments, `*rest` / `**extra`,
+  **destructuring parameters** (`fn dist([x1, y1], [x2, y2])`,
+  `pairs.map(([a, b]) -> a * b)`), closures, lambdas (`(x) -> x * 2`,
+  `(x) -> { ... }`, `fn (x) { ... }`), implicit last-expression return,
+  `@memo`, `@test`, `@main`, `@deprecated`.
 * **Control flow** – `if`/`else if`/`else` (also an expression), `for` over
   anything iterable (with `for k, v in map`), `while`, `do while`, `break`,
   `continue`, `match` with guards and patterns, `try`/`catch`/`finally`.

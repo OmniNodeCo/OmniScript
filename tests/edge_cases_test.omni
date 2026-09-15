@@ -143,3 +143,17 @@ fn several_targets_assign_at_once() {
   assert_eq(xs, [9, 2])
   assert_eq(ys, [3, 8])
 }
+
+@test
+fn parameters_can_be_patterns() {
+  fn dist([x1, y1], [x2, y2]) { ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5 }
+  assert_eq(dist([0, 0], [3, 4]), 5)
+  fn show({name, age}) { "${name} is ${age}" }
+  assert_eq(show({name: "ada", age: 36}), "ada is 36")
+  assert_eq([[1, 2], [3, 4]].map(([a, b]) -> a * b), [2, 12])
+  assert_eq([{n: 1}, {n: 2}].map(({n}) -> n * 10), [10, 20])
+  fn total([a, b] = [10, 20]) { a + b }
+  assert_eq([total(), total([1, 1])], [30, 2])
+  let g = fn (x) { x * 2 }
+  assert_eq(g(4), 8)
+}

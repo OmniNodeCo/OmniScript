@@ -1301,8 +1301,13 @@ class Interpreter:
 
     # -------------------------------------------------------------- lambda
     def e_lambda(self, node: A.Lambda, env):
-        params = [{"name": p["name"], "default": p["default"], "rest": p["rest"],
-                   "kwrest": p["kwrest"]} for p in node.params]
+        params = []
+        for p in node.params:
+            q = dict(p)
+            q.setdefault("kw_only", False)
+            q.setdefault("type", None)
+            q.setdefault("pattern", None)
+            params.append(q)
         if node.is_block:
             body = node.body
         else:
@@ -1371,8 +1376,14 @@ def bind_params(interp: "Interpreter", params, args, kwargs, env: Environment,
                 fname: str, node):
     bound = _bind(params, args, kwargs, fname, node,
                   evaluate=lambda p: interp.eval(p["default"], env))
+    patterns = {p["name"]: p.get("pattern") for p in params if p.get("pattern")}
     for name, value in bound.items():
-        env.define(name, value)
+        pattern = patterns.get(name)
+        if pattern is not None:
+            # `fn dist([x1, y1], ...)` -- unpack the argument into its parts
+            interp.bind_pattern(pattern, value, env, False, node)
+        else:
+            env.define(name, value)
 
 
 def _bind(params, args, kwargs, fname, node, evaluate):

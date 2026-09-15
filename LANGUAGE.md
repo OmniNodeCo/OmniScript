@@ -288,6 +288,17 @@ greet(punctuation: "?", who: "ada")   # by keyword, any order
 * A body’s **last expression** is the return value; `return` exits early.
 * `*rest` collects extra positional arguments; `**extra` collects unknown
   keywords. Parameters after `*rest` are keyword-only.
+* A parameter may be a **pattern**, which unpacks the argument for you:
+
+```omni
+fn dist([x1, y1], [x2, y2]) { ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5 }
+fn show({name, age}) { "${name} is ${age}" }
+fn rename({name: who}) { who }
+fn head([first, *rest]) { first }
+
+pairs.map(([a, b]) -> a * b)         # the same works in lambdas
+fn total([a, b] = [0, 0]) { a + b }  # ...and with a default
+```
 * Sorting callbacks may declare **one** parameter (a key function) or **two**
   (a comparator):
 
@@ -296,8 +307,8 @@ people.sort("age", desc: true)                 # by a field name
 people.sort((p) -> p.age)                      # by a computed key
 people.sort((a, b) -> len(a.name) - len(b.name))   # by comparing two
 ```
-* Lambdas: `(x) -> x * 2` for one expression, `(x) -> { ... }` for a block.
-  `fn (x) { ... }` also works. A brace that is clearly a map stays a map, so
+* Lambdas: `(x) -> x * 2` for one expression, `(x) -> { ... }` for a block,
+  and `fn (x) { ... }` when you would rather not type the arrow. A brace that is clearly a map stays a map, so
   `(n) -> {word: n}` returns `{word: n}` instead of opening a block.
 * Closures capture their surroundings and keep them alive.
 * Callbacks may declare fewer parameters than they are given; extras are

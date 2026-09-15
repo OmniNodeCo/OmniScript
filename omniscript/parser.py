@@ -37,6 +37,7 @@ from .ast import (Assign, Binary, Block, Bool, Break, Call, ChainCompare, ClassD
                   SigAttr, Slice, Str, Ternary, Throw, Try, Unary, Use, While)
 from .errors import OmniError, OmniSyntaxError
 from .lexer import Token, tokenize
+from .values import to_repr
 
 COMPOUND = {
     "PLUSEQ": "+", "MINUSEQ": "-", "STAREQ": "*", "SLASHEQ": "/", "PERCEQ": "%",
@@ -72,6 +73,33 @@ BODY_STOP = ("RBRACKET", "RPAREN", "COMMA", "NEWLINE", "SEMI", "EOF", "RBRACE",
 # Statement terminators we tolerate without consuming (the enclosing construct
 # still needs to see them).
 SOFT_ENDS = {"else", "catch", "finally", "when"}
+
+
+def pattern_label(pattern) -> str:
+    """A readable name for a destructuring parameter, used in signatures.
+
+    `[x1, y1]` stays `[x1, y1]`, so an error can say which one was missing.
+    """
+    if isinstance(pattern, PBind):
+        return pattern.name
+    if isinstance(pattern, PWild):
+        return "_"
+    if isinstance(pattern, PLit):
+        return to_repr(pattern.value) if pattern.value is not None else "null"
+    if isinstance(pattern, PTyped):
+        return f"{pattern.name} is {pattern.type}"
+    if isinstance(pattern, PList):
+        inner = ", ".join(pattern_label(p) for p in pattern.items)
+        if pattern.rest:
+            inner = f"{inner}, *{pattern.rest}" if inner else f"*{pattern.rest}"
+        return f"[{inner}]"
+    if isinstance(pattern, PMap):
+        parts = []
+        for key, sub in pattern.entries:
+            label = pattern_label(sub)
+            parts.append(label if label == key else f"{key}: {label}")
+        return "{" + ", ".join(parts) + "}"
+    return "_"
 
 
 class Parser:
@@ -396,10 +424,18 @@ class Parser:
                 kwrest = True
                 self.pos += 1
             nt = self.cur()
-            ok = nt.kind in ("IDENT", "SIGVAR") or (nt.kind == "KW" and nt.value in TYPE_WORDS)
-            if not ok:
-                self.fail(f"expected a parameter name but found `{nt.value}`")
-            self.pos += 1
+            pattern = None
+            if nt.kind in ("LBRACKET", "LBRACE"):
+                # a destructuring parameter: fn dist([x1, y1], [x2, y2])
+                pattern = self.parse_pattern()
+                pname = pattern_label(pattern)
+            else:
+                ok = nt.kind in ("IDENT", "SIGVAR") or \
+                    (nt.kind == "KW" and nt.value in TYPE_WORDS)
+                if not ok:
+                    self.fail(f"expected a parameter name but found `{nt.value}`")
+                self.pos += 1
+                pname = nt.value
             type_annot = None
             if self.at("COLON") and self.peek().kind in ("IDENT", "KW"):
                 self.pos += 1
@@ -407,9 +443,9 @@ class Parser:
             default = None
             if self.eat("ASSIGN"):
                 default = self.parse_expr()
-            params.append({"name": nt.value, "default": default, "rest": rest,
+            params.append({"name": pname, "default": default, "rest": rest,
                            "kwrest": kwrest, "type": type_annot, "line": nt.line,
-                           "kw_only": seen_rest})
+                           "kw_only": seen_rest, "pattern": pattern})
             seen_rest = seen_rest or rest
             self.skip_seps()
             if not self.eat("COMMA"):
@@ -1111,8 +1147,10 @@ class Parser:
 
     def try_parse_lambda_params(self):
         """Read `(a, b=1, *rest)` and confirm it is followed by `->` / `=>`."""
-        if not (self.at("IDENT") or self.at("SIGVAR") or self.at("STAR")):
+        if not (self.at("IDENT") or self.at("SIGVAR") or self.at("STAR")
+                or self.at("LBRACKET") or self.at("LBRACE")):
             return None
+        start = self.pos
         params = []
         try:
             while True:
@@ -1120,13 +1158,21 @@ class Parser:
                 if self.at("STAR"):
                     self.pos += 1
                     rest = True
-                if not (self.at("IDENT") or self.at("SIGVAR")):
-                    return None
                 nt = self.cur()
-                self.pos += 1
+                pattern = None
+                if nt.kind in ("LBRACKET", "LBRACE"):
+                    pattern = self.parse_pattern()
+                    pname = pattern_label(pattern)
+                elif nt.kind in ("IDENT", "SIGVAR"):
+                    self.pos += 1
+                    pname = nt.value
+                else:
+                    self.pos = start
+                    return None
                 default = self.parse_expr() if self.eat("ASSIGN") else None
-                params.append({"name": nt.value, "default": default, "rest": rest,
-                               "kwrest": False, "type": None, "line": nt.line})
+                params.append({"name": pname, "default": default, "rest": rest,
+                               "kwrest": False, "type": None, "line": nt.line,
+                               "pattern": pattern})
                 self.skip_seps()
                 if not self.eat("COMMA"):
                     break
@@ -1134,14 +1180,24 @@ class Parser:
                 if self.at("RPAREN"):
                     break
             if not self.at("RPAREN"):
+                self.pos = start
                 return None
             self.pos += 1
         except OmniSyntaxError:
+            self.pos = start
             return None
-        return params if (self.at("ARROW") or self.at("FAT_ARROW")) else None
+        if self.at("ARROW") or self.at("FAT_ARROW"):
+            return params
+        self.pos = start
+        return None
 
     def parse_lambda_tail(self, params, t):
         if not (self.at("ARROW") or self.at("FAT_ARROW")):
+            if self.at("LBRACE") and not self.brace_starts_a_map():
+                # `fn (x) { ... }` -- a block body needs no arrow
+                bt = self.cur()
+                return Lambda(params, self.block_of(self.parse_block(), bt.line, bt.col),
+                              True, line=t.line, col=t.col)
             self.fail(f"expected `->` after the parameter list but found `{self.cur().value}`")
         self.pos += 1
         if self.at("LBRACE"):
