@@ -159,6 +159,7 @@ class Interpreter:
     def load_builtins(self):
         from .stdlib import install
         install(self)
+        self.prelude = set(self.globals.vars)
 
     def run_source(self, src: str, path: str = "<stdin>", env: Environment | None = None):
         self.sources[path] = src
@@ -348,8 +349,15 @@ class Interpreter:
                                     hint="give the class an `iter()` method")
             pairs = list(self.call_value(it, [], {}, node=None, self_obj=iterable))
         else:
+            hint = None
+            if isinstance(iterable, (int, float)) and not isinstance(iterable, bool):
+                n = fmt_num(float(iterable))
+                hint = (f"a number is not a sequence -- try `for i in 1..{n}` "
+                        f"or `{n}.times((i) -> ...)`")
+            elif iterable is None:
+                hint = "this value is null; guard it with `?.` or `?? []`"
             raise OmniTypeError(f"cannot loop over {type_name(iterable)}",
-                                node.line, node.col)
+                                node.line, node.col, hint=hint)
 
         if step is not None and not isinstance(iterable, OmniRange):
             pairs = pairs[::int(step)]
@@ -594,7 +602,8 @@ class Interpreter:
             while e is not None:
                 known |= set(e.vars)
                 e = e.parent
-            hint = suggest(node.name, known)
+            builtins = set(self.builtin_index) | set(getattr(self, "prelude", ()))
+            hint = suggest(node.name, known - builtins) or suggest(node.name, known)
             raise OmniNameError(f"`{node.name}` is not defined", node.line, node.col, hint)
         return val
 
@@ -930,9 +939,17 @@ class Interpreter:
         if isinstance(target, A.Ident):
             existing = env.find(target.name)
             if existing is None:
-                env.define(target.name, value)
-            else:
-                env.assign(target.name, value, node)
+                known = set()
+                e = env
+                while e is not None:
+                    known |= set(e.vars)
+                    e = e.parent
+                hint = suggest(target.name, known) or (
+                    f"declare it first with `let {target.name} = ...` or "
+                    f"`mut {target.name} = ...`")
+                raise OmniNameError(f"`{target.name}` is not defined",
+                                    node.line, node.col, hint=hint)
+            existing.assign(target.name, value, node)
         elif isinstance(target, A.Index):
             obj = self.eval(target.obj, env)
             key = self.eval(target.index, env)
@@ -1188,6 +1205,15 @@ class Interpreter:
             self.call_function(ctor, args, kwargs, node, self_obj=obj)
         elif args or kwargs:
             names = [f[0] for f in klass.fields]
+            if len(args) > len(names):
+                extra = len(args) - len(names)
+                fields = ", ".join(names) or "no fields at all"
+                raise OmniRuntimeError(
+                    f"`new {klass.name}()` got {extra} argument{'s' if extra > 1 else ''} "
+                    f"too many",
+                    getattr(node, "line", None), getattr(node, "col", None),
+                    hint=f"{klass.name} has {fields}, and no `new` to take the rest -- "
+                         f"give it one, or pass keywords")
             for name, value in list(kwargs.items()):
                 obj.fields[name] = value
             for name, value in zip(names, args):

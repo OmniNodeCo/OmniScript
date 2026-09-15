@@ -139,7 +139,51 @@ def describe(value) -> str:
     return f"<{type(value).__name__}>"
 
 
-def suggest(name: str, known) -> str | None:
-    """Return a 'did you mean' hint for an unknown identifier."""
-    matches = difflib.get_close_matches(name, list(known), n=1, cutoff=0.58)
-    return f"did you mean `{matches[0]}`?" if matches else None
+def edit_distance(a: str, b: str) -> int:
+    """Damerau-Levenshtein distance: insertions, deletions, edits, swaps.
+
+    difflib's ratio rates `nma` -> `name` (a transposition) poorly, so
+    suggestions are ranked by real typing distance first and ratio second.
+    """
+    if a == b:
+        return 0
+    la, lb = len(a), len(b)
+    if not la or not lb:
+        return max(la, lb)
+    two_back = None
+    back = list(range(lb + 1))
+    for i in range(1, la + 1):
+        row = [i] + [0] * lb
+        for j in range(1, lb + 1):
+            cost = 0 if a[i - 1] == b[j - 1] else 1
+            row[j] = min(back[j] + 1, row[j - 1] + 1, back[j - 1] + cost)
+            if i > 1 and j > 1 and a[i - 1] == b[j - 2] and a[i - 2] == b[j - 1]:
+                row[j] = min(row[j], two_back[j - 2] + 1)
+        two_back, back = back, row
+    return back[lb]
+
+
+def suggest(name: str, known, cutoff: float | None = None) -> str | None:
+    """Return a 'did you mean' hint for an unknown identifier.
+
+    Only names within a small typing distance qualify, so a long unfamiliar
+    word never gets a nonsense suggestion, and the closest one wins.
+    """
+    if len(name) <= 2:
+        return None        # a one- or two-letter name matches everything
+    limit = 2 if len(name) <= 8 else max(2, len(name) // 4)
+    scored = []
+    for candidate in known:
+        if not isinstance(candidate, str) or candidate == name:
+            continue
+        distance = edit_distance(name, candidate)
+        if distance > limit:
+            continue
+        ratio = difflib.SequenceMatcher(None, name, candidate).ratio()
+        if cutoff is not None and ratio < cutoff:
+            continue
+        scored.append((distance, -ratio, candidate))
+    if not scored:
+        return None
+    scored.sort()
+    return f"did you mean `{scored[0][2]}`?"

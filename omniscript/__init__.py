@@ -8,6 +8,13 @@ from __future__ import annotations
 
 from .errors import (OmniError, OmniLexError, OmniNameError, OmniRuntimeError,
                      OmniSyntaxError, OmniThrow, OmniTypeError)
+import sys as _sys
+
+# One OmniScript call costs several Python frames, so the interpreter's own
+# depth guard (MAX_CALL_DEPTH) has to fire first and report a real error.
+if _sys.getrecursionlimit() < 12000:
+    _sys.setrecursionlimit(12000)
+
 from .interp import Environment, Interpreter
 from .lexer import tokenize
 from .parser import parse

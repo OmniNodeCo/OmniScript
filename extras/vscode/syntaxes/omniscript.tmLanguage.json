@@ -91,8 +91,8 @@
           "match": "\\b(true|false|null|self|super)\\b"
         },
         {
-          "name": "support.variable.omni",
-          "match": "\\b(pi|e|tau|args)\\b"
+          "name": "support.constant.omni",
+          "match": "\\b(pi|e|tau|inf|nan|phi|sqrt2|version|os)\\b"
         }
       ]
     },

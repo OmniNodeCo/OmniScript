@@ -559,7 +559,7 @@ class HardeningTests(unittest.TestCase):
                          [["a", "1"], ["b", "22"]])
 
     def test_escaped_dollar_is_literal(self):
-        self.assertEqual(value(r'print_me = "\${x}"'), "${x}")
+        self.assertEqual(value(r'"\${x}"'), "${x}")
         self.assertEqual(value('let x = 1\n"${x}"'), "1")
 
     def test_new_then_method_chain(self):
@@ -766,3 +766,40 @@ class DateTests(unittest.TestCase):
         with self.assertRaises(Exception) as ctx:
             run('date("not a date")')
         self.assertIn("cannot read", str(ctx.exception))
+
+
+class StrictnessTests(unittest.TestCase):
+    def test_assigning_an_undeclared_name_is_an_error(self):
+        with self.assertRaises(Exception) as ctx:
+            run("x = 5")
+        self.assertIn("not defined", str(ctx.exception))
+        self.assertIn("declare it first", ctx.exception.hint or "")
+
+    def test_a_typo_in_an_assignment_suggests_the_real_name(self):
+        with self.assertRaises(Exception) as ctx:
+            run("let total = 1\ntotl = 5")
+        self.assertIn("did you mean `total`?", ctx.exception.hint or "")
+
+    def test_short_names_get_no_guess(self):
+        with self.assertRaises(Exception) as ctx:
+            run("x = 5")
+        self.assertNotIn("did you mean", ctx.exception.hint or "")
+
+    def test_runaway_recursion_reports_cleanly(self):
+        with self.assertRaises(Exception) as ctx:
+            run("fn f() { f() }\nf()")
+        self.assertIn("recursion", str(ctx.exception))
+
+    def test_deep_but_finite_recursion_still_works(self):
+        src = "fn down(n) { if n <= 0 { 0 } else { 1 + down(n - 1) } }\ndown(400)"
+        self.assertEqual(value(src), 400.0)
+
+    def test_new_rejects_arguments_a_class_cannot_hold(self):
+        with self.assertRaises(Exception) as ctx:
+            run("class A { }\nnew A(1, 2)")
+        self.assertIn("too many", str(ctx.exception))
+        self.assertIn("no `new`", ctx.exception.hint or "")
+
+    def test_new_still_fills_fields_in_order(self):
+        self.assertEqual(value("class P { x = 0\n y = 0 }\nstr(new P(1, 2))"),
+                         "P(x: 1, y: 2)")

@@ -50,6 +50,13 @@ def report(interp: Interpreter, err: OmniError, path: str | None) -> int:
     return 1
 
 
+def report_recursion() -> int:
+    """Last line of defence: a runaway recursion never shows a traceback."""
+    sys.stderr.write("omni: runtime error: stack overflow: too much recursion\n"
+                     "  hint: check that a recursive function eventually stops\n")
+    return 1
+
+
 # --------------------------------------------------------------------- run
 def cmd_run(args) -> int:
     path = os.path.abspath(args.file)
@@ -95,7 +102,7 @@ def _finish(interp: Interpreter, args, started: float, failed: bool = False) -> 
 
 # -------------------------------------------------------------------- eval
 def cmd_eval(args) -> int:
-    interp = make_interp(args)
+    interp = make_interp(args, argv=list(getattr(args, "script_args", None) or []))
     try:
         value = interp.run_source(args.code, "<-e>")
         if value is not None:
@@ -108,8 +115,70 @@ def cmd_eval(args) -> int:
 
 
 # -------------------------------------------------------------------- repl
+REPL_COMMANDS = (":help", ":vars", ":type", ":tokens", ":ast", ":load", ":doc",
+                 ":reset", ":quit")
+
+
+def _install_readline(holder: list) -> None:
+    """Arrow-key history and tab completion, when the platform has readline."""
+    try:
+        import readline
+    except ImportError:
+        return
+    from .lexer import KEYWORDS
+
+    history = os.path.join(os.path.expanduser("~"), ".omniscript_history")
+    try:
+        readline.read_history_file(history)
+    except OSError:
+        pass
+    readline.set_history_length(2000)
+    import atexit
+    atexit.register(lambda: _safe_write_history(readline, history))
+
+    def completer(text, state):
+        interp = holder[0]
+        names = set(interp.globals.vars) | set(interp.builtin_index)
+        names |= {kw for kw in KEYWORDS}
+        names |= set(REPL_COMMANDS)
+        if "." in text:
+            head, _, tail = text.rpartition(".")
+            names = _member_candidates(interp, head, tail)
+            matches = sorted(n for n in names if n.startswith(tail))
+            matches = [f"{head}.{m}" for m in matches]
+        else:
+            matches = sorted(n for n in names if n.startswith(text))
+        return matches[state] if state < len(matches) else None
+
+    readline.set_completer(completer)
+    readline.parse_and_bind("tab: complete")
+
+
+def _safe_write_history(readline, path: str) -> None:
+    try:
+        readline.write_history_file(path)
+    except OSError:
+        pass
+
+
+def _member_candidates(interp, head: str, tail: str):
+    """Complete `canvas.` / `"text".` using the method table for that value."""
+    try:
+        value = interp.run_source(head, "<repl>")
+    except Exception:
+        return set()
+    from .values import type_name
+    table = interp.methods.get(type_name(value), {})
+    names = set(table)
+    if isinstance(value, dict):
+        names |= {str(k) for k in value}
+    return names
+
+
 def cmd_repl(args) -> int:
     interp = make_interp(args)
+    holder = [interp]
+    _install_readline(holder)
     if not args.quiet:
         sys.stdout.write(f"OmniScript {__version__} -- type `help()` for the built-ins, "
                          f"`:quit` to leave.\n")
@@ -124,7 +193,8 @@ def cmd_repl(args) -> int:
         if not buffer and line.strip() in (":quit", ":q", "exit", "quit"):
             break
         if not buffer and line.strip().startswith(":"):
-            _repl_command(interp, line.strip())
+            interp = _repl_command(interp, line.strip()) or interp
+            holder[0] = interp
             continue
         buffer.append(line)
         source = "\n".join(buffer)
@@ -147,7 +217,7 @@ def cmd_repl(args) -> int:
     return 0
 
 
-def _repl_command(interp: Interpreter, line: str) -> None:
+def _repl_command(interp: Interpreter, line: str):
     parts = line[1:].split(None, 1)
     verb = parts[0]
     rest = parts[1] if len(parts) > 1 else ""
@@ -161,8 +231,9 @@ def _repl_command(interp: Interpreter, line: str) -> None:
         except OmniError as err:
             sys.stderr.write(err.render() + "\n")
     elif verb in ("vars", "v"):
+        prelude = getattr(interp, "prelude", set())
         names = [k for k in interp.globals.vars if not k.startswith("__")
-                 and k not in interp.builtin_index]
+                 and k not in interp.builtin_index and k not in prelude]
         for name in sorted(names):
             interp.out(f"  {name} = {to_repr(interp.globals.vars[name])}")
         if not names:
@@ -173,15 +244,31 @@ def _repl_command(interp: Interpreter, line: str) -> None:
     elif verb in ("ast",):
         for node in parse(rest, "<repl>"):
             interp.out(f"  {node!r}")
+    elif verb in ("load", "run") and rest:
+        path = os.path.abspath(rest)
+        if not os.path.isfile(path):
+            interp.out(f"there is no file called `{rest}`")
+        else:
+            with open(path, "r", encoding="utf-8") as fh:
+                src = fh.read()
+            try:
+                interp.run_source(src, path)
+            except OmniError as err:
+                interp.enrich(err, path)
+                sys.stderr.write(err.render() + "\n")
+    elif verb in ("doc", "docs", "d"):
+        interp.call_value(interp.builtin_index["help"], [rest or None], {}, node=None)
     elif verb in ("reset",):
         interp = Interpreter(writer=sys.stdout.write, root=os.getcwd(), quiet=True)
         interp.load_builtins()
         Interpreter._current = interp
         sys.stderr.write("cleared every definition\n")
+        return interp
     elif verb in ("quit", "q"):
         raise SystemExit(0)
     else:
-        interp.out("repl commands: :help :vars :type :tokens :ast :reset :quit")
+        interp.out("repl commands: " + " ".join(REPL_COMMANDS))
+    return None
 
 
 def _unfinished(source: str) -> bool:
@@ -372,6 +459,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     ev = sub.add_parser("eval", help="run a snippet of code")
     ev.add_argument("code")
+    ev.add_argument("script_args", nargs=argparse.REMAINDER,
+                    help="arguments the snippet sees through args()")
     common(ev)
     ev.set_defaults(func=cmd_eval)
 
@@ -415,6 +504,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    try:
+        return _main(argv)
+    except RecursionError:
+        return report_recursion()
+
+
+def _main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     parser = build_parser()
 
@@ -424,8 +520,8 @@ def main(argv: list[str] | None = None) -> int:
 
     # `omniscript file.omni [args...]` and `omniscript -e 'code'`
     if argv[0] == "-e" and len(argv) >= 2:
-        ns = argparse.Namespace(code=argv[1], quiet=False, max_steps=None,
-                                no_pictures=False)
+        ns = argparse.Namespace(code=argv[1], script_args=argv[2:], quiet=False,
+                                max_steps=None, no_pictures=False)
         return cmd_eval(ns)
     if not argv[0].startswith("-") and argv[0] not in (
             "run", "eval", "repl", "check", "tokens", "ast", "docs", "test"):

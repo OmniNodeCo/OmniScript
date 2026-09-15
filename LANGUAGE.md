@@ -188,6 +188,16 @@ mut counter = 0
 counter += 1
 ```
 
+A name has to be declared before it can be assigned, so a typo is caught
+instead of quietly creating a global:
+
+```omni
+x = 5            # error: `x` is not defined
+                 # hint: declare it first with `let x = ...` or `mut x = ...`
+let total = 1
+totl = 5         # error: `totl` is not defined -- did you mean `total`?
+```
+
 Several targets may be assigned at once; the right-hand side is read completely
 before anything is written, so swapping is one statement:
 
@@ -432,7 +442,8 @@ c is Shape        # true
 * Methods take `self` implicitly; fields live on `self`.
 * `new Point(1, 2).length()` chains: the object is built first.
 * Without a `new`, `new Class(a, b)` assigns arguments to fields in
-  declaration order, and keywords by name.
+  declaration order, and keywords by name. More arguments than fields is an
+  error that tells you to write a `new`.
 * `super` refers to the parent class inside a method.
 * Define `str()`, `eq()`, `len()` or `iter()` on a class and the language
   itself will use them for printing, `==`, `len()` and `for`.
@@ -483,6 +494,9 @@ class ValidationError : Error {
 }
 throw new ValidationError("age", "must be positive")
 ```
+
+Runaway recursion stops at the interpreter's own depth limit with a plain
+error, never a host-language stack trace.
 
 Uncaught errors print the message, the offending source line with a caret, the
 call stack and a hint:
