@@ -282,7 +282,7 @@ request:
 | job | what it does |
 | --- | --- |
 | `lint` | ruff (pyflakes rules), `compileall`, metadata and workflow validity |
-| `test` | both suites, all 10 examples, `docs`, and a PNG that is decoded chunk by chunk -- on ubuntu and macOS, Python 3.10 to 3.13 |
+| `test` | both suites, all 10 examples, `docs`, and a PNG that is decoded chunk by chunk -- on ubuntu and macOS, Python 3.10 to 3.14 |
 | `package` | builds the sdist and wheel, installs the wheel in a clean venv and runs it |
 
 Linting is deliberately narrow: `select = ["E9", "F"]` in `pyproject.toml`

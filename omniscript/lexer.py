@@ -235,12 +235,12 @@ class Scanner:
                 self.fail(f"`0{base_char}{raw}` is not a valid base-{base} number")
 
         start = self.i
-        is_float = False
+        # Every OmniScript number is a float, so nothing about the shape of the
+        # literal has to be remembered here -- only where it ends.
         while not self.eof() and (self.peek().isdigit() or self.peek() == "_"):
             self.advance()
         # `1..5` is a range, not `1.` followed by `.5`, so a second dot stops us.
         if self.peek() == "." and self.peek(1) != "." and not _is_id_start(self.peek(1)):
-            is_float = True
             self.advance()
             while not self.eof() and (self.peek().isdigit() or self.peek() == "_"):
                 self.advance()
@@ -249,7 +249,6 @@ class Scanner:
             if k < self.n and src[k] in "+-":
                 k += 1
             if k < self.n and src[k].isdigit():
-                is_float = True
                 self.advance(k - self.i)
                 while not self.eof() and self.peek().isdigit():
                     self.advance()

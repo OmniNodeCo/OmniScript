@@ -44,12 +44,12 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - name: Check out the tagged commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
@@ -112,14 +112,15 @@ jobs:
       builtins: ${{ steps.stats.outputs.builtins }}
       examples: ${{ steps.stats.outputs.examples }}
       cases: ${{ steps.stats.outputs.cases }}
+      pythons: ${{ steps.stats.outputs.pythons }}
     steps:
       - name: Check out the tagged commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
@@ -165,16 +166,27 @@ jobs:
           builtins="$(./omni docs | head -1 | grep -oE '[0-9]+' | tail -1)"
           examples="$(ls -1 examples/*.omni | wc -l | tr -d ' ')"
           cases="$(./omni test 2>&1 | tail -1 | grep -oE '^[0-9]+')"
+          pythons="$(python - <<'PY'
+          import pathlib
+
+          import yaml
+
+          ci = yaml.safe_load(pathlib.Path(".github/workflows/build.yml").read_text())
+          versions = ci["jobs"]["test"]["strategy"]["matrix"]["python"]
+          print(f"{versions[0]} to {versions[-1]}")
+          PY
+          )"
           {
             echo "loc=$loc"
             echo "builtins=$builtins"
             echo "examples=$examples"
             echo "cases=$cases"
+            echo "pythons=$pythons"
           } >> "$GITHUB_OUTPUT"
           echo "$loc lines of Python, $builtins built-ins, $examples examples, $cases test cases"
 
       - name: Upload the distributions
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/*
@@ -186,7 +198,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download the distributions
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist
@@ -242,7 +254,7 @@ jobs:
             writes real PNGs, shell commands, files, JSON and CSV, HTTP,
             regular expressions, dates, statistics and parallel maps
           - __EXAMPLES__ runnable examples and __CASES__ language test cases,
-            all green on Python 3.10 through 3.13
+            all green on Python __PYTHONS__
           - a VS Code extension under `extras/vscode`
           - `SHA256SUMS.txt`, attached below, covers every file in this release
 
@@ -257,6 +269,7 @@ jobs:
             -e "s|__BUILTINS__|${{ needs.build.outputs.builtins }}|g" \
             -e "s|__EXAMPLES__|${{ needs.build.outputs.examples }}|g" \
             -e "s|__CASES__|${{ needs.build.outputs.cases }}|g" \
+            -e "s|__PYTHONS__|${{ needs.build.outputs.pythons }}|g" \
             "$notes"
           if grep -q '__' "$notes"; then
             echo "::error::a placeholder was not substituted"
@@ -304,7 +317,7 @@ jobs:
       id-token: write
     steps:
       - name: Download the distributions
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist
