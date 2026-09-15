@@ -113,3 +113,33 @@ fn sort_accepts_keys_and_comparators() {
   assert_eq(people.sort((p) -> len(p.n)).map((p) -> p.n), ["a", "bb", "ccc"])
   assert_eq([3, 1, 2].sort((a, b) -> b - a), [3, 2, 1])
 }
+
+@test
+fn whole_number_division() {
+  assert_eq(7 // 2, 3)
+  assert_eq(-7 // 2, -4)
+  assert_eq(7 / 2, 3.5)
+  assert_eq(1 + 8 // 2 * 3, 13)
+}
+
+@test
+fn comparisons_chain() {
+  let x = 5
+  assert_true(1 < x < 10)
+  assert_true(0 <= x <= 5)
+  assert_true(not (1 < x < 3))
+  assert_true("a" < "b" < "c")
+}
+
+@test
+fn several_targets_assign_at_once() {
+  mut a = 1
+  mut b = 2
+  a, b = b, a
+  assert_eq([a, b], [2, 1])
+  let xs = [1, 2]
+  let ys = [3, 4]
+  xs[0], ys[1] = 9, 8
+  assert_eq(xs, [9, 2])
+  assert_eq(ys, [3, 8])
+}

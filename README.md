@@ -202,9 +202,11 @@ forget to save is written for you when the program ends.
   `continue`, `match` with guards and patterns, `try`/`catch`/`finally`.
 * **Classes** – fields with defaults, `new` constructors, methods with
   `self`, single inheritance with `: Parent`, `is` / `isnt` type tests.
-* **Operators** – arithmetic, comparison, `and`/`or`/`not`, bitwise, `**`,
-  `++`/`--`, `+=` and friends, ternary `? :`, elvis `??`, optional chaining
-  `?.`, pipelines `|>` and `||>`, slices `xs[1..3]`.
+* **Operators** – arithmetic (`/` exact, `//` whole-number), comparison that
+  **chains** (`1 < x < 10`), `and`/`or`/`not`, bitwise, `**`, `++`/`--`, `+=`
+  and friends, ternary `? :`, elvis `??`, optional chaining `?.`, pipelines
+  `|>` and `||>`, slices `xs[1..3]` and `xs[::-1]`, multi-target assignment
+  (`a, b = b, a`).
 * **Safety** – immutable by default, null-safe navigation, and error messages
   that quote your source line and suggest fixes
   (`` `nma` is not defined … did you mean `name`? ``).

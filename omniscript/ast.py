@@ -49,6 +49,9 @@ nodetype("MapLit", "entries")                   # list[(key_node_or_str, val_nod
 nodetype("RangeLit", "lo", "hi", "step", "inclusive")
 nodetype("Unary", "op", "operand")
 nodetype("Binary", "op", "left", "right")
+nodetype("ChainCompare", "ops", "operands")     # 1 < x < 10
+nodetype("MultiAssign", "targets", "values")    # a, b = b, a
+nodetype("Const", "value")                      # an already-evaluated value
 nodetype("Ternary", "cond", "then", "otherwise")
 nodetype("Elvis", "left", "right")              # a ?? b
 nodetype("Assign", "op", "target", "value")

@@ -526,6 +526,37 @@ class Interpreter:
     def e_num(self, node: A.Num, env):
         return node.value
 
+    def e_const(self, node: A.Const, env):
+        return node.value
+
+    def e_chain_compare(self, node: A.ChainCompare, env):
+        """`1 < x < 10` -- every pair must hold, each operand evaluated once."""
+        left = self.eval(node.operands[0], env)
+        for op, operand in zip(node.ops, node.operands[1:]):
+            right = self.eval(operand, env)
+            pair = A.Binary(op, A.Const(left), A.Const(right),
+                            line=node.line, col=node.col)
+            if not truthy(self.e_binary(pair, env)):
+                return False
+            left = right
+        return True
+
+    def e_multi_assign(self, node: A.MultiAssign, env):
+        """`a, b = b, a` -- the right side is read before anything is written."""
+        values = [self.eval(v, env) for v in node.values]
+        targets = node.targets
+        if len(values) == 1 and isinstance(values[0], list) \
+                and len(values[0]) == len(targets):
+            values = values[0]
+        if len(values) != len(targets):
+            raise OmniRuntimeError(
+                f"cannot put {len(values)} values into {len(targets)} targets",
+                node.line, node.col,
+                hint="the two sides of `a, b = ...` must have the same length")
+        for target, value in zip(targets, values):
+            self.assign_to(target, value, env, node)
+        return None
+
     def e_str(self, node: A.Str, env):
         if isinstance(node.chunks, str):
             return node.chunks
@@ -693,6 +724,12 @@ class Interpreter:
             if float(right) == 0.0:
                 raise OmniRuntimeError("modulo by zero", node.line, node.col)
             return float(left) % float(right)
+        if op == "//":
+            self.arith_check(left, right, op, node)
+            if float(right) == 0.0:
+                raise OmniRuntimeError("division by zero", node.line, node.col,
+                                       hint="`//` is whole-number division")
+            return float(float(left) // float(right))
         if op == "**":
             self.arith_check(left, right, op, node)
             r = float(left) ** float(right)
@@ -1151,9 +1188,23 @@ class Interpreter:
             return self.call_value(fn.methods["__call__"], args, kwargs, node)
         if callable(fn):
             return fn(*args)
+        hint = "only functions and classes can be called with ()"
+        name = getattr(getattr(node, "callee", None), "name", None)
+        if name and name in self.builtin_names():
+            hint = (f"`{name}` is a {type_name(fn)} here, which hides the built-in "
+                    f"function `{name}()` -- rename the variable to call it")
         raise OmniTypeError(f"`{to_repr(fn)}` is not callable",
                             getattr(node, "line", None), getattr(node, "col", None),
-                            hint="only functions and classes can be called with ()")
+                            hint=hint)
+
+    _builtin_names = None
+
+    @classmethod
+    def builtin_names(cls):
+        if cls._builtin_names is None:
+            from .stdlib.core import BUILTINS
+            cls._builtin_names = {nf.name for nf in BUILTINS}
+        return cls._builtin_names
 
     def call_loose(self, fn, args, kwargs=None, node=None):
         """Call a callback, dropping extra arguments it did not ask for.
@@ -1421,6 +1472,9 @@ Interpreter._dispatch = {
     A.ExprStmt: Interpreter.s_expr,
     A.Block: Interpreter.s_block,
     A.Num: Interpreter.e_num,
+    A.Const: Interpreter.e_const,
+    A.ChainCompare: Interpreter.e_chain_compare,
+    A.MultiAssign: Interpreter.e_multi_assign,
     A.Str: Interpreter.e_str,
     A.Bool: Interpreter.e_bool,
     A.Null: Interpreter.e_null,

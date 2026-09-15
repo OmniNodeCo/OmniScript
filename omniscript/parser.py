@@ -29,12 +29,13 @@ Design notes
 
 from __future__ import annotations
 
-from .ast import (Assign, Binary, Block, Bool, Break, Call, ClassDecl, Continue,
-                  DoWhile, Elvis, ExprStmt, For, FnDecl, Ident, If, Index, Lambda,
-                  Let, ListLit, MapLit, Match, MatchArm, Member, Null, Num, PBind,
-                  PList, PLit, PMap, PTyped, PWild, Paren, Pipe, RangeLit, Return,
+from .ast import (Assign, Binary, Block, Bool, Break, Call, ChainCompare, ClassDecl,
+                  Continue, DoWhile, Elvis, ExprStmt, For, FnDecl, Ident, If, Index,
+                  Lambda, Let, ListLit, MapLit, Match, MatchArm, Member, MultiAssign,
+                  Null, Num, PBind, PList, PLit, PMap, PTyped, PWild,
+                  Paren, Pipe, RangeLit, Return,
                   SigAttr, Slice, Str, Ternary, Throw, Try, Unary, Use, While)
-from .errors import OmniSyntaxError
+from .errors import OmniError, OmniSyntaxError
 from .lexer import Token, tokenize
 
 COMPOUND = {
@@ -56,10 +57,13 @@ LEVELS: list[tuple[dict[str, str], tuple[str, ...]]] = [
     ({"CARET": "^"}, ()),
     ({"AMP": "&"}, ()),
     ({"SHL": "<<", "SHR": ">>"}, ()),
+    None,                                   # 8: `..` ranges (see parse_range)
     ({"PLUS": "+", "MINUS": "-"}, ()),
-    ({"STAR": "*", "SLASH": "/", "PERCENT": "%"}, ()),
+    ({"STAR": "*", "SLASH": "/", "PERCENT": "%", "FLOOR_DIV": "//"}, ()),
 ]
 TOP_LEVEL = len(LEVELS)
+CMP_LEVEL = 3        # the `< <= > >=` row, which may chain
+RANGE_LEVEL = 8      # `..` binds looser than arithmetic: `0..n - 1`
 
 # Tokens that may legally follow an expression we just finished parsing.
 BODY_STOP = ("RBRACKET", "RPAREN", "COMMA", "NEWLINE", "SEMI", "EOF", "RBRACE",
@@ -190,10 +194,40 @@ class Parser:
         if t.kind == "SIGATTR":
             return self.parse_attributed()
 
+        if t.kind in ("IDENT", "SIGVAR") or (t.kind == "KW" and t.value == "self"):
+            swap = self.parse_multi_assign(line, col)
+            if swap is not None:
+                self.end_stmt()
+                return swap
+
         expr = self.parse_expr()
         node = ExprStmt(expr, line=line, col=col)
         self.end_stmt()
         return node
+
+    def parse_multi_assign(self, line, col):
+        """`a, b = b, a` and `xs[0], ys[0] = 1, 2`.
+
+        Returns None (and rewinds) when the statement is not one of those.
+        """
+        start = self.pos
+        try:
+            targets = [self.parse_postfix()]
+            while self.at("COMMA"):
+                self.pos += 1
+                targets.append(self.parse_postfix())
+            if len(targets) < 2 or not self.at("ASSIGN"):
+                self.pos = start
+                return None
+            self.pos += 1
+            values = [self.parse_expr()]
+            while self.at("COMMA"):
+                self.pos += 1
+                values.append(self.parse_expr())
+        except OmniError:
+            self.pos = start
+            return None
+        return MultiAssign(targets, values, line=line, col=col)
 
     def parse_attributed(self):
         attrs = []
@@ -756,6 +790,10 @@ class Parser:
 
     def parse_binary(self, level: int):
         if level >= TOP_LEVEL:
+            return self.parse_power()
+        if level == CMP_LEVEL:
+            return self.parse_comparison(level)
+        if level == RANGE_LEVEL:
             return self.parse_range()
         kinds, kws = LEVELS[level]
         node = self.parse_binary(level + 1)
@@ -779,42 +817,42 @@ class Parser:
             node = Binary(op, node, right, line=t.line, col=t.col)
         return node
 
-    def parse_range_operand(self):
-        """A range bound, parsed with normal arithmetic precedence.
-
-        So `0..xs.len() - 1` reads as `0..(xs.len() - 1)` -- the way people
-        expect -- instead of `(0..xs.len()) - 1`.
-        """
-        node = self.parse_range_term()
-        while self.at("PLUS") or self.at("MINUS"):
-            op = self.cur().value
+    def parse_comparison(self, level: int):
+        """Comparisons chain: `1 < x < 10` means both halves at once."""
+        kinds = LEVELS[level][0]
+        node = self.parse_binary(level + 1)
+        ops, operands = [], [node]
+        while self.cur().kind in kinds:
+            t = self.cur()
             self.pos += 1
-            node = Binary(op, node, self.parse_range_term(),
+            ops.append(kinds[t.kind])
+            operands.append(self.parse_binary(level + 1))
+        if not ops:
+            return node
+        if len(ops) == 1:
+            return Binary(ops[0], operands[0], operands[1],
                           line=node.line, col=node.col)
-        return node
-
-    def parse_range_term(self):
-        node = self.parse_power()
-        while self.at("STAR") or self.at("SLASH") or self.at("PERCENT"):
-            op = self.cur().value
-            self.pos += 1
-            node = Binary(op, node, self.parse_power(),
-                          line=node.line, col=node.col)
-        return node
+        return ChainCompare(ops, operands, line=node.line, col=node.col)
 
     def parse_range(self):
+        """`a..b`, `a..=b`, `a..b..step`.
+
+        This sits between the shift and additive rows, so both bounds may be
+        ordinary arithmetic: `0..xs.len() - 1` is `0..(xs.len() - 1)`.
+        """
         t0 = self.cur()
-        node = self.parse_range_operand()
+        inner = RANGE_LEVEL + 1
+        node = self.parse_binary(inner)
         if self.cur().kind == "DOT" and self.peek().kind == "DOT":
             self.pos += 2
             inclusive = bool(self.eat("ASSIGN"))
             hi = None
             if not self.at_range_stop():
-                hi = self.parse_range_operand()
+                hi = self.parse_binary(inner)
             step = None
             if self.cur().kind == "DOT" and self.peek().kind == "DOT":
                 self.pos += 2
-                step = self.parse_power()
+                step = self.parse_binary(inner)
             return RangeLit(node, hi, step, inclusive, line=t0.line, col=t0.col)
         return node
 

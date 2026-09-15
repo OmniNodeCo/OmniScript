@@ -30,7 +30,7 @@ SYMBOLS = [
     ("<<=", "SHLEQ"), (">>=", "SHREQ"),
     ("+=", "PLUSEQ"), ("-=", "MINUSEQ"), ("*=", "STAREQ"), ("/=", "SLASHEQ"),
     ("%=", "PERCEQ"), ("^=", "CARETEQ"), ("|=", "PIPEEQ"), ("&=", "AMPEQ"),
-    ("**", "POWER"), ("<<", "SHL"), (">>", "SHR"),
+    ("**", "POWER"), ("<<", "SHL"), (">>", "SHR"), ("//", "FLOOR_DIV"),
     ("?.", "QMARK_DOT"), ("??", "QMARKQMARK"), ("?:", "QMARKCOLON"),
     ("++", "PLUSPLUS"), ("--", "MINUSMINUS"),
     ("+", "PLUS"), ("-", "MINUS"), ("*", "STAR"), ("/", "SLASH"), ("%", "PERCENT"),

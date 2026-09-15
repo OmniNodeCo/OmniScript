@@ -164,6 +164,17 @@ mut counter = 0
 counter += 1
 ```
 
+Several targets may be assigned at once; the right-hand side is read completely
+before anything is written, so swapping is one statement:
+
+```omni
+mut a = 1
+mut b = 2
+a, b = b, a              # a is 2, b is 1
+xs[0], ys[1] = 9, 8      # index targets work too
+a, b, c = [10, 20, 30]   # ...and a single list on the right
+```
+
 **Destructuring** works in `let`, in `for` and in `match`:
 
 ```omni
@@ -205,14 +216,18 @@ From loosest to tightest binding:
 | bitwise and| `&`                                                   |
 | shift      | `<< >>`                                               |
 | additive   | `+ -`                                                 |
-| multiplicative | `* / %`                                           |
+| multiplicative | `* / % //`                                      |
 | power      | `**` (right associative)                              |
-| range      | `a..b  a..=b  a..b..step`                             |
+| range      | `a..b  a..=b  a..b..step` (looser than `+`, so `0..n - 1` works) |
 | unary      | `- not ! ~ new`                                       |
 | postfix    | `. ?. [] ()`                                          |
 
 Notes:
 
+* `/` always divides exactly (`7 / 2` is `3.5`); `//` divides to whole numbers
+  (`7 // 2` is `3`, `-7 // 2` is `-4`).
+* Comparisons **chain**: `1 < x < 10` tests both halves, evaluates each operand
+  once, and stops as soon as one fails.
 * `and` / `or` short-circuit and return the deciding operand.
 * `+` joins text when either side is text, and concatenates lists.
 * `?? ` returns the left side unless it is `null`.

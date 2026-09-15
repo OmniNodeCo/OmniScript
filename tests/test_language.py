@@ -596,3 +596,39 @@ class HardeningTests(unittest.TestCase):
         src = 'let safe = (a, b) -> try { a / b } catch e { "err" }\n' \
               '[1, 0, 2].map((x) -> safe(10, x))'
         self.assertEqual(value(src), [10.0, "err", 5.0])
+
+
+class ErgonomicsTests(unittest.TestCase):
+    def test_floor_division(self):
+        self.assertEqual(value("7 // 2"), 3.0)
+        self.assertEqual(value("-7 // 2"), -4.0)
+        self.assertEqual(value("7.9 // 2"), 3.0)
+        self.assertEqual(value("1 + 8 // 2 * 3"), 13.0)
+        with self.assertRaises(Exception):
+            run("1 // 0")
+
+    def test_chained_comparison(self):
+        self.assertTrue(value("let x = 5\n1 < x < 10"))
+        self.assertFalse(value("let x = 5\n1 < x < 3"))
+        self.assertTrue(value("let x = 5\n0 <= x <= 5"))
+        self.assertTrue(value('"a" < "b" < "c"'))
+        self.assertFalse(value("3 > 2 > 4"))
+        # each operand is evaluated exactly once, left to right
+        src = "mut i = 0\nfn bump() { i += 1; i }\n" \
+              "let ok = 0 < bump() < 100\n[ok, i]"
+        self.assertEqual(value(src), [True, 1.0])
+
+    def test_multi_target_assignment(self):
+        self.assertEqual(value("mut a = 1\nmut b = 2\na, b = b, a\n[a, b]"),
+                         [2.0, 1.0])
+        self.assertEqual(value("let xs = [1, 2]\nlet ys = [3, 4]\nxs[0], ys[1] = 9, 8\n[xs, ys]"),
+                         [[9.0, 2.0], [3.0, 8.0]])
+        self.assertEqual(value("mut a = 0\nmut b = 0\nmut c = 0\na, b, c = [10, 20, 30]\n[a, b, c]"),
+                         [10.0, 20.0, 30.0])
+        with self.assertRaises(Exception):
+            run("mut a = 0\nmut b = 0\na, b = 1, 2, 3")
+
+    def test_shadowed_builtin_says_so(self):
+        with self.assertRaises(Exception) as ctx:
+            run("mut sum = 0\nsum = 6\nsum(1, 2)")
+        self.assertIn("hides the built-in", ctx.exception.hint or "")
