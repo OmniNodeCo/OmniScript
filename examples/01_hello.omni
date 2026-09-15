@@ -1,0 +1,20 @@
+# The smallest useful OmniScript program.
+print("Hello, OmniScript!")
+
+# Numbers, strings and string interpolation in one line.
+let name = "world"
+print("2 + 2 = \{2 + 2}, hello ${name}")
+
+# Lists and maps are literals; methods read like sentences.
+let scores = [91, 87, 95, 78]
+print("average:", scores.avg(), "best:", scores.max())
+print("top two:", scores.sort(desc: true).take(2))
+
+# A one-line function and a pipeline.
+let shout = (text) -> upper(text) + "!"
+print("quiet" |> shout)
+
+# Loops, ranges and conditions without ceremony.
+for i in 1..=3 {
+  print("${i}. " + (i % 2 == 0 ? "even" : "odd"))
+}

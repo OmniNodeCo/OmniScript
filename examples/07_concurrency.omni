@@ -1,0 +1,25 @@
+# Do slow things at the same time.
+
+fn slow_square(n) {
+  sleep(0.05)
+  n * n
+}
+
+let clock = stopwatch()
+let results = parallel_map([1, 2, 3, 4, 5, 6, 7, 8], slow_square, workers: 8)
+let took = clock.stop()
+print("results:", results)
+print("took ${round_to(took * 1000, 0)}ms with 8 workers (serial would be ~400ms)")
+
+# Independent tasks, any shape.
+let tasks = [
+  () -> "task a: ${2 ** 8}",
+  () -> "task b: ${[3, 1, 2].sort()}",
+  () -> "task c: ${"mixed".upper()}",
+]
+parallel(tasks).each((line) -> print(line))
+
+# A background job you can poll.
+let job = spawn(() -> { sleep(0.05); "done in background" })
+print("job finished?", job.done())
+print("job result:", job.get())

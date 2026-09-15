@@ -1,0 +1,18 @@
+# Extra text helpers, importable with:  use std/text
+
+fn initials(name) { name.words().map((w) -> w[0]).join("").upper() }
+
+fn truncate(text, limit = 40, tail = "...") {
+  let s = str(text)
+  len(s) <= limit ? s : s[..limit - len(tail)] + tail
+}
+
+fn pluralize(word, count) { count == 1 ? word : word + "s" }
+
+fn center_text(text, width) { center(str(text), width) }
+
+fn box(text, width = null) {
+  let w = width ?? len(text) + 4
+  let bar = repeat("-", w)
+  "+${bar}+\n| ${center(str(text), w - 4)} |\n+${bar}+"
+}

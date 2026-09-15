@@ -1,0 +1,26 @@
+{
+  "name": "omniscript",
+  "displayName": "OmniScript",
+  "description": "Syntax highlighting for the OmniScript language",
+  "version": "0.1.0",
+  "publisher": "omninode",
+  "engines": { "vscode": "^1.60.0" },
+  "categories": ["Programming Languages"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "omniscript",
+        "aliases": ["OmniScript", "omni"],
+        "extensions": [".omni"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "omniscript",
+        "scopeName": "source.omni",
+        "path": "./syntaxes/omniscript.tmLanguage.json"
+      }
+    ]
+  }
+}
