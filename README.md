@@ -43,7 +43,17 @@ picture saved to /you/hello.png (320x200)
 | match and unpack data         | `match row { {name, age} when age > 18 => ... }` |
 
 No `import`, no `with open(...)`, no `if __name__ == "__main__":`, no
-boilerplate. Values are immutable by default (`let`) and mutable when you say
+boilerplate. Long chains are laid out one step per line, because a line may end
+after an operator:
+
+```omni
+let words = text.lower() |>
+  regex_all(r"[a-z]+") |>
+  filter((w) -> w.len() > 2)
+
+chart(words.counts().sort_by("value", desc: true), kind: "bar")
+  .save("words.png")
+``` Values are immutable by default (`let`) and mutable when you say
 so (`mut`). Errors point at the exact line, with a caret and a hint.
 
 ---
@@ -236,7 +246,7 @@ omniscript/           the language itself
     graphics.py       canvas rasteriser, PNG writer, chart()
     concurrent.py     parallel(), parallel_map(), spawn()
   std/                importable .omni modules: math, text, list
-examples/             runnable showcase programs (outputs land in .preview/)
+examples/             9 runnable programs (outputs land in .preview/)
 tests/                78 interpreter cases + 24 in-language @test cases
 extras/vscode/        syntax highlighting for VS Code / Cursor
 ```

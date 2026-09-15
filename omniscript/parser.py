@@ -723,6 +723,7 @@ class Parser:
                 if depth > 0:
                     break
                 self.pos += 1
+                self.skip_newlines()
                 value = self.parse_expr(0)
                 op = "=" if t.kind == "ASSIGN" else COMPOUND[t.kind]
                 if not _is_assignable(node):
@@ -731,6 +732,7 @@ class Parser:
                 continue
             if t.kind == "PIPEALL" or self.starts_pipe():
                 self.pos += 2 if t.kind == "BAR" else 1
+                self.skip_newlines()
                 node = self.parse_pipe_rhs(node, t.kind == "PIPEALL")
                 continue
             if t.kind in ("PLUSPLUS", "MINUSMINUS"):
@@ -764,25 +766,34 @@ class Parser:
         args = (args + [left]) if all_ else ([left] + args)
         return Pipe(callee, args, kwargs, all_, line=line)
 
+    def skip_newlines(self):
+        """A line may end right after an operator; the expression continues."""
+        while self.at("NEWLINE"):
+            self.pos += 1
+
     def parse_ternary(self):
         node = self.parse_binary(0)
         while True:
             if self.at("QMARK"):
                 t = self.cur()
                 self.pos += 1
+                self.skip_newlines()
                 then = self.parse_expr(0)
                 self.expect("COLON", "`:` in a `? :` expression")
+                self.skip_newlines()
                 other = self.parse_expr(0)
                 node = Ternary(node, then, other, line=t.line, col=t.col)
                 continue
             if self.at("QMARKCOLON"):
                 t = self.cur()
                 self.pos += 1
+                self.skip_newlines()
                 node = Ternary(node, node, self.parse_expr(0), line=t.line, col=t.col)
                 continue
             if self.at("QMARKQMARK"):
                 t = self.cur()
                 self.pos += 1
+                self.skip_newlines()
                 node = Elvis(node, self.parse_binary(0), line=t.line, col=t.col)
                 continue
             break
@@ -807,6 +818,7 @@ class Parser:
             if op is None:
                 break
             self.pos += 1
+            self.skip_newlines()
             if op in ("is", "isnt") and self.cur().value in TYPE_WORDS \
                     and self.cur().kind in ("IDENT", "KW"):
                 tt = self.cur()
@@ -825,6 +837,7 @@ class Parser:
         while self.cur().kind in kinds:
             t = self.cur()
             self.pos += 1
+            self.skip_newlines()
             ops.append(kinds[t.kind])
             operands.append(self.parse_binary(level + 1))
         if not ops:
@@ -846,6 +859,7 @@ class Parser:
         if self.cur().kind == "DOT" and self.peek().kind == "DOT":
             self.pos += 2
             inclusive = bool(self.eat("ASSIGN"))
+            self.skip_newlines()
             hi = None
             if not self.at_range_stop():
                 hi = self.parse_binary(inner)
@@ -904,6 +918,10 @@ class Parser:
     def parse_postfix_tail(self, node):
         while True:
             t = self.cur()
+            if t.kind == "NEWLINE" and self.line_starts_a_method():
+                # a chain may continue on the next line, indented under it
+                self.skip_newlines()
+                t = self.cur()
             if t.kind == "LPAREN":
                 args, kwargs = self.parse_call_args()
                 node = Call(node, args, kwargs, False, line=t.line, col=t.col)
@@ -1128,9 +1146,50 @@ class Parser:
         self.pos += 1
         if self.at("LBRACE"):
             bt = self.cur()
+            if self.brace_starts_a_map():
+                # `(r) -> {name: r.a}` builds a map, it is not a block
+                return Lambda(params, self.parse_map_lit(), False,
+                              line=t.line, col=t.col)
             return Lambda(params, self.block_of(self.parse_block(), bt.line, bt.col),
                           True, line=t.line, col=t.col)
         return Lambda(params, self.parse_expr(), False, line=t.line, col=t.col)
+
+    def line_starts_a_method(self):
+        """True when the next line begins with `.` or `?.` (but not `..`)."""
+        nxt = self.peek()
+        if nxt.kind == "QMARK_DOT":
+            return True
+        return nxt.kind == "DOT" and self.peek(2).kind != "DOT"
+
+    def brace_starts_a_map(self):
+        """Tell `{a: 1}` (a map) from `{ a }` (a block with one statement).
+
+        OmniScript has no labelled statements, so `name:` straight after `{`
+        can only mean a map literal.
+        """
+        nxt = self.peek()
+        if nxt.kind in ("STAR", "POWER"):
+            return True                      # `{*other}` / `{**other}` spread
+        if nxt.kind == "LBRACKET":
+            # `{[expr]: value}` -- a computed key, so still a map
+            depth, k = 0, self.pos + 1
+            while k < len(self.toks):
+                kind = self.toks[k].kind
+                if kind == "LBRACKET":
+                    depth += 1
+                elif kind == "RBRACKET":
+                    depth -= 1
+                    if depth == 0:
+                        return k + 1 < len(self.toks) and \
+                            self.toks[k + 1].kind == "COLON"
+                elif kind == "EOF":
+                    break
+                k += 1
+            return False
+        if nxt.kind in ("IDENT", "STR", "NUM", "SIGVAR") or \
+                (nxt.kind == "KW" and nxt.value in ("true", "false", "null")):
+            return self.peek(2).kind == "COLON"
+        return False
 
     def parse_list_lit(self):
         t = self.expect("LBRACKET", "`[`")

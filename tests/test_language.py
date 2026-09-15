@@ -628,7 +628,39 @@ class ErgonomicsTests(unittest.TestCase):
         with self.assertRaises(Exception):
             run("mut a = 0\nmut b = 0\na, b = 1, 2, 3")
 
+    def test_whole_number_keys_are_text_keys(self):
+        # one key, two spellings -- lookups accept either
+        self.assertEqual(value('{1: "a"}[1]'), "a")
+        self.assertEqual(value('{1: "a"}["1"]'), "a")
+        self.assertEqual(value('{1: "a", "1": "b"}.len()'), 1.0)
+        self.assertEqual(value("{[true]: 1}.keys()"), ["true"])
+
     def test_shadowed_builtin_says_so(self):
         with self.assertRaises(Exception) as ctx:
             run("mut sum = 0\nsum = 6\nsum(1, 2)")
         self.assertIn("hides the built-in", ctx.exception.hint or "")
+
+
+class LayoutTests(unittest.TestCase):
+    """A long expression may be laid out over several lines."""
+
+    def test_newline_after_an_operator_continues(self):
+        src = "let words = [3, 1, 2] |>\n  sorted |>\n  join(\"-\")\nwords"
+        self.assertEqual(value(src), "1-2-3")
+        self.assertEqual(value("let x = 1 +\n  2 * 3\nx"), 7.0)
+        self.assertEqual(value("let t = true ?\n  \"yes\" :\n  \"no\"\nt"), "yes")
+        self.assertEqual(value("let y = 1 <\n  2\ny"), True)
+
+    def test_method_chain_on_the_next_line(self):
+        src = 'let out = "a,b,c"\n  .split(",")\n  .len()\nout'
+        self.assertEqual(value(src), 3.0)
+
+    def test_lambda_may_return_a_map(self):
+        # a bare word before `:` is the key itself; `[expr]` computes one
+        self.assertEqual(value("[1, 2].map((n) -> {word: n * n})"),
+                         [{"word": 1.0}, {"word": 4.0}])
+        self.assertEqual(value("[1, 2].map((n) -> {[n]: n * n})"),
+                         [{"1": 1.0}, {"2": 4.0}])
+        # ...while a brace that is not a map still opens a block
+        self.assertEqual(value("let f = (x) -> { let y = x + 1; y * 10 }\nf(4)"), 50.0)
+        self.assertEqual(value("let g = (x) -> {x * 2}\ng(4)"), 8.0)

@@ -1,0 +1,57 @@
+# A complete little program: analyse a document and publish a report.
+# Word counts, a printed table, a chart, and JSON -- about forty lines.
+
+use std/text
+
+let document = """
+OmniScript is a small language for doing big things in few lines. A language
+should read like the problem it solves, so the interpreter ships with the tools
+a script actually needs: files, tables, pictures, the shell and the network.
+There is nothing to install and nothing to import. Write the program, run the
+program, look at the picture. Few lines, big things, small language.
+"""
+
+# 1. clean and count
+let stop = ["a", "an", "and", "is", "it", "of", "so", "the", "to", "there"]
+let words = document.lower() |> regex_all(r"[a-z]+") |>
+              filter((w) -> w.len() > 2 and not stop.contains(w))
+let counts = words.counts()
+let ranked = counts.sort_by("value", desc: true)
+
+print("${words.len()} words, ${counts.len()} distinct")
+print("most common:", ranked.first()[0], "x", ranked.first()[1])
+
+# 2. a table of the top ten
+# sort_by on a map hands back [key, value] pairs, easiest to read
+let top = ranked.take(10).map((pair) -> {word: pair[0], times: pair[1],
+                                         bar: repeat("#", int(pair[1]))})
+table(top, title: "word frequency")
+
+# 3. a picture of the same data
+chart(top.map((r) -> r.times), kind: "bar", title: "top words",
+      labels: top.map((r) -> r.word), width: 560, height: 300)
+  .save(".preview/words.png")
+
+# 4. a couple of statistics about the document
+let sentences = document.split(".").filter((s) -> s.trim().len() > 0)
+let stats = {
+  words: words.len(),
+  distinct: counts.len(),
+  sentences: sentences.len(),
+  avg_sentence: round_to(words.len() / sentences.len(), 1),
+  longest_word: words.sort((a, b) -> len(b) - len(a)).first(),
+  reading_time_sec: round_to(words.len() / 3.5, 0),
+}
+print(to_json(stats, indent: 2))
+
+# 5. and the report as data, for whatever runs next
+write_json(".preview/report.json", {stats: stats, top: top})
+print("wrote .preview/words.png and .preview/report.json")
+
+# A tiny test, so `omni test examples/09_mini_app.omni` checks this file too.
+@test
+fn the_counts_add_up() {
+  assert_eq(counts.values().sum(), words.len())
+  assert_true(ranked.first()[1] >= ranked.last()[1])
+  assert_eq(truncate("abcdefghij", 5), "ab...")
+}

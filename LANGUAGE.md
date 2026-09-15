@@ -23,6 +23,18 @@ Everything the language can say, in one document. Run any snippet with
 **Statements end at a newline.** A `;` is allowed but never required. A `\` at
 the end of a line continues onto the next one.
 
+A line may also end **after an operator** — the expression simply carries on —
+and a method chain may be indented onto the following line:
+
+```omni
+let words = text.lower() |>
+  split(" ") |>
+  filter((w) -> w.len() > 2)
+
+chart(values, kind: "bar", title: "top")
+  .save("chart.png")
+```
+
 ```omni
 let a = 1
 let b = 2; let c = 3        # semicolons are optional
@@ -117,6 +129,18 @@ m.name          # "omni"
 m["with space"] # 1
 m.missing       # raises; use m?.missing or m.get("missing", 0)
 ```
+
+Keys are text. A whole-number key and its text form are the *same* key, so both
+lookups below work and `{1: "a", "1": "b"}` holds one entry:
+
+```omni
+{1: "a"}[1]      # "a"
+{1: "a"}["1"]    # "a"
+```
+
+`true`, `false` and `null` become `"true"`, `"false"` and `"null"`. Fractional
+numbers stay numbers. Use `[expression]` for a key you compute:
+`{[user.id]: user}`.
 
 Spread a map into another with `*` or `**`:
 
@@ -273,7 +297,8 @@ people.sort((p) -> p.age)                      # by a computed key
 people.sort((a, b) -> len(a.name) - len(b.name))   # by comparing two
 ```
 * Lambdas: `(x) -> x * 2` for one expression, `(x) -> { ... }` for a block.
-  `fn (x) { ... }` also works.
+  `fn (x) { ... }` also works. A brace that is clearly a map stays a map, so
+  `(n) -> {word: n}` returns `{word: n}` instead of opening a block.
 * Closures capture their surroundings and keep them alive.
 * Callbacks may declare fewer parameters than they are given; extras are
   dropped. That is why `[1,2,3].map((x) -> x * 2)` works even though `map`
