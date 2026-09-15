@@ -585,7 +585,7 @@ times up_to down_to is_even is_odd between percent_of gcd format ordinal`.
 
 ## 12. Built-in index
 
-About 290 names are in scope in every program. Groups include:
+About 300 names are in scope in every program. Groups include:
 
 * **I/O** – `print show input read write append read_lines write_lines read_csv
   write_csv read_json write_json table exit`

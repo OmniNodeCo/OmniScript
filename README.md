@@ -83,7 +83,7 @@ pip install -e .
 ./omni ast -e 'let x = 1 + 2 * 3'     # print the syntax tree
 ./omni tokens -e '1..3'               # print the token stream
 ./omni test                           # run every @test in the project
-./omni docs                           # list all 290 built-ins
+./omni docs                           # list every built-in
 ./omni docs chart                     # explain one of them
 ```
 
