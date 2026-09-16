@@ -518,18 +518,10 @@ def build_parser() -> argparse.ArgumentParser:
                           "[the one already tracked, or main]")
     upd.add_argument("--bin", dest="bin_dir", default="", metavar="DIR",
                      help="where a downloaded executable goes [where this one is]")
-    upd.add_argument("--repo", default="", metavar="OWNER/NAME",
-                     help="the repository to ask [OmniNodeCo/OmniScript]")
     upd.add_argument("--api-url", default="", metavar="URL",
                      help="the API root to ask [https://api.github.com]")
-    upd.add_argument("--prerelease", action="store_true",
-                     help="count prereleases when looking for the newest release")
-    upd.add_argument("--no-verify", action="store_true",
-                     help="skip the SHA256 check on whatever is downloaded")
     upd.add_argument("--force", action="store_true",
                      help="update even when it looks like nothing has changed")
-    upd.add_argument("--quiet", "-q", action="store_true",
-                     help="report only what matters")
     upd.set_defaults(func=cmd_update)
 
     # shorthand: `omniscript -e 'code'` and `omniscript file.omni`

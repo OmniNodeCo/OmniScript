@@ -112,12 +112,6 @@ jobs:
     name: Build distributions
     needs: verify
     runs-on: ubuntu-latest
-    outputs:
-      loc: ${{ steps.stats.outputs.loc }}
-      builtins: ${{ steps.stats.outputs.builtins }}
-      examples: ${{ steps.stats.outputs.examples }}
-      cases: ${{ steps.stats.outputs.cases }}
-      pythons: ${{ steps.stats.outputs.pythons }}
     steps:
       - name: Check out the tagged commit
         uses: actions/checkout@v7
@@ -155,30 +149,6 @@ jobs:
           c.rect(0, 0, 24, 24, "#2ea043")
           c.save("wheel-check.png")
           print("graphics ok:", file_info("wheel-check.png").size, "bytes")'
-
-      - name: Gather the numbers for the release notes
-        id: stats
-        run: |
-          set -euo pipefail
-          # Grouped so the notes read "11,055 lines": numfmt --grouping follows the
-          # locale, and a runner's C locale has no thousands separator to follow.
-          loc="$(find omniscript -name '*.py' -print0 | xargs -0 cat | wc -l |
-                 python -c 'import sys; print(f"{int(sys.stdin.read()):,}")')"
-          builtins="$(./omni docs | head -1 | grep -oE '[0-9]+' | tail -1)"
-          examples="$(ls -1 examples/*.omni | wc -l | tr -d ' ')"
-          cases="$(./omni test 2>&1 | tail -1 | grep -oE '^[0-9]+')"
-          # The tested range comes out of build.yml, so the notes cannot drift
-          # from the matrix. Plain shell: no PyYAML on a bare setup-python.
-          versions="$(grep -oE '"3\.[0-9]+"' .github/workflows/build.yml | tr -d '"' | sort -V -u)"
-          pythons="$(printf '%s to %s' "$(echo "$versions" | head -1)" "$(echo "$versions" | tail -1)")"
-          {
-            echo "loc=$loc"
-            echo "builtins=$builtins"
-            echo "examples=$examples"
-            echo "cases=$cases"
-            echo "pythons=$pythons"
-          } >> "$GITHUB_OUTPUT"
-          echo "$loc lines of Python, $builtins built-ins, $examples examples, $cases test cases"
 
       - name: Upload the distributions
         uses: actions/upload-artifact@v7
@@ -253,20 +223,21 @@ jobs:
           ls -l
           cat SHA256SUMS.txt
 
-      - name: Write the release notes
-        id: notes
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          notes="$RUNNER_TEMP/RELEASE_NOTES.md"
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          version="${{ needs.verify.outputs.version }}"
+          repo="${{ github.repository }}"
+          notes="$RUNNER_TEMP/notes.md"
           cat > "$notes" <<'MD'
-          **OmniScript __VERSION__** -- a small language for doing big things in
-          few lines. No dependencies: it runs on a stock Python 3.10 or newer,
-          and the executables attached below need no Python at all.
+          **OmniScript __VERSION__** -- a small language for doing big things in few
+          lines. No dependencies, and the executables attached below need no Python
+          at all.
 
           ## Install
-
-          One command, and it fetches the executable for your machine from this
-          release, checks its sha256 and puts `omni` on your PATH:
 
           ```bash
           curl -fsSL https://raw.githubusercontent.com/__REPO__/main/install.sh | bash
@@ -276,104 +247,45 @@ jobs:
           iwr -use1 https://raw.githubusercontent.com/__REPO__/main/install.ps1 | iex
           ```
 
-          Both default to the **release channel** -- this page. `-s beta`
-          (`-Channel beta`) tracks the repository instead, and `--version`
-          (`-Version`) pins one release.
+          That takes the file built for your machine out of this release, checks its
+          sha256 and puts `omni` on your PATH. `-s beta` follows the repository
+          instead, `--version` pins one release, and `omni update` keeps it current.
 
-          Or install it another way:
-
-          ```bash
-          pip install omniscript-lang==__VERSION__    # PyPI, when it is published
-          python3 omni-__VERSION__-any.pyz            # the zipapp: one file
-          pip install omniscript_lang-__VERSION__-py3-none-any.whl
-          ```
-
-          Or skip installing entirely: clone the repository and run `./omni`.
-
-          ## Update
-
-          An install that came from a release updates itself in place:
-
-          ```bash
-          omni update --check     # what is published, and what you are on
-          omni update             # fetch it, check the sha256, swap it in
-          omni update --channel beta --ref main   # follow the repository instead
-          ```
+          Other ways in: `pip install omniscript-lang==__VERSION__`, `python3
+          omni-__VERSION__-any.pyz`, or clone the repository and run `./omni`.
 
           ## Try it
 
           ```bash
-          omni                                   # interactive REPL
-          omni docs                              # all __BUILTINS__ built-ins
           omni -e 'print("hello from __VERSION__")'
-          omni examples/04_drawing.omni          # writes a real PNG
+          omni docs                            # every built-in
+          omni examples/04_drawing.omni        # writes a real PNG
           ```
 
-          ```
-          let c = draw(640, 360)
-          c.rect(0, 0, 640, 360, "#0d1117")
-          c.circle(320, 180, 90, "#58a6ff")
-          c.text(40, 40, "OmniScript", "#ffffff")
-          c.save("hello.png")
-          ```
+          Attached below: the executables for Linux, Windows and macOS, a zipapp for
+          anywhere else, the wheel, the sdist, and `SHA256SUMS.txt` covering all of
+          them (`sha256sum -c SHA256SUMS.txt`).
 
-          ## What shipped
-
-          - lexer, parser and tree-walking interpreter in __LOC__ lines of
-            dependency-free Python
-          - __BUILTINS__ built-ins: graphics with a software rasteriser that
-            writes real PNGs, shell commands, files, JSON and CSV, HTTP,
-            regular expressions, dates, statistics and parallel maps
-          - __EXAMPLES__ runnable examples and __CASES__ language test cases,
-            all green on Python __PYTHONS__
-          - a VS Code extension under `extras/vscode`
-          - standalone executables for Linux, Windows and macOS, a zipapp for
-            anywhere else, and installers that know how to fetch and verify them
-
-          The files attached below are the executables for Linux, Windows and
-          macOS, a zipapp for anywhere else, the wheel, the sdist, and
-          `SHA256SUMS.txt` covering all of them (`sha256sum -c SHA256SUMS.txt`).
-
-          Source history for this release:
-          https://github.com/__REPO__/commits/__TAG__
+          Source history: https://github.com/__REPO__/commits/__TAG__
           MD
           sed -i \
-            -e "s|__VERSION__|${{ needs.verify.outputs.version }}|g" \
-            -e "s|__REPO__|${{ github.repository }}|g" \
-            -e "s|__TAG__|${{ github.event.inputs.tag || github.ref_name }}|g" \
-            -e "s|__LOC__|${{ needs.build.outputs.loc }}|g" \
-            -e "s|__BUILTINS__|${{ needs.build.outputs.builtins }}|g" \
-            -e "s|__EXAMPLES__|${{ needs.build.outputs.examples }}|g" \
-            -e "s|__CASES__|${{ needs.build.outputs.cases }}|g" \
-            -e "s|__PYTHONS__|${{ needs.build.outputs.pythons }}|g" \
+            -e "s|__VERSION__|$version|g" \
+            -e "s|__REPO__|$repo|g" \
+            -e "s|__TAG__|$tag|g" \
             "$notes"
           if grep -q '__' "$notes"; then
-            echo "::error::a placeholder was not substituted"
-            cat "$notes"
-            exit 1
+            echo "::error::a placeholder was not substituted"; exit 1
           fi
-          echo "path=$notes" >> "$GITHUB_OUTPUT"
-          cat "$notes"
-
-      - name: Create or update the release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          tag="${{ github.event.inputs.tag || github.ref_name }}"
-          version="${{ needs.verify.outputs.version }}"
-          repo="${{ github.repository }}"
           if gh release view "$tag" --repo "$repo" > /dev/null 2>&1; then
-            echo "$tag already exists -- replacing the files attached to it"
+            echo "$tag already exists -- replacing the files and the notes"
             gh release upload "$tag" dist/* --repo "$repo" --clobber
+            gh release edit "$tag" --repo "$repo" \
+              --title "OmniScript $version" --notes-file "$notes"
           else
-            gh release create "$tag" dist/* \
-              --repo "$repo" \
-              --title "OmniScript $version" \
-              --notes-file "${{ steps.notes.outputs.path }}"
+            gh release create "$tag" dist/* --repo "$repo" \
+              --title "OmniScript $version" --notes-file "$notes"
           fi
           echo "::notice::https://github.com/$repo/releases/tag/$tag"
-          gh release view "$tag" --repo "$repo"
 
   pypi:
     name: Publish to PyPI (opt-in)

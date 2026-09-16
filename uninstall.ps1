@@ -1,13 +1,13 @@
 # Uninstall OmniScript on Windows (and anywhere else pwsh runs).
 #
-#   .\uninstall.ps1                 # commands, venv and editor extension
+#   .\uninstall.ps1                 # take out the commands
 #   .\uninstall.ps1 -DryRun         # show what would go
 #   .\uninstall.ps1 -Purge          # ...plus the REPL history, a cloned source
 #                                   #    tree, and the manifest itself
 #
 # This works from the manifest install.ps1 wrote, so it removes exactly what was
-# installed -- a shim into a source tree, a venv, a pip install, or a standalone
-# executable downloaded from a release. It never deletes a source tree you cloned
+# installed -- a downloaded executable as readily as a shim into a source tree.
+# It never deletes a source tree you cloned
 # yourself, and it will not remove a command it cannot prove it created: use
 # -Force for that, and read what it says first.
 
@@ -15,9 +15,7 @@
 [CmdletBinding()]
 param(
     [string]$Prefix = '',
-    [string]$Bin = '',
     [switch]$Purge,
-    [switch]$KeepVsCode,
     [switch]$Force,
     [switch]$DryRun,
     [switch]$Help
@@ -44,10 +42,8 @@ if ($Help) {
 Usage: uninstall.ps1 [options]
 
   -Prefix DIR      install root that was used     [see install.ps1]
-  -Bin DIR         where the commands are         [PREFIX, or PREFIX/bin]
   -Purge           also remove the REPL history, a source tree the installer
                    cloned, and the manifest
-  -KeepVsCode      leave the editor extension in place
   -Force           remove commands even when they do not look like ours
   -DryRun          print what would be removed and remove nothing
   -Help            this text
@@ -74,18 +70,15 @@ if (-not $Prefix) {
         $DataDir = if ($env:XDG_DATA_HOME) { Join-Path $env:XDG_DATA_HOME 'omniscript' } else { Join-Path $env:HOME '.local/share/omniscript' }
     }
 }
-if (-not $Bin) {
-    if ($IsWin) { $Bin = $Prefix } else { $Bin = Join-Path $Prefix 'bin' }
-}
+if ($IsWin) { $Bin = $Prefix } else { $Bin = Join-Path $Prefix 'bin' }
 $Manifest = Join-Path $DataDir 'install.txt'
 
 # The manifest is one key=value per line, with a repeated line for each command
 # and each editor extension -- the same file install.sh writes and reads with sed.
-$MVersion = ''; $MMode = ''; $MChannel = ''; $MRef = ''; $MSource = ''; $MVenv = ''
-$MPipDir = ''; $MPython = ''; $MBinary = ''; $MCloned = $false
+$MVersion = ''; $MMode = ''; $MChannel = ''; $MSource = ''
+$MBinary = ''; $MCloned = $false
 $MHistory = Join-Path $(if ($IsWin) { $env:USERPROFILE } else { $env:HOME }) '.omniscript_history'
 $MCommands = @()
-$MExtensions = @()
 
 if (Test-Path -LiteralPath $Manifest) {
     Write-Info "Reading $Manifest"
@@ -97,24 +90,16 @@ if (Test-Path -LiteralPath $Manifest) {
             'version'             { $MVersion = $value }
             'mode'                { $MMode = $value }
             'channel'             { $MChannel = $value }
-            'ref'                 { $MRef = $value }
             'source'              { $MSource = $value }
-            'venv'                { $MVenv = $value }
-            'pip_scripts_dir'     { $MPipDir = $value }
-            'python'              { $MPython = $value }
             'binary'              { $MBinary = $value }
             'cloned_by_installer' { $MCloned = ($value -eq '1') }
             'history_file'        { if ($value) { $MHistory = $value } }
             'command'             { if ($value) { $MCommands += $value } }
-            'extension'           { if ($value) { $MExtensions += $value } }
         }
     }
     if ($MVersion) {
         Write-Info "OmniScript $MVersion, installed in $MMode mode"
-        if ($MChannel) {
-            $tracking = if ($MRef) { ", tracking $MRef" } else { '' }
-            Write-Note "$MChannel channel$tracking"
-        }
+        if ($MChannel) { Write-Note "$MChannel channel" }
     }
 } else {
     Write-Note "no manifest at $Manifest; falling back to $Bin"
@@ -139,21 +124,16 @@ function Test-Ours {
     if (-not $item) { return $false }
     if ($item.LinkType -and $item.Target) {
         $target = "$($item.Target)"
-        foreach ($root in @($MSource, $MVenv, $MPipDir)) {
-            if ($root -and $target.StartsWith($root)) { return $true }
-        }
+        if ($MSource -and $target.StartsWith($MSource)) { return $true }
         if (-not $MSource) {
             # No manifest roots to compare with: trust a link into an OmniScript tree.
             if (Test-Path (Join-Path (Split-Path $target -Parent) 'omniscript/cli.py')) { return $true }
         }
         return $false
     }
-    if ($MPipDir -and $Bin -eq $MPipDir) { return $true }
     $head = (Get-Content -LiteralPath $Path -TotalCount 8 -ErrorAction SilentlyContinue) -join "`n"
-    foreach ($root in @($MSource, $MVenv, $MPipDir)) {
-        if ($root -and $head -match [regex]::Escape($root)) { return $true }
-    }
-    # A pip-generated console script imports the entry point by name.
+    if ($MSource -and $head -match [regex]::Escape($MSource)) { return $true }
+    # A generated console script imports the entry point by name.
     if ($head -match 'from omniscript\.cli import main' -or $head -match 'omniscript\.cli:main') {
         return $true
     }
@@ -198,65 +178,6 @@ if ($MBinary -and (Test-Path -LiteralPath $MBinary)) {
     if (-not $listed) {
         Write-Info 'Removing the downloaded executable'
         Remove-Item-IfOurs -Path $MBinary -What 'executable'
-    }
-}
-
-# ------------------------------------------------------------- venv
-if ($MVenv -and (Test-Path $MVenv)) {
-    if ($MVenv.StartsWith($DataDir)) {
-        Write-Info 'Removing the virtual environment'
-        Invoke-OrShow { Remove-Item -LiteralPath $MVenv -Recurse -Force } "remove $MVenv"
-        Write-Note "removed $MVenv"
-        $Removed += 1
-    } else {
-        Write-Warn $MVenv "it is outside $DataDir, which is not where install.ps1 builds one"
-        $Kept += 1
-    }
-}
-
-# -------------------------------------------------------------- pip
-if ($MMode -eq 'pip') {
-    if (-not $MPython) {
-        $found = Get-Command python -ErrorAction SilentlyContinue
-        if ($found) { $MPython = $found.Source }
-    }
-    if ($MPython) {
-        Write-Info 'Asking pip to remove the package'
-        if ($DryRun) {
-            Write-Note "[dry-run] $MPython -m pip uninstall -y omniscript-lang"
-        } else {
-            $out = (& $MPython -m pip uninstall -y omniscript-lang 2>&1) -join "`n"
-            if ($LASTEXITCODE -eq 0) { Write-Note 'pip uninstalled omniscript-lang' } elseif ($out -match 'externally-managed-environment') {
-                $out = (& $MPython -m pip uninstall -y --break-system-packages omniscript-lang 2>&1) -join "`n"
-                if ($LASTEXITCODE -eq 0) { Write-Note 'pip uninstalled omniscript-lang' } else { Write-Note 'pip refused to remove the package:'; Write-Note $out }
-            } else {
-                Write-Note 'pip had nothing to remove, or said:'
-                Write-Note $out
-            }
-        }
-    }
-}
-
-# ------------------------------------------------- editor extensions
-if ($KeepVsCode) {
-    Write-Note 'keeping the editor extension (-KeepVsCode)'
-} else {
-    foreach ($ext in $MExtensions) {
-        if (-not $ext) { continue }
-        $leaf = Split-Path $ext -Leaf
-        $pkgPath = Join-Path $ext 'package.json'
-        if ($leaf -match 'omniscript' -and (Test-Path $pkgPath)) {
-            $pkg = Get-Content -Raw $pkgPath | ConvertFrom-Json
-            if ($pkg.name -eq 'omniscript') {
-                Write-Info "Removing the editor extension $ext"
-                Invoke-OrShow { Remove-Item -LiteralPath $ext -Recurse -Force } "remove $ext"
-                Write-Note "removed $ext"
-                $Removed += 1
-                continue
-            }
-        }
-        Write-Warn $ext 'it is not an OmniScript extension directory'
-        $Kept += 1
     }
 }
 

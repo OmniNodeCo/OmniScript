@@ -137,8 +137,6 @@ class NamingTests(unittest.TestCase):
         self.assertEqual(U.binary_asset("1.2.3"), f"omni-1.2.3-{tag}{suffix}")
         self.assertEqual(U.binary_asset("1.2.3", "plan9-mips"), "omni-1.2.3-plan9-mips" + suffix)
         self.assertEqual(U.zipapp_asset("1.2.3"), "omni-1.2.3-any.pyz")
-        self.assertEqual(U.wheel_asset("1.2.3"), "omniscript_lang-1.2.3-py3-none-any.whl")
-        self.assertEqual(U.sdist_asset("1.2.3"), "omniscript_lang-1.2.3.tar.gz")
 
     def test_versions_compare_as_numbers_not_as_text(self):
         self.assertEqual(U.parse_version("v1.2.0"), (1, 2, 0))
@@ -162,8 +160,7 @@ class AssetPickingTests(unittest.TestCase):
 
     def test_the_executable_built_for_this_machine_wins(self):
         tag = U.platform_tag()
-        names = [U.sdist_asset("1.2.3"), U.wheel_asset("1.2.3"),
-                 U.zipapp_asset("1.2.3"), U.binary_asset("1.2.3")]
+        names = [U.zipapp_asset("1.2.3"), U.binary_asset("1.2.3")]
         asset = U.pick_asset(self.release(names), "1.2.3")
         self.assertEqual(asset.kind, "binary")
         self.assertEqual(asset.name, f"omni-1.2.3-{tag}" + (".exe" if os.name == "nt" else ""))
@@ -178,9 +175,12 @@ class AssetPickingTests(unittest.TestCase):
         asset = U.pick_asset(self.release([U.zipapp_asset("1.2.3")]), "1.2.3")
         self.assertEqual(asset.kind, "pyz")
 
-    def test_a_wheel_is_better_than_nothing(self):
-        asset = U.pick_asset(self.release([U.wheel_asset("1.2.3")]), "1.2.3")
-        self.assertEqual(asset.kind, "wheel")
+    def test_a_python_distribution_is_not_something_it_can_run(self):
+        # The wheel and the sdist are still published, but they are for pip: an
+        # updater that puts files in place has no use for them.
+        release = self.release(["omniscript_lang-1.2.3-py3-none-any.whl",
+                                "omniscript_lang-1.2.3.tar.gz"])
+        self.assertIsNone(U.pick_asset(release, "1.2.3"))
 
     def test_a_release_with_no_files_picks_nothing(self):
         self.assertIsNone(U.pick_asset(self.release([]), "1.2.3"))
@@ -311,13 +311,6 @@ class ReleaseChannelTests(ArtifactCase):
                          f"OmniScript {OLD}")
         self.assertEqual(sorted(p.name for p in self.bin_dir.iterdir()),
                          [self.installed.name], "a failed update leaves nothing behind")
-
-    def test_no_verify_skips_the_checksum(self):
-        self.github.publish(NEW, [self.new_artifact], sums="wrong")
-        proc = self.update("--no-verify")
-        self.assertEqual(proc.returncode, 0, self.output(proc))
-        self.assertEqual(self.run_omni(self.installed, "--version").stdout.strip(),
-                         f"OmniScript {NEW}")
 
     def test_a_release_without_checksums_warns_but_continues(self):
         self.github.publish(NEW, [self.new_artifact], sums="none")
@@ -478,42 +471,21 @@ class BetaChannelTests(ArtifactCase):
         self.assertEqual(proc.returncode, 1, out)
         self.assertIn("not a git checkout", out)
 
-    def test_beta_check_on_a_binary_install_reports_without_fetching(self):
+    def test_a_binary_install_is_told_the_beta_channel_needs_a_tree(self):
         installed = self.stage(self.old_artifact)
         self.isolate_from_the_manifest()
-        self.env["OMNISCRIPT_REPO_URL"] = str(self.origin)
-        proc = self.run_omni(installed, "update", "--channel", "beta", "--check")
-        out = self.output(proc)
-        self.assertEqual(proc.returncode, 0, out)
-        self.assertIn("binary install", out)
-        self.assertIn("would clone", out)
-        self.assertIn(str(self.origin), out)
-        self.assertFalse((self.home / "data" / "omniscript" / "src").exists(),
-                         "--check fetched something it should not have")
-
-    def test_beta_on_a_binary_install_fetches_the_repository(self):
-        try:
-            import PyInstaller  # noqa: F401
-        except ImportError:
-            pass
-        else:
-            self.skipTest("with PyInstaller this would rebuild a real executable")
-        installed = self.stage(self.old_artifact)
-        self.isolate_from_the_manifest()
-        self.env["OMNISCRIPT_REPO_URL"] = str(self.origin)
         proc = self.run_omni(installed, "update", "--channel", "beta")
         out = self.output(proc)
-        self.assertIn("cloning", out)
-        clone = Path(self.env["XDG_DATA_HOME"]) / "omniscript" / "src" / "omniscript" / "cli.py"
-        self.assertTrue(clone.is_file(), f"the repository was not fetched to {clone}")
         self.assertEqual(proc.returncode, 1, out)
-        self.assertIn("PyInstaller", out)
-
+        self.assertIn("standalone executable", out)
+        self.assertIn("install.sh --channel beta", out)
+        self.assertFalse((Path(self.env["XDG_DATA_HOME"]) / "omniscript" / "src").exists(),
+                         "it fetched a repository nobody asked for")
 
 # ------------------------------------------------- a source tree and its release
 @unittest.skipUnless(HAS_GIT, "git is not installed")
 class SourceInstallTests(ArtifactCase):
-    """A symlink install: releases arrive as tags, and a clone you own is sacred."""
+    """A symlink install follows the repository it points at, and nothing else."""
 
     def setUp(self):
         super().setUp()
@@ -542,37 +514,26 @@ class SourceInstallTests(ArtifactCase):
         return self.run_omni(REPO / "omni", "update", "--api-url", self.github.api,
                              "--channel", "release", *args)
 
-    def test_a_release_is_checked_out_by_its_tag(self):
-        self.write_manifest(cloned=True)
-        self.tag_release(NEW)
-        proc = self.update()
-        out = self.output(proc)
-        self.assertEqual(proc.returncode, 0, out)
-        self.assertEqual(git(self.work, "describe", "--tags").stdout.strip(), f"v{NEW}")
-        reported = subprocess.run([sys.executable, str(self.work / "omni"), "--version"],
-                                  capture_output=True, text=True, timeout=120)
-        self.assertEqual(reported.stdout.strip(), f"OmniScript {NEW}")
-        self.assertEqual(self.manifest()["version"], NEW)
-        self.assertEqual(self.manifest()["release_tag"], f"v{NEW}")
-
-    def test_a_clone_you_own_is_left_alone(self):
+    def test_a_source_install_is_told_how_to_follow_a_release(self):
         self.write_manifest(cloned=False)
         self.tag_release(NEW)
         proc = self.update()
         out = self.output(proc)
-        self.assertEqual(proc.returncode, 0, out)
-        self.assertIn("your own clone", out)
+        self.assertEqual(proc.returncode, 1, out)
+        self.assertIn("runs from a source tree", out)
+        self.assertIn("install.sh --channel release", out)
         self.assertEqual(git(self.work, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip(),
-                         "main")
+                         "main", "the tree was moved")
         self.assertEqual(self.manifest()["version"], OLD)
 
-    def test_force_checks_out_the_tag_in_a_clone_you_own(self):
+    def test_the_beta_channel_moves_the_same_tree(self):
         self.write_manifest(cloned=False)
-        self.tag_release(NEW)
-        proc = self.update("--force")
-        self.assertEqual(proc.returncode, 0, self.output(proc))
-        self.assertEqual(git(self.work, "describe", "--tags").stdout.strip(), f"v{NEW}")
-
+        stamp_version(self.origin, NEW)
+        commit(self.origin, f"OmniScript {NEW}")
+        proc = self.run_omni(REPO / "omni", "update", "--channel", "beta")
+        out = self.output(proc)
+        self.assertEqual(proc.returncode, 0, out)
+        self.assertEqual(self.manifest()["version"], NEW)
 
 # ------------------------------------------------------------ the build tool
 class BuildToolTests(UpdateCase):

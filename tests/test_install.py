@@ -244,67 +244,55 @@ class InstallScriptTests(ScriptCase):
         self.assertFalse(self.command_path("omni").exists())
 
     # ------------------------------------------------------ editor extension
-    def test_vscode_extension_is_installed_and_removed(self):
-        extensions = self.home / ".vscode" / "extensions"
-        extensions.mkdir(parents=True)
-        self.install("--vscode")
-        installed = list(extensions.glob("omninode.omniscript-*"))
-        self.assertEqual(1, len(installed), f"expected one extension dir in {extensions}")
-        self.assertTrue((installed[0] / "package.json").is_file())
-        self.assertTrue((installed[0] / "syntaxes" / "omniscript.tmLanguage.json").is_file())
-        self.assertEqual([str(installed[0])], self.manifest()["editor_extensions"])
-
-        self.uninstall()
-        self.assertEqual([], list(extensions.glob("omninode.omniscript-*")))
-
-    def test_keep_vscode_leaves_the_extension(self):
-        extensions = self.home / ".vscode" / "extensions"
-        extensions.mkdir(parents=True)
-        self.install("--vscode")
-        self.uninstall("--keep-vscode")
-        self.assertEqual(1, len(list(extensions.glob("omninode.omniscript-*"))))
-
     # ------------------------------------------------------------- refusals
     def test_help_explains_the_options(self):
         for script in ("install", "uninstall"):
             result = self.run_script(script, "--help")
             self.assertIn("Usage:", result.stdout)
-        self.assertIn("--mode", self.run_script("install", "--help").stdout)
+        self.assertIn("--channel", self.run_script("install", "--help").stdout)
         self.assertIn("--purge", self.run_script("uninstall", "--help").stdout)
 
     def test_unknown_option_is_refused(self):
         self.assertIn("unknown option", self.install("--nonsense", expect=1).stderr)
         self.assertIn("unknown option", self.uninstall("--nonsense", expect=1).stderr)
 
-    def test_unknown_mode_is_refused(self):
-        self.assertIn("--mode must be", self.install("--mode", "docker", expect=1).stderr)
-
-    def test_a_source_that_is_not_a_source_tree_is_refused(self):
-        empty = self.tmp / "empty"
-        empty.mkdir()
-        result = self.install("--source", str(empty), expect=1)
-        self.assertIn("not an OmniScript source tree", result.stderr)
-
     def test_an_old_python_is_refused_with_a_useful_message(self):
-        stub = self.tmp / "python3.9"
+        # The beta channel needs an interpreter, so it is the interpreter that
+        # has to be judged -- by looking at what is first on PATH.
+        stubs = self.tmp / "stubs"
+        stubs.mkdir()
+        stub = stubs / "python3"
         stub.write_text(
             f"#!{sys.executable}\n"
             "import sys\n"
-            "code = sys.argv[2] if len(sys.argv) > 2 else ''\n"
+            "code = ' '.join(sys.argv[1:])\n"
             "if 'SystemExit' in code:\n"
             "    sys.exit(1)\n"
             "if 'version_info' in code:\n"
             "    print('3.9.7')\n"
             "sys.exit(0)\n")
         stub.chmod(0o755)
-        result = self.install("--python", str(stub), expect=1)
+        self.env["PATH"] = str(stubs) + os.pathsep + self.env["PATH"]
+        result = self.install("--channel", "beta", expect=1)
         self.assertIn("3.9.7", result.stderr)
         self.assertIn("needs 3.10 or newer", result.stderr)
         self.assertFalse(self.command_path("omni").exists())
 
-    def test_a_missing_python_is_refused(self):
-        result = self.install("--python", str(self.tmp / "no-such-python"), expect=1)
-        self.assertIn("not executable", result.stderr + result.stdout)
+    def test_a_machine_with_no_python_is_told_the_beta_channel_needs_one(self):
+        without_python = self.tmp / "nopython"
+        without_python.mkdir()
+        for directory in ("/usr/bin", "/bin"):
+            for item in Path(directory).iterdir():
+                if "python" in item.name or item.name.startswith("pip"):
+                    continue
+                try:
+                    (without_python / item.name).symlink_to(item)
+                except OSError:
+                    pass
+        self.env["PATH"] = str(without_python)
+        result = self.install("--channel", "beta", expect=1)
+        self.assertIn("no python on PATH", result.stderr)
+        self.assertFalse(self.command_path("omni").exists())
 
 
 @unittest.skipUnless(PWSH, "install.ps1 needs pwsh")
@@ -341,13 +329,13 @@ class PowerShellScriptTests(ScriptCase):
             self.assertIn("Usage:", proc.stdout)
 
     def test_dry_run_writes_nothing(self):
-        proc = self.run_script("install", "-Prefix", str(self.prefix), "-Source", str(REPO),
+        proc = self.run_script("install", "-Prefix", str(self.prefix),
                                "-Python", sys.executable, "-DryRun")
         self.assertIn("Dry run", proc.stdout)
         self.assertFalse(self.command_path("omni").exists())
 
     def test_install_and_uninstall_cycle(self):
-        install = self.run_script("install", "-Prefix", str(self.prefix), "-Source", str(REPO),
+        install = self.run_script("install", "-Prefix", str(self.prefix),
                                   "-Python", sys.executable)
         self.assertIn("is installed", install.stdout)
         self.assertTrue(self.manifest_path.is_file(), install.stdout)
@@ -372,7 +360,7 @@ class PowerShellScriptTests(ScriptCase):
         stranger = self.command_path("omniscript")
         stranger.parent.mkdir(parents=True, exist_ok=True)
         stranger.write_text("@echo off\necho not omniscript\n")
-        result = self.run_script("install", "-Prefix", str(self.prefix), "-Source", str(REPO),
+        result = self.run_script("install", "-Prefix", str(self.prefix),
                                  "-Python", sys.executable, expect=1)
         self.assertIn("not created by this script", result.stdout + result.stderr)
         self.assertIn("not omniscript", stranger.read_text())
@@ -466,8 +454,7 @@ class BashReleaseTests(ReleaseCase):
         self.assertEqual([], [p for p in self.bin_dir.iterdir() if p.suffix != ".bak"])
 
     def test_an_unreachable_release_falls_back_to_the_repository(self):
-        result = self.install("--channel", "release", "--api-url", "http://127.0.0.1:1/",
-                              "--source", str(REPO))
+        result = self.install("--channel", "release", "--api-url", "http://127.0.0.1:1/")
         self.assertIn("did not deliver", result.stdout + result.stderr)
         self.assertIn("is installed (beta channel)", result.stdout)
         self.assertTrue(self.command_path("omni").is_symlink())
@@ -477,8 +464,7 @@ class BashReleaseTests(ReleaseCase):
         broken = FakeGitHub(self.tmp / "broken-api")
         self.addCleanup(broken.close)
         broken.publish(NEW, [self.artifact], sums="wrong")
-        result = self.install("--channel", "release", "--api-url", broken.api,
-                              "--source", str(REPO), expect=1)
+        result = self.install("--channel", "release", "--api-url", broken.api, expect=1)
         out = result.stdout + result.stderr
         self.assertIn("checksum mismatch", out)
         self.assertIn("does not match the checksum", out)
@@ -487,7 +473,7 @@ class BashReleaseTests(ReleaseCase):
 
     def test_a_pinned_release_that_does_not_exist_is_fatal(self):
         result = self.install("--channel", "release", "--api-url", self.github.api,
-                              "--version", "7.7.7", "--source", str(REPO), expect=1)
+                              "--version", "7.7.7", expect=1)
         out = result.stdout + result.stderr
         self.assertIn("no release tagged v7.7.7", out)
         self.assertFalse(self.command_path("omni").exists())
@@ -497,14 +483,6 @@ class BashReleaseTests(ReleaseCase):
                               "--version", NEW)
         self.assertIn(f"OmniScript {NEW} is installed", result.stdout)
         self.assertEqual(f"v{NEW}", self.manifest()["release_tag"])
-
-    def test_no_verify_skips_the_checksum(self):
-        broken = FakeGitHub(self.tmp / "broken-api2")
-        self.addCleanup(broken.close)
-        broken.publish(NEW, [self.artifact], sums="wrong")
-        result = self.install("--channel", "release", "--api-url", broken.api, "--no-verify")
-        self.assertIn("not checking the checksum", result.stdout)
-        self.assertTrue(self.command_path("omni").is_file())
 
     def test_dry_run_downloads_nothing(self):
         result = self.from_release("--dry-run")
@@ -572,7 +550,7 @@ class PowerShellReleaseTests(ReleaseCase):
 
     def test_an_unreachable_release_falls_back_to_the_repository(self):
         result = self.install("-Channel", "release", "-ApiUrl", "http://127.0.0.1:1/",
-                              "-Source", str(REPO), "-Python", sys.executable)
+                              "-Python", sys.executable)
         out = result.stdout + result.stderr
         self.assertIn("did not deliver", out)
         self.assertIn("is installed (beta channel)", out)
@@ -582,8 +560,7 @@ class PowerShellReleaseTests(ReleaseCase):
         broken = FakeGitHub(self.tmp / "broken-api")
         self.addCleanup(broken.close)
         broken.publish(NEW, [self.artifact], sums="wrong")
-        result = self.install("-Channel", "release", "-ApiUrl", broken.api,
-                              "-Source", str(REPO), expect=1)
+        result = self.install("-Channel", "release", "-ApiUrl", broken.api, expect=1)
         out = result.stdout + result.stderr
         self.assertIn("checksum mismatch", out)
         self.assertFalse(self.command_path("omni").exists())

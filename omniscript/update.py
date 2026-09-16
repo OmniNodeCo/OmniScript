@@ -1,26 +1,20 @@
 """Two channels and the command that follows them: `omni update`.
 
     omni update                     newest GitHub Release
-    omni update --channel beta      newest commit on the branch being tracked
+    omni update --channel beta      newest commit in the repository
     omni update --check             what is out there, changed nothing
 
-The **release** channel is the published releases. It asks GitHub what the
-newest tag is, picks the file built for this machine out of that release --
-the standalone executable if there is one, otherwise the `.pyz`, otherwise the
-wheel -- checks it against `SHA256SUMS.txt`, puts it where the old one was and
-runs it to prove it works. An install that came from a source tree takes the
-same channel by checking out the release's tag, because a tag is just a commit
-with a name on it.
+The **release** channel asks GitHub what the newest release is, takes the file
+built for this machine out of it -- the standalone executable, or the `.pyz` --
+checks it against `SHA256SUMS.txt`, puts it where the old one was and runs it to
+prove it works. The old file stays until the new one has run.
 
-The **beta** channel is the repository. It fetches, checks out the branch the
-install is tracking (`main` unless it was told otherwise) and fast-forwards,
-then refreshes whatever was built from that tree -- a venv gets reinstalled, a
-pip install gets reinstalled, a symlink needs nothing because it already points
-at the tree that just moved.
+The **beta** channel is the repository: fetch the branch the install tracks
+(`main` unless it was told otherwise) and fast-forward it. A symlink into the
+tree needs nothing rebuilt, because it already points at what just moved.
 
-Nothing here touches a file it cannot account for: a source tree with local
-edits is left alone, an executable that is not ours is left alone, and every
-replacement keeps the previous file until the new one has run.
+Neither channel touches a file it cannot account for: a source tree with local
+edits is left alone, and an executable that is not ours is left alone.
 """
 
 from __future__ import annotations
@@ -66,14 +60,6 @@ def zipapp_asset(version: str) -> str:
     return f"omni-{version}-any.pyz"
 
 
-def wheel_asset(version: str) -> str:
-    return f"omniscript_lang-{version.replace('-', '_')}-py3-none-any.whl"
-
-
-def sdist_asset(version: str) -> str:
-    return f"omniscript_lang-{version.replace('-', '_')}.tar.gz"
-
-
 def parse_version(text: str) -> tuple:
     """'v1.2.0' -> (1, 2, 0); anything unparseable sorts below every real version."""
     digits = []
@@ -98,7 +84,7 @@ MANIFEST_NAME = "install.txt"
 
 # Written as one repeated line each; read back as a list under the plural name.
 LIST_KEYS = {"commands": "command", "editor_extensions": "extension"}
-BOOL_KEYS = ("cloned_by_installer", "pip_user", "pip_break_system_packages")
+BOOL_KEYS = ("cloned_by_installer",)
 
 
 def parse_manifest(text: str) -> dict:
@@ -191,8 +177,8 @@ def read_manifest(path: str | None = None) -> tuple[dict, str]:
 class Install:
     """What we can work out about the copy of OmniScript that is running."""
 
-    kind: str = "unknown"        # binary | source | pip | unknown
-    mode: str = ""               # symlink | venv | pip | binary
+    kind: str = "unknown"        # binary | source | unknown
+    mode: str = ""               # symlink | binary
     channel: str = ""            # release | beta
     version: str = VERSION
     source: str = ""
@@ -200,10 +186,7 @@ class Install:
     binary: str = ""
     commands: list = field(default_factory=list)
     ref: str = ""
-    venv: str = ""
     python: str = ""
-    pip_user: bool = False
-    pip_break_system: bool = False
     cloned_by_installer: bool = False
     manifest_path: str = ""
     manifest: dict = field(default_factory=dict)
@@ -211,8 +194,7 @@ class Install:
     api: str = DEFAULT_API
 
     def describe(self) -> str:
-        where = {"binary": self.binary, "source": self.source,
-                 "pip": self.python}.get(self.kind, "")
+        where = {"binary": self.binary, "source": self.source}.get(self.kind, "")
         bits = [f"OmniScript {self.version or 'unknown'}"]
         bits.append(f"{self.mode or self.kind} install")
         if self.channel:
@@ -240,15 +222,11 @@ def detect(api: str = "", repo: str = "") -> Install:
         install.binary = str(manifest.get("binary") or "")
         install.commands = [str(c) for c in (manifest.get("commands") or [])]
         install.ref = str(manifest.get("ref") or "")
-        install.venv = str(manifest.get("venv") or "")
         install.python = str(manifest.get("python") or "")
-        install.pip_user = bool(manifest.get("pip_user"))
-        install.pip_break_system = bool(manifest.get("pip_break_system_packages"))
         install.cloned_by_installer = bool(manifest.get("cloned_by_installer"))
         install.repo = str(manifest.get("repo") or install.repo)
         install.api = api or str(manifest.get("api_url") or "") or install.api
-        install.kind = {"binary": "binary", "symlink": "source", "venv": "source",
-                        "pip": "pip"}.get(mode, "unknown")
+        install.kind = {"binary": "binary", "symlink": "source"}.get(mode, "unknown")
         if not install.version or install.version == "unknown":
             install.version = VERSION
         return install
@@ -274,11 +252,6 @@ def detect(api: str = "", repo: str = "") -> Install:
         install.ref = _current_ref(parent) or "main"
         return install
 
-    here = os.path.abspath(__file__)
-    if "site-packages" in here or "dist-packages" in here:
-        install.kind = "pip"
-        install.mode = "pip"
-        install.python = sys.executable
         install.version = VERSION
         return install
 
@@ -335,13 +308,8 @@ def release_url(api: str, repo: str, tag: str = "") -> str:
     return f"{base}/releases/tags/{tag}" if tag else f"{base}/releases/latest"
 
 
-def fetch_release(api: str, repo: str, tag: str = "", prerelease: bool = False) -> dict:
-    """The release to update to, or {} when the repository has none.
-
-    With --prerelease and no tag, the newest of the last releases wins even if
-    it is marked as a prerelease, which is how the beta channel of a project
-    that cuts release candidates is meant to be followed.
-    """
+def fetch_release(api: str, repo: str, tag: str = "") -> dict:
+    """The release to update to, or {} when the repository has none."""
     if tag:
         try:
             data = fetch_json(release_url(api, repo, tag))
@@ -359,15 +327,6 @@ def fetch_release(api: str, repo: str, tag: str = "", prerelease: bool = False) 
             raise UpdateError(f"GitHub said {err.code} for {repo}") from err
     except (urllib.error.URLError, OSError, ValueError) as err:
         raise UpdateError(f"could not reach {repo}: {_reason(err)}") from err
-    if not prerelease:
-        return {}
-    try:
-        listing = fetch_json(f"{api.rstrip('/')}/repos/{repo}/releases?per_page=10")
-    except (urllib.error.URLError, OSError, ValueError, urllib.error.HTTPError):
-        return {}
-    for item in listing if isinstance(listing, list) else []:
-        if isinstance(item, dict) and item.get("tag_name"):
-            return item
     return {}
 
 
@@ -396,7 +355,7 @@ class Asset:
     name: str
     url: str
     size: int = 0
-    kind: str = ""      # binary | pyz | wheel | sdist
+    kind: str = ""      # binary | pyz
 
     @property
     def human_size(self) -> str:
@@ -411,18 +370,15 @@ class Asset:
 def pick_asset(release: dict, version: str, tag: str | None = None) -> Asset | None:
     """The best file in this release for this machine, or None.
 
-    Preference is the standalone executable, then the single-file zipapp (which
-    needs a Python), then the wheel, then the sdist.
+    Preference is the standalone executable, then the single-file zipapp, which
+    runs anywhere there is a Python.
     """
     assets = release.get("assets") or []
     by_name = {}
     for item in assets:
         if isinstance(item, dict) and item.get("name"):
             by_name[str(item["name"])] = item
-    wanted = [(binary_asset(version, tag), "binary"),
-              (zipapp_asset(version), "pyz"),
-              (wheel_asset(version), "wheel"),
-              (sdist_asset(version), "sdist")]
+    wanted = [(binary_asset(version, tag), "binary"), (zipapp_asset(version), "pyz")]
     for name, kind in wanted:
         item = by_name.get(name)
         if not item:
@@ -431,13 +387,6 @@ def pick_asset(release: dict, version: str, tag: str | None = None) -> Asset | N
         if not url:
             continue
         return Asset(name=name, url=url, size=int(item.get("size") or 0), kind=kind)
-    # Some releases only carry the names the archive gives them.
-    for name, item in sorted(by_name.items()):
-        if name.endswith((".whl", ".tar.gz")):
-            url = str(item.get("browser_download_url") or "")
-            if url:
-                return Asset(name=name, url=url, size=int(item.get("size") or 0),
-                             kind="wheel" if name.endswith(".whl") else "sdist")
     return None
 
 
@@ -606,11 +555,7 @@ class Options:
     ref: str = ""
     bin_dir: str = ""
     api: str = ""
-    repo: str = ""
     force: bool = False
-    verify: bool = True
-    prerelease: bool = False
-    quiet: bool = False
 
 
 def _write_manifest(install: Install, changes: dict) -> None:
@@ -749,52 +694,14 @@ def _git_pull(source: str, ref: str, report: Reporter, force: bool = False) -> s
 def _refresh_source_install(install: Install, report: Reporter) -> None:
     """Rebuild whatever was made from the source tree, after the tree moved."""
     source = install.source
-    if install.mode == "venv" and install.venv:
-        python = _venv_python(install.venv)
-        if not python:
-            raise UpdateError(f"the venv at {install.venv} has no interpreter in it")
-        report.step("reinstalling", f"into {install.venv}")
-        _pip(python, ["install", "--quiet", "--upgrade", source], report)
-    elif install.mode == "pip" and install.python:
-        report.step("reinstalling", f"into {install.python}")
-        flags = []
-        if install.pip_user:
-            flags.append("--user")
-        if install.pip_break_system:
-            flags.append("--break-system-packages")
-        _pip(install.python, ["install", "--quiet", "--upgrade", *flags, source], report)
-    else:
-        launcher = os.path.join(source, "omni")
-        if os.path.isfile(launcher) and not os.access(launcher, os.X_OK):
-            try:
-                os.chmod(launcher, 0o755)
-            except OSError:
-                pass
-        report.step("reinstalling", "nothing to rebuild: the commands point at the tree")
+    launcher = os.path.join(source, "omni")
+    if os.path.isfile(launcher) and not os.access(launcher, os.X_OK):
+        try:
+            os.chmod(launcher, 0o755)
+        except OSError:
+            pass
+    report.step("reinstalling", "nothing to rebuild: the commands point at the tree")
 
-
-def _venv_python(venv: str) -> str:
-    for name in (("Scripts", "python.exe"), ("bin", "python3"), ("bin", "python")):
-        candidate = os.path.join(venv, *name)
-        if os.path.isfile(candidate):
-            return candidate
-    return ""
-
-
-def _pip(python: str, args: list[str], report: Reporter) -> None:
-    proc = subprocess.run([python, "-m", "pip", *args], capture_output=True,
-                          text=True, timeout=900)
-    if proc.returncode != 0:
-        detail = (proc.stderr or proc.stdout).strip()[-300:]
-        if "externally-managed-environment" in detail:
-            report.step("retrying", "with --break-system-packages")
-            proc = subprocess.run(
-                [python, "-m", "pip", *args, "--break-system-packages"],
-                capture_output=True, text=True, timeout=900)
-            if proc.returncode != 0:
-                raise UpdateError(f"pip refused: {(proc.stderr or proc.stdout).strip()[-300:]}")
-            return
-        raise UpdateError(f"pip failed: {detail}")
 
 
 def _verify_commands(install: Install, report: Reporter, want: str = "") -> None:
@@ -824,7 +731,7 @@ def update_release(install: Install, opts: Options, report: Reporter) -> int:
     tag = opts.version if opts.version.startswith("v") else \
         (f"v{opts.version}" if opts.version else "")
     report.step("channel", f"release ({install.repo})")
-    release = fetch_release(install.api, install.repo, tag, opts.prerelease)
+    release = fetch_release(install.api, install.repo, tag)
     if not release:
         report.note("this repository has no releases yet")
         report.note("use `omni update --channel beta` to follow the repository itself")
@@ -852,16 +759,15 @@ def update_release(install: Install, opts: Options, report: Reporter) -> int:
 
     asset = pick_asset(release, available)
     if install.kind == "source":
-        # A source install takes a release as a tag, so it does not need a file.
-        return _install_release_as_tag(install, opts, report, available, published, asset)
+        raise UpdateError("this copy runs from a source tree; `omni update --channel "
+                          "beta` follows it, or run install.sh --channel release to "
+                          "switch to the published release")
     if asset is None:
-        raise UpdateError(f"{published} has no file for {platform_tag()}, no .pyz and "
-                          "no wheel attached to it")
+        raise UpdateError(f"{published} has no file for {platform_tag()} and no .pyz "
+                          "attached to it")
 
     if install.kind == "binary" or (install.kind == "unknown" and opts.bin_dir):
         return _install_asset_binary(install, opts, report, release, asset, available)
-    if install.kind == "pip":
-        return _install_release_with_pip(install, opts, report, release, asset, available)
     raise UpdateError("cannot work out how OmniScript was installed, so there is "
                       "nothing safe to replace; run install.sh (or install.ps1) again, "
                       "or pass --bin DIR to put the release executable somewhere")
@@ -900,9 +806,6 @@ def _write_windows_shim(bin_dir: str, artifact: str, name: str,
 def _install_asset_binary(install: Install, opts: Options, report: Reporter,
                           release: dict, asset: Asset, available: str) -> int:
     """Download an executable artifact and swap it for the one that is running."""
-    if asset.kind in ("wheel", "sdist"):
-        raise UpdateError(f"{asset.name} is a Python distribution, not an executable; "
-                          "install it with pip, or run install.sh for a source install")
     if asset.kind == "pyz" and not (shutil.which("python3") or shutil.which("python")):
         raise UpdateError(f"the only file for this machine is {asset.name}, which needs "
                           "a Python, and there is none on PATH")
@@ -927,20 +830,19 @@ def _install_asset_binary(install: Install, opts: Options, report: Reporter,
         size = download(asset.url, staged)
         report.note(f"{size:,} bytes")
 
-        if opts.verify:
-            sums = checksums_for(release)
-            if not sums:
-                report.warn("the release has no SHA256SUMS.txt to check against")
+        sums = checksums_for(release)
+        if not sums:
+            report.warn("the release has no SHA256SUMS.txt to check against")
+        else:
+            want = sums.get(asset.name)
+            got = sha256_of(staged)
+            if not want:
+                report.warn(f"SHA256SUMS.txt does not mention {asset.name}")
+            elif want != got:
+                raise UpdateError(f"checksum mismatch for {asset.name}: expected "
+                                  f"{want}, downloaded {got}")
             else:
-                want = sums.get(asset.name)
-                got = sha256_of(staged)
-                if not want:
-                    report.warn(f"SHA256SUMS.txt does not mention {asset.name}")
-                elif want != got:
-                    raise UpdateError(f"checksum mismatch for {asset.name}: expected "
-                                      f"{want}, downloaded {got}")
-                else:
-                    report.step("verified", f"sha256 {got[:16]}...")
+                report.step("verified", f"sha256 {got[:16]}...")
 
         report.step("installing", target)
         backup = replace_executable(target, staged)
@@ -1000,90 +902,17 @@ def _install_asset_binary(install: Install, opts: Options, report: Reporter,
         shutil.rmtree(tmpdir, True)
 
 
-def _install_release_as_tag(install: Install, opts: Options, report: Reporter,
-                            available: str, published: str,
-                            asset: Asset | None) -> int:
-    """A source install takes a release by checking out its tag."""
-    source = install.source
-    if not _is_git_checkout(source):
-        raise UpdateError(f"{source} is not a git checkout; reinstall from the release "
-                          "executable with install.sh --channel release")
-    if install.cloned_by_installer is False and not opts.force:
-        report.warn(f"{source} is your own clone; pass --force to check out {published} "
-                    "in it")
-        return 0
-    if not shutil.which("git"):
-        raise UpdateError("git is not on PATH, so a tag cannot be checked out")
-    report.step("fetching", f"tags from origin, looking for {published}")
-    proc = _git(source, "fetch", "--quiet", "--tags", "origin")
-    if proc.returncode != 0:
-        raise UpdateError(f"git fetch failed: {proc.stderr.strip()[-300:]}")
-    if not _tree_is_clean(source) and not opts.force:
-        raise UpdateError(f"{source} has local changes; commit or stash them, or pass "
-                          "--force")
-    report.step("checking out", published)
-    proc = _git(source, "checkout", "--quiet", published)
-    if proc.returncode != 0:
-        raise UpdateError(f"git checkout {published} failed: {proc.stderr.strip()[-300:]}")
-    _refresh_source_install(install, report)
-    _verify_commands(install, report, available)
-    _write_manifest(install, {"version": available, "release_tag": published,
-                              "channel": "release"})
-    extra = f" ({asset.name} is attached to it, if you would rather have a single file)" \
-        if asset else ""
-    report.step("updated", f"{install.version} -> {available}{extra}")
-    return 0
-
-
-def _install_release_with_pip(install: Install, opts: Options, report: Reporter,
-                              release: dict, asset: Asset, available: str) -> int:
-    """A pip install upgrades through pip -- from the release's wheel if it has one."""
-    python = install.python or sys.executable
-    flags = []
-    if install.pip_user:
-        flags.append("--user")
-    if install.pip_break_system:
-        flags.append("--break-system-packages")
-    tmpdir = ""
-    if asset.kind == "wheel":
-        report.step("downloading", f"{asset.name} ({asset.human_size})")
-        tmpdir = tempfile.mkdtemp(prefix="omni-update-")
-        staged = os.path.join(tmpdir, asset.name)
-        try:
-            download(asset.url, staged)
-            if opts.verify:
-                want = checksums_for(release).get(asset.name)
-                if want and want != sha256_of(staged):
-                    raise UpdateError(f"checksum mismatch for {asset.name}")
-                if want:
-                    report.step("verified", f"sha256 {want[:16]}…")
-            report.step("installing", f"{asset.name} with pip")
-            _pip(python, ["install", "--quiet", "--upgrade", *flags, staged], report)
-        finally:
-            shutil.rmtree(tmpdir, True)
-    else:
-        report.step("installing", f"omniscript-lang=={available} with pip")
-        _pip(python, ["install", "--quiet", "--upgrade", *flags,
-                      f"omniscript-lang=={available}"], report)
-    _verify_commands(install, report, available)
-    _write_manifest(install, {"version": available, "channel": "release"})
-    report.step("updated", f"{install.version} -> {available}")
-    return 0
-
-
 def update_beta(install: Install, opts: Options, report: Reporter) -> int:
     """Follow the repository: the newest commit on the branch being tracked."""
     ref = opts.ref or install.ref or "main"
     report.step("channel", f"beta (the repository, {ref})")
-    if install.kind == "binary":
-        report.note("this copy is a standalone executable with no repository in it")
-        return _beta_for_binary(install, opts, report, ref)
-    if install.kind not in ("source", "pip") or not install.source:
-        raise UpdateError("the beta channel needs a source tree to pull; run install.sh "
-                          "--channel beta first, or use --channel release")
+    if install.kind == "binary" or not install.source:
+        raise UpdateError("this copy is a standalone executable with no repository in "
+                          "it; `omni update` follows the release channel, or run "
+                          "install.sh --channel beta to switch to the repository")
     if opts.check:
         _git_check(install.source, ref, report)
-        report.step("would rebuild", f"{install.mode} install from {install.source}")
+        report.step("would update", f"the tree at {install.source}")
         return 0
     before = install.version
     _git_pull(install.source, ref, report, opts.force)
@@ -1096,81 +925,6 @@ def update_beta(install: Install, opts: Options, report: Reporter) -> int:
     else:
         report.step("updated", f"the tree is current (version {after or before})")
     return 0
-
-
-def _beta_for_binary(install: Install, opts: Options, report: Reporter, ref: str) -> int:
-    """A binary cannot pull, but it can be replaced by a build of the branch."""
-    report.note("the beta channel is the repository, so this downloads a build of it")
-    data = os.environ.get("XDG_DATA_HOME") or os.path.join(os.path.expanduser("~"),
-                                                           ".local", "share")
-    source = os.path.join(data, "omniscript", "src")
-    if not shutil.which("git"):
-        raise UpdateError("git is not on PATH, so the repository cannot be fetched")
-    url = repo_url(install)
-    if opts.check and not _is_git_checkout(source):
-        report.step("would clone", f"{url} ({ref}) into {source}")
-        report.step("would rebuild", "an executable from that tree")
-        return 0
-    if _is_git_checkout(source):
-        if opts.check:
-            _git_check(source, ref, report)
-            report.step("would rebuild", f"an executable from {source}")
-            return 0
-        _git_pull(source, ref, report, opts.force)
-    else:
-        os.makedirs(os.path.dirname(source), exist_ok=True)
-        report.step("cloning", f"{url} ({ref}) into {source}")
-        proc = subprocess.run(["git", "clone", "--quiet", "--branch", ref, url, source],
-                              capture_output=True, text=True, timeout=900)
-        if proc.returncode != 0:
-            raise UpdateError(f"git clone failed: {proc.stderr.strip()[-300:]}")
-    report.step("rebuilding", "an executable from that tree (needs PyInstaller)")
-    built = _build_from_source(source, ref, report)
-    target = install.binary
-    backup = replace_executable(target, built)
-    try:
-        reported = run_version(command_for(target))
-        if not reported:
-            raise UpdateError("the rebuilt executable did not run")
-        report.step("verified", f"{os.path.basename(target)} reports {reported}")
-    except UpdateError:
-        restore(target, backup)
-        raise
-    if backup:
-        try:
-            os.remove(backup)
-        except OSError:
-            pass
-    _write_manifest(install, {"version": reported, "channel": "beta", "ref": ref,
-                              "source": source, "cloned_by_installer": True})
-    report.step("updated", f"{install.version} -> {reported}")
-    return 0
-
-
-def _build_from_source(source: str, ref: str, report: Reporter) -> str:
-    """Build a standalone executable out of a source tree; returns its path."""
-    tool = os.path.join(source, "tools", "build_executable.py")
-    if not os.path.isfile(tool):
-        raise UpdateError(f"{source} has no tools/build_executable.py to build with")
-    python = shutil.which("python3") or shutil.which("python") or sys.executable
-    out = tempfile.mkdtemp(prefix="omni-beta-")
-    version = _source_version(source) or "0.0.0"
-    proc = subprocess.run(
-        [python, tool, "--out", out, "--version", version, "--no-smoke"],
-        cwd=out, capture_output=True, text=True, timeout=1800)
-    if proc.returncode != 0:
-        shutil.rmtree(out, True)
-        detail = (proc.stderr or proc.stdout).strip()[-400:]
-        hint = "pip install pyinstaller" if "PyInstaller" in detail else ""
-        raise UpdateError(f"the build failed: {detail}" + (f"\n           try: {hint}"
-                                                           if hint else ""))
-    want = os.path.join(out, binary_asset(version))
-    if not os.path.isfile(want):
-        names = sorted(os.listdir(out))
-        shutil.rmtree(out, True)
-        raise UpdateError(f"the build produced {names}, not {os.path.basename(want)}")
-    report.note(f"built {os.path.basename(want)} from {ref}")
-    return want
 
 
 def _source_version(source: str) -> str:
@@ -1197,17 +951,11 @@ def run(args) -> int:
         ref=getattr(args, "ref", "") or "",
         bin_dir=getattr(args, "bin_dir", "") or "",
         api=getattr(args, "api_url", "") or "",
-        repo=getattr(args, "repo", "") or "",
         force=bool(getattr(args, "force", False)),
-        verify=not bool(getattr(args, "no_verify", False)),
-        prerelease=bool(getattr(args, "prerelease", False)),
-        quiet=bool(getattr(args, "quiet", False)),
     )
-    install = detect(opts.api, opts.repo)
+    install = detect(opts.api)
     if opts.api:
         install.api = opts.api
-    if opts.repo:
-        install.repo = opts.repo
     if opts.bin_dir:
         install.bin_dir = os.path.abspath(opts.bin_dir)
     channel = opts.channel or install.channel or "release"
@@ -1216,7 +964,7 @@ def run(args) -> int:
               file=sys.stderr)
         return 1
     install.channel = channel
-    report = Reporter(opts.quiet)
+    report = Reporter()
     report.step("installed", install.describe())
     if not install.manifest_path:
         report.note("no manifest found; going by how this copy was started")

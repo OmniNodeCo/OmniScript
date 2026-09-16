@@ -1,20 +1,17 @@
 # Install OmniScript on Windows (and, if you like, anywhere pwsh runs).
 #
-#   .\install.ps1                          # from this checkout: shims into %LOCALAPPDATA%\Programs\OmniScript
-#   .\install.ps1 -Channel release         # the published release: one file, no Python needed
-#   .\install.ps1 -Mode venv               # self-contained venv, shims pointing at it
-#   .\install.ps1 -Bin C:\Tools            # put the commands somewhere of your own
-#   .\install.ps1 -VsCode                  # also install the editor extension
+#   .\install.ps1                    # from this checkout: shims into %LOCALAPPDATA%\Programs\OmniScript
+#   .\install.ps1 -Channel release   # the published release: one file, no Python needed
+#   .\install.ps1 -Prefix C:\Tools   # put it somewhere of your own
 #
 # Two channels, the same two `omni update` follows:
 #
-#   release   what the project published. A standalone executable for this
-#             machine if it built one, otherwise the wheel into a venv or pip.
-#             The default when this script arrives with no source tree beside
-#             it, and the only channel that needs no Python at all.
-#   beta      the repository itself: this checkout, or a clone of a branch, with
-#             the commands pointing at it so `git pull` is an upgrade. The
-#             default when the script is run from a source tree.
+#   release   what the project published: a standalone executable for this
+#             machine, or the .pyz. The default when this script arrives with no
+#             source tree beside it, and the only channel that needs no Python.
+#   beta      the repository itself: this checkout, or a clone of main, with the
+#             commands pointing at it so `git pull` is an upgrade. The default
+#             when the script is run from a source tree.
 #
 # If the release channel cannot deliver -- nothing published yet, no file built
 # for this machine, no network -- the script says so and installs from the
@@ -33,23 +30,12 @@
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
-    # 'binary' is not a choice you make: it is what a release install becomes, and
-    # a validated parameter has to accept the value the script assigns to it.
-    [ValidateSet('symlink', 'venv', 'pip', 'binary')]
-    [string]$Mode = 'symlink',
     [ValidateSet('', 'release', 'beta')]
     [string]$Channel = '',
-    [string]$Prefix = '',
-    [string]$Bin = '',
-    [string]$Source = '',
-    [string]$Python = '',
-    [string]$Ref = 'main',
     [string]$Version = '',
-    [string]$Repo = '',
+    [string]$Prefix = '',
     [string]$ApiUrl = '',
-    [switch]$NoVerify,
-    [switch]$VsCode,
-    [switch]$User,
+    [string]$Python = '',
     [switch]$Force,
     [switch]$DryRun,
     [switch]$Help
@@ -58,8 +44,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
-$Repo = if ($Repo) { $Repo } elseif ($env:OMNISCRIPT_REPO) { $env:OMNISCRIPT_REPO } else { 'OmniNodeCo/OmniScript' }
-$RepoUrl = if ($env:OMNISCRIPT_REPO_URL) { $env:OMNISCRIPT_REPO_URL } else { "https://github.com/$Repo.git" }
+$Repo = 'OmniNodeCo/OmniScript'
+$RepoUrl = "https://github.com/$Repo.git"
 $ApiUrl = if ($ApiUrl) { $ApiUrl } elseif ($env:OMNISCRIPT_API_URL) { $env:OMNISCRIPT_API_URL } else { 'https://api.github.com' }
 $MinPython = '3.10'
 $Commands = @('omni', 'omniscript')
@@ -67,7 +53,8 @@ $Commands = @('omni', 'omniscript')
 $IsWin = [System.Environment]::OSVersion.Platform -eq 'Win32NT'
 
 # State the two channels fill in as they go.
-$InstallSpec = ''
+$Source = ''
+$Mode = ''
 $ReleaseResult = 1
 $RelTag = ''
 $RelVersion = ''
@@ -94,20 +81,14 @@ if ($Help) {
     @'
 Usage: install.ps1 [options]
 
-  -Channel release|beta  release: the published release (default with no source
-                         tree here); beta: the repository (default in a checkout)
-  -Mode symlink|venv|pip   how to install                        [symlink]
-  -Prefix DIR              install root                          [see below]
-  -Bin DIR                 where the commands go                 [PREFIX, or PREFIX\bin]
-  -Source DIR              source tree to install from           [this script's folder]
-  -Python PATH             interpreter to use                    [first python >= 3.10 on PATH]
-  -Ref REF                 branch or tag to fetch when cloning   [main]
-  -Version VERSION         release channel: a particular release [the newest]
-  -Repo OWNER/NAME         repository to ask and clone from      [OmniNodeCo/OmniScript]
-  -ApiUrl URL              API root to ask for releases          [https://api.github.com]
-  -NoVerify                skip the SHA256 check on what is downloaded
-  -VsCode                  also install the editor extension
-  -User                    pip mode: install for this user only
+  -Channel release|beta    release (the default): the newest published release,
+                           one file, no Python needed. beta: the repository --
+                           the source tree beside this script, or a clone of
+                           main. Needs Python 3.10 or newer.
+  -Version VERSION         a particular release, for example 1.0.0 or v1.0.0
+  -Prefix DIR              install root                [see below]
+  -ApiUrl URL              the GitHub API to ask       [https://api.github.com]
+  -Python PATH             the interpreter to use for the beta channel
   -Force                   replace commands this script did not create
   -DryRun                  print what would happen and change nothing
   -Help                    this text
@@ -116,27 +97,13 @@ Defaults:
   Windows    -Prefix %LOCALAPPDATA%\Programs\OmniScript   (commands land directly in it)
   elsewhere  -Prefix ~/.local                             (commands land in PREFIX/bin)
 
-Channels:
-  release   download what the project published: a standalone executable for
-            this machine when there is one, otherwise the wheel. With an
-            executable there is nothing to compile and no Python to find.
-  beta      install from a source tree -- this checkout, or a clone of -Ref --
-            and keep tracking it. `omni update --channel beta` then moves it.
-
-Modes:
-  symlink   a .cmd shim (Windows) or a symlink (everywhere else) pointing at the
-            launcher in the source tree. Instant, no network. The source tree has
-            to stay where it is.
-  venv      build a virtual environment under the data directory, install the
-            package into it, then point the commands at that. Survives deleting
-            the source tree.
-  pip       install into the interpreter you already use.
-
-A release install of a standalone executable records itself as mode binary.
-
-State, manifest and venv live in:
+Everything installed is recorded in install.txt under the state directory, which
+is what uninstall.ps1 reads:
   Windows    %LOCALAPPDATA%\OmniScript
   elsewhere  ${XDG_DATA_HOME:-~/.local/share}/omniscript
+
+To install the editor extension, copy extras\vscode into your extensions
+directory; to install into a virtual environment instead, use pip install .
 '@ | Write-Host
     exit 0
 }
@@ -151,9 +118,7 @@ if (-not $Prefix) {
         $Prefix = Join-Path $env:HOME '.local'
     }
 }
-if (-not $Bin) {
-    if ($IsWin) { $Bin = $Prefix } else { $Bin = Join-Path $Prefix 'bin' }
-}
+if ($IsWin) { $Bin = $Prefix } else { $Bin = Join-Path $Prefix 'bin' }
 
 if ($IsWin) {
     $local = $env:LOCALAPPDATA
@@ -165,7 +130,6 @@ if ($IsWin) {
     $DataDir = Join-Path $env:HOME '.local/share/omniscript'
 }
 $Manifest = Join-Path $DataDir 'install.txt'
-$VenvDir = Join-Path $DataDir 'venv'
 
 # ------------------------------------------------------------- this machine
 function Get-PlatformTag {
@@ -273,9 +237,9 @@ function New-Shim {
 }
 
 # ============================================================ release channel
-# Fills in $ReleaseResult: 0 installed as a single file, 10 a wheel is waiting in
-# $InstallSpec for venv or pip mode, 1 the channel cannot deliver and the
-# repository should be used instead. $RelFatal says when 1 must not be a fallback.
+# Fills in $ReleaseResult: 0 installed as a single file, 1 the channel cannot
+# deliver and the repository should be used instead. $RelFatal says when 1 must
+# not be a fallback.
 function Install-FromRelease {
     $script:ReleaseResult = 1
     $platform = Get-PlatformTag
@@ -310,13 +274,10 @@ function Install-FromRelease {
 
     $suffix = ''
     if ($IsWin) { $suffix = '.exe' }
-    if ($Mode -eq 'venv' -or $Mode -eq 'pip') {
-        $wanted = @("omniscript_lang-$RelVersion-py3-none-any.whl")
-        $kinds = @('wheel')
-    } else {
-        $wanted = @("omni-$RelVersion-$platform$suffix", "omni-$RelVersion-$platform", "omni-$RelVersion-any.pyz")
-        $kinds = @('binary', 'binary', 'pyz')
-    }
+    # The executable for this machine, or the zipapp, which runs anywhere there
+    # is a Python.
+    $wanted = @("omni-$RelVersion-$platform$suffix", "omni-$RelVersion-any.pyz")
+    $kinds = @('binary', 'pyz')
     $asset = $null
     $kind = ''
     for ($i = 0; $i -lt $wanted.Count; $i++) {
@@ -347,44 +308,34 @@ function Install-FromRelease {
         }
         $size = (Get-Item -LiteralPath $RelDownload).Length
         Write-Note "$size bytes"
-        if ($NoVerify) {
-            Write-Note 'not checking the checksum (-NoVerify)'
-        } else {
-            $sumsAsset = @($release.assets) | Where-Object { "$($_.name)".ToUpperInvariant() -eq 'SHA256SUMS.TXT' } | Select-Object -First 1
-            $expected = ''
-            if ($sumsAsset) {
-                try {
-                    foreach ($line in ((Read-Url "$($sumsAsset.browser_download_url)") -split "`n")) {
-                        if ($line -match [regex]::Escape($RelAssetName)) {
-                            $expected = ($line.Trim() -split '\s+')[0].ToLowerInvariant()
-                            break
-                        }
+    $sumsAsset = @($release.assets) | Where-Object { "$($_.name)".ToUpperInvariant() -eq 'SHA256SUMS.TXT' } | Select-Object -First 1
+        $expected = ''
+        if ($sumsAsset) {
+            try {
+                foreach ($line in ((Read-Url "$($sumsAsset.browser_download_url)") -split "`n")) {
+                    if ($line -match [regex]::Escape($RelAssetName)) {
+                        $expected = ($line.Trim() -split '\s+')[0].ToLowerInvariant()
+                        break
                     }
-                } catch { Write-Warn 'the checksums could not be downloaded' }
-            }
-            if (-not $expected) {
-                Write-Warn 'the release has no checksum for this file, so it is unchecked'
-            } else {
-                $actual = Get-Sha256 $RelDownload
-                if ($actual -ne $expected) {
-                    Remove-Item -Force -LiteralPath $RelDownload -ErrorAction SilentlyContinue
-                    Write-Warn "checksum mismatch for $RelAssetName"
-                    Write-Warn "  the release says $expected"
-                    Write-Warn "  the download is  $actual"
-                    $script:RelFatal = "$RelAssetName does not match the checksum the release published"
-                    return
                 }
-                Write-Note 'sha256 verified'
+            } catch { Write-Warn 'the checksums could not be downloaded' }
+        }
+        if (-not $expected) {
+            Write-Warn 'the release has no checksum for this file, so it is unchecked'
+        } else {
+            $actual = Get-Sha256 $RelDownload
+            if ($actual -ne $expected) {
+                Remove-Item -Force -LiteralPath $RelDownload -ErrorAction SilentlyContinue
+                Write-Warn "checksum mismatch for $RelAssetName"
+                Write-Warn "  the release says $expected"
+                Write-Warn "  the download is  $actual"
+                $script:RelFatal = "$RelAssetName does not match the checksum the release published"
+                return
             }
+            Write-Note 'sha256 verified'
         }
     }
 
-    if ($kind -eq 'wheel') {
-        $script:InstallSpec = $RelDownload
-        $script:OmniVersion = $RelVersion
-        $script:ReleaseResult = 10
-        return
-    }
     if ($kind -eq 'pyz' -and -not $Python) {
         $probe = Get-Command python -ErrorAction SilentlyContinue
         $probe3 = Get-Command python3 -ErrorAction SilentlyContinue
@@ -476,20 +427,15 @@ function Write-Manifest {
         "installed_at=$((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'))",
         "mode=$Mode",
         "package=omniscript-lang",
-        "pip_scripts_dir=$PipTarget",
-        "pip_user=$(if ($User) { 1 } else { 0 })",
         "python=$Python",
         "python_version=$PyVersion",
-        "ref=$Ref",
         "release_tag=$RelTag",
         "repo=$Repo",
         "repo_url=$RepoUrl",
         "source=$Source",
-        "venv=$InstalledVenv",
         "version=$OmniVersion"
     )
     foreach ($path in $InstalledCommands) { if ($path) { $lines += "command=$path" } }
-    foreach ($dir in $ExtensionDirs) { if ($dir) { $lines += "extension=$dir" } }
     [System.IO.File]::WriteAllLines($Manifest, [string[]]$lines)
     if (-not (Test-Path -LiteralPath $Manifest)) { Stop-Die "the manifest did not get written to $Manifest" }
     Write-Note "wrote $Manifest"
@@ -569,10 +515,7 @@ function Show-PathAdvice {
 # ------------------------------------------------------- the shared state
 $Cloned = $false
 $InstalledCommands = New-Object System.Collections.Generic.List[string]
-$InstalledVenv = ''
-$PipTarget = ''
 $CommandKind = if ($IsWin) { 'shim' } else { 'symlink' }
-$ExtensionDirs = New-Object System.Collections.Generic.List[string]
 $OmniVersion = 'unknown'
 $PyVersion = ''
 
@@ -614,7 +557,6 @@ if ($Channel -eq 'release') {
             Show-PathAdvice
             exit 0
         }
-        10 { Write-Info "OmniScript $OmniVersion from $RelTag ($RelAssetName)" }
         default {
             if ($RelFatal) { Stop-Die $RelFatal }
             Write-Warn "the release channel did not deliver; installing from $RepoUrl instead"
@@ -624,40 +566,33 @@ if ($Channel -eq 'release') {
 }
 
 # ------------------------------------------------------- find the source
-if (-not $InstallSpec) {
-    if (-not $Source -and $here -and (Test-Path (Join-Path $here 'omniscript/cli.py'))) {
-        $Source = $here
-    }
-    if (-not $Source -and $env:OMNI_HOME -and (Test-Path (Join-Path $env:OMNI_HOME 'omniscript/cli.py'))) {
-        $Source = $env:OMNI_HOME
-    }
-    if (-not $Source -and (Test-Path (Join-Path $DataDir 'src/omniscript/cli.py'))) {
-        $Source = Join-Path $DataDir 'src'
-    }
+if (-not $Source -and $here -and (Test-Path (Join-Path $here 'omniscript/cli.py'))) {
+    $Source = $here
+}
+if (-not $Source -and $env:OMNI_HOME -and (Test-Path (Join-Path $env:OMNI_HOME 'omniscript/cli.py'))) {
+    $Source = $env:OMNI_HOME
+}
+if (-not $Source -and (Test-Path (Join-Path $DataDir 'src/omniscript/cli.py'))) {
+    $Source = Join-Path $DataDir 'src'
+}
 
-    if (-not $Source -or -not (Test-Path (Join-Path $Source 'omniscript/cli.py'))) {
-        if ($Source) { Stop-Die "-Source $Source is not an OmniScript source tree (no omniscript/cli.py)" }
-        $Source = Join-Path $DataDir 'src'
-        if (Test-Path (Join-Path $Source 'omniscript/cli.py')) {
-            Write-Info "Using the source already in $Source"
-            if ($Ref -ne 'main') {
-                Invoke-OrShow { git -C $Source fetch --quiet origin $Ref } "git fetch $Ref"
-                Invoke-OrShow { git -C $Source checkout --quiet $Ref } "git checkout $Ref"
-            }
-        } else {
-            if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-                Stop-Die 'no source tree here and no git to fetch one; run this from a clone, or pass -Source DIR'
-            }
-            Write-Info "Fetching OmniScript ($Ref) into $Source"
-            Invoke-OrShow { New-Item -ItemType Directory -Force -Path $DataDir | Out-Null } "mkdir $DataDir"
-            Invoke-OrShow { git clone --quiet --branch $Ref --depth 1 $RepoUrl $Source } "git clone $RepoUrl"
-            $Cloned = $true
+if (-not $Source -or -not (Test-Path (Join-Path $Source 'omniscript/cli.py'))) {
+    $Source = Join-Path $DataDir 'src'
+    if (Test-Path (Join-Path $Source 'omniscript/cli.py')) {
+        Write-Info "Using the source already in $Source"
+    } else {
+        if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+            Stop-Die 'no source tree here and no git to fetch one; run this from a clone, or pass -Source DIR'
         }
+        Write-Info "Fetching OmniScript into $Source"
+        Invoke-OrShow { New-Item -ItemType Directory -Force -Path $DataDir | Out-Null } "mkdir $DataDir"
+        Invoke-OrShow { git clone --quiet --branch main --depth 1 $RepoUrl $Source } "git clone $RepoUrl"
+        $Cloned = $true
     }
-    $Source = (Resolve-Path $Source).Path
-    if (-not (Test-Path (Join-Path $Source 'omniscript/cli.py'))) {
-        Stop-Die "$Source is not an OmniScript source tree"
-    }
+}
+$Source = (Resolve-Path $Source).Path
+if (-not (Test-Path (Join-Path $Source 'omniscript/cli.py'))) {
+    Stop-Die "$Source is not an OmniScript source tree"
 }
 
 # --------------------------------------------------------- find python
@@ -676,13 +611,9 @@ if ($LASTEXITCODE -ne 0) {
     Stop-Die "$Python is Python $found; OmniScript needs $MinPython or newer (try -Python PATH)"
 }
 $PyVersion = (& $Python -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])').Trim()
-if ($InstallSpec) {
-    Write-Note "python $PyVersion ($Python), commands into $Bin, mode $Mode"
-} else {
-    $OmniVersion = (& $Python -c "import sys; sys.path.insert(0, r'$Source'); import omniscript; print(omniscript.__version__)").Trim()
-    Write-Info "OmniScript $OmniVersion from $Source"
-    Write-Note "python $PyVersion ($Python), commands into $Bin, mode $Mode"
-}
+$OmniVersion = (& $Python -c "import sys; sys.path.insert(0, r'$Source'); import omniscript; print(omniscript.__version__)").Trim()
+Write-Info "OmniScript $OmniVersion from $Source"
+Write-Note "python $PyVersion ($Python), commands into $Bin"
 
 Invoke-OrShow { New-Item -ItemType Directory -Force -Path $Bin | Out-Null } "mkdir $Bin"
 
@@ -695,13 +626,10 @@ function Add-Command {
         if (-not $ours) {
             $item = Get-Item $path -Force
             if ($item.LinkType -and $item.Target) {
-                foreach ($root in @($Source, $InstalledVenv, $PipTarget)) {
-                    if ($root -and "$($item.Target)".StartsWith($root)) { $ours = $true }
-                }
+                if ($Source -and "$($item.Target)".StartsWith($Source)) { $ours = $true }
             } else {
                 $head = (Get-Content -Path $path -TotalCount 5 -ErrorAction SilentlyContinue) -join "`n"
                 if ($Source -and $head -match [regex]::Escape($Source)) { $ours = $true }
-                if ($InstalledVenv -and $head -match [regex]::Escape($InstalledVenv)) { $ours = $true }
             }
         }
         if ($ours) {
@@ -729,107 +657,22 @@ function Test-NoForeignCommands {
             $item = Get-Item $path -Force
             if (-not $item.LinkType) {
                 Stop-Die "$path already exists and was not created by this script.
-       Re-run with -Force to move it aside, or point -Bin somewhere else."
+       Re-run with -Force to move it aside (a .bak copy is kept next to it)."
             }
         }
     }
 }
 
-switch ($Mode) {
-    default { Stop-Die "-Mode must be symlink, venv, pip or binary, not '$Mode'" }
-    'symlink' {
-        Test-NoForeignCommands
-        $launcher = Join-Path $Source 'omni'
-        foreach ($name in $Commands) { Add-Command -Name $name -Target $launcher -Interpreter $Python }
-    }
-    'venv' {
-        Test-NoForeignCommands
-        Write-Info "Creating a virtual environment in $VenvDir"
-        if ((Test-Path $VenvDir) -and $Force) {
-            Invoke-OrShow { Remove-Item -Recurse -Force $VenvDir } "remove $VenvDir"
-        }
-        Invoke-OrShow { New-Item -ItemType Directory -Force -Path $DataDir | Out-Null } "mkdir $DataDir"
-        $venvPython = Join-Path $VenvDir $(if ($IsWin) { 'Scripts\python.exe' } else { 'bin/python' })
-        if (-not (Test-Path $venvPython)) {
-            Invoke-OrShow { & $Python -m venv $VenvDir } "python -m venv $VenvDir"
-        }
-        $spec = if ($InstallSpec) { $InstallSpec } else { $Source }
-        Write-Info "Installing $spec into it"
-        Invoke-OrShow { & $venvPython -m pip install --quiet --upgrade pip } 'pip install --upgrade pip'
-        Invoke-OrShow { & $venvPython -m pip install --quiet $spec } "pip install $spec"
-        if (-not $DryRun -and $LASTEXITCODE -ne 0) { Stop-Die 'pip could not install the package into the venv' }
-        $InstalledVenv = $VenvDir
-        foreach ($name in $Commands) {
-            if ($IsWin) { $built = Join-Path $VenvDir "Scripts\$name.exe" } else { $built = Join-Path $VenvDir "bin/$name" }
-            if (-not $DryRun -and -not (Test-Path $built)) {
-                Stop-Die "the venv has no $name command; the install did not take"
-            }
-            Add-Command -Name $name -Target $built -Interpreter $venvPython
-        }
-    }
-    'pip' {
-        $spec = if ($InstallSpec) { $InstallSpec } else { $Source }
-        Write-Info "Installing $spec into $Python with pip"
-        $pipArgs = @('-m', 'pip', 'install')
-        if ($User) { $pipArgs += '--user' }
-        $pipArgs += $spec
-        Invoke-OrShow { & $Python @pipArgs } "python -m pip install $spec"
-        if (-not $DryRun -and $LASTEXITCODE -ne 0) { Stop-Die 'pip install failed' }
-        $probe = 'import os, sys, sysconfig; ' +
-                 'scheme = "%s_user" % os.name if sys.argv[1] == "1" else None; ' +
-                 'print(sysconfig.get_path("scripts", scheme))'
-        $userFlag = if ($User) { '1' } else { '0' }
-        $PipTarget = (& $Python -c $probe $userFlag).Trim()
-        foreach ($name in $Commands) {
-            if ($IsWin) { $built = Join-Path $PipTarget "$name.exe" } else { $built = Join-Path $PipTarget $name }
-            if (Test-Path $built) {
-                if ($PipTarget -ne $Bin) { Add-Command -Name $name -Target $built -Interpreter $Python } else {
-                    Write-Note "$name is already in $Bin"
-                    $InstalledCommands.Add($built)
-                }
-            } else { Write-Note "pip did not create $built" }
-        }
-    }
-}
-if ($InstallSpec -and (Test-Path -LiteralPath $InstallSpec)) {
-    Remove-Item -Force -LiteralPath $InstallSpec -ErrorAction SilentlyContinue
-}
-
-# -------------------------------------------------- editor extension
-if ($VsCode) {
-    if (-not $Source) { Stop-Die '-VsCode needs a source tree with extras/vscode in it' }
-    $pkg = Get-Content -Raw (Join-Path $Source 'extras/vscode/package.json') | ConvertFrom-Json
-    $extName = '{0}.{1}-{2}' -f $pkg.publisher, $pkg.name, $pkg.version
-    $roots = @()
-    if ($IsWin) {
-        $roots += (Join-Path $env:USERPROFILE '.vscode\extensions')
-        $roots += (Join-Path $env:USERPROFILE '.cursor\extensions')
-    } else {
-        $roots += (Join-Path $env:HOME '.vscode/extensions')
-        $roots += (Join-Path $env:HOME '.cursor/extensions')
-        $roots += (Join-Path $env:HOME '.vscode-server/extensions')
-    }
-    foreach ($root in $roots) {
-        $editorRoot = Split-Path $root -Parent
-        if ((Test-Path $editorRoot) -or $root -match '\.vscode') {
-            $extDir = Join-Path $root $extName
-            Write-Info "Installing the editor extension into $extDir"
-            Invoke-OrShow { New-Item -ItemType Directory -Force -Path $extDir | Out-Null } "mkdir $extDir"
-            Invoke-OrShow {
-                Copy-Item -Recurse -Force -Path (Join-Path $Source 'extras/vscode/*') -Destination $extDir
-            } "copy extras/vscode to $extDir"
-            $ExtensionDirs.Add($extDir)
-        }
-    }
-    Write-Note 'restart the editor to pick up OmniScript syntax highlighting'
-}
-
+Test-NoForeignCommands
+$Mode = 'symlink'
+$launcher = Join-Path $Source 'omni'
+foreach ($name in $Commands) { Add-Command -Name $name -Target $launcher -Interpreter $Python }
 # ------------------------------------------------------- manifest and checks
 Write-Manifest
 try {
     Test-Install
 } catch {
-    if ($ReleaseResult -eq 10) { Undo-ReleaseInstall }
+    if ($Mode -eq 'binary') { Undo-ReleaseInstall }
     Stop-Die "$($_.Exception.Message)"
 }
 Show-PathAdvice

@@ -81,9 +81,9 @@ There are two channels:
   Needs Python 3.10+.
 
 ```bash
-./install.sh -s beta --ref my-branch   # follow the repository instead
-./install.sh --version 1.0.0           # pin one release
-./install.sh --dry-run                 # show the plan, touch nothing
+./install.sh -s beta               # follow the repository instead
+./install.sh --version 1.0.0       # pin one release
+./install.sh --dry-run             # show the plan, touch nothing
 ./uninstall.sh                         # take it all back out
 ./uninstall.sh --purge                 # ...and the history, the clone, the manifest
 ```
@@ -101,11 +101,10 @@ cd OmniScript
 ./install.sh              # a source tree implies the beta channel
 ```
 
-`--mode` says how a source install is wired up: **symlink** (the default — the
-commands point into the tree, so `git pull` upgrades them), **venv** (a private
-environment under `~/.local/share/omniscript/venv`) or **pip** (into the
-interpreter you already use; on a PEP 668 system it stops rather than override
-your package manager).
+The commands then point into the tree, so `git pull` is the upgrade. A virtual
+environment or a system-wide install is plain `pip install .`; the editor
+extension is a copy of `extras/vscode` into your extensions directory. The
+installer does neither for you — it has one job.
 
 ### What is written down
 
@@ -134,16 +133,15 @@ Whatever the installer put there, `omni` can replace itself:
 omni update --check       # what is published, what you have, and the difference
 omni update               # download it, check the sha256, swap it in, prove it runs
 omni update --version 1.0.0
-omni update -c beta --ref main    # switch to following the repository
+omni update -c beta               # switch to following the repository
 ```
 
 `omni update` reads the manifest to find out which channel this install came from
-and stays on it; `-c` switches. A binary install downloads the new executable,
-checks it against `SHA256SUMS.txt`, swaps it in place (keeping the old one until
-the new one has been seen to run) and leaves the commands pointing at it. A source
-install fetches the branch or tag it tracks and re-runs the install over the top.
-Nothing is written unless the new one works: `--check` and `--no-verify` do what
-they say, and a failed update puts back what was there before.
+and stays on it; `-c` switches. A release install downloads the new file, checks
+it against `SHA256SUMS.txt` and swaps it in, keeping the old one until the new one
+has been seen to run. A source install fast-forwards the tree it points at, and
+leaves one with local changes strictly alone. Going from one kind of install to
+the other is a run of `install.sh`, and it says so.
 
 ## Use it
 

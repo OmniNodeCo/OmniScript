@@ -304,7 +304,7 @@ jobs:
           $omni = if ($IsWindows) { Join-Path $bin "omni.cmd" } else { Join-Path $bin "omni" }
 
           # *>&1 so the scripts' Write-Host output is captured, not just their errors
-          $out = (& ./install.ps1 -Prefix $prefix -Source $PWD.Path -Python (Get-Command python).Source *>&1 | Out-String)
+          $out = (& ./install.ps1 -Prefix $prefix -Python (Get-Command python).Source *>&1 | Out-String)
           Write-Host $out
           if ($LASTEXITCODE -ne 0) { Fail "install.ps1 exited with $LASTEXITCODE" $out }
           if (-not (Test-Path $omni)) { Fail "install.ps1 left no command at $omni" $out }
