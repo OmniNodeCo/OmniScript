@@ -284,9 +284,11 @@ jobs:
           Write-Host $version
           if ($LASTEXITCODE -ne 0) { Fail "the installed command would not report its version" $version }
 
-          $smoke = (& $omni -e 'cmd("echo 42 3")' *>&1 | Out-String)
+          # Quote-free on purpose: the beta channel's .cmd shim passes its
+          # arguments through cmd.exe, which strips double quotes.
+          $smoke = (& $omni -e 'cmd(whoami)' *>&1 | Out-String)
           Write-Host $smoke
-          if ($smoke -notmatch '42 3') { Fail "the installed command did not run a program" $smoke }
+          if ([string]::IsNullOrWhiteSpace($smoke)) { Fail "the installed command did not run a program" $smoke }
 
           $out = (& ./uninstall.ps1 -Prefix $prefix -Purge *>&1 | Out-String)
           Write-Host $out

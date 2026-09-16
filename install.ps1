@@ -224,6 +224,9 @@ function New-Shim {
     if ($IsWin) {
         # A .cmd shim: no privileges needed, and it survives the source moving
         # only as far as its own text says.
+        # A .cmd shim hands %* through cmd.exe's own parsing, which strips
+        # double quotes; programs with quoted one-liners are what the release
+        # channel's omni.exe is for. Files and quote-free arguments pass fine.
         $lines = @(
             '@echo off',
             ('"{0}" "{1}" %*' -f $Interpreter, $Target)
@@ -451,7 +454,9 @@ function Test-Install {
     $reported = (& $probePath --version) 2>&1
     if ($LASTEXITCODE -ne 0) { throw "$probePath --version failed: $reported" }
     Write-Note "$reported"
-    $smoke = & $probePath -e 'cmd("echo smoke ok: 42")'
+    # No double quotes here on purpose: a .cmd shim hands its arguments to
+    # cmd.exe a second time, and cmd.exe eats quotes on the way through.
+    $smoke = & $probePath -e 'cmd(whoami)'
     if ($LASTEXITCODE -ne 0) { throw "the interpreter did not run: $smoke" }
     Write-Note "$smoke"
     if ($RelTag -and $OmniVersion -and $OmniVersion -ne 'unknown') {
