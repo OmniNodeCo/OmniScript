@@ -1,5 +1,7 @@
 # OmniScript
 
+[![build](https://github.com/OmniNodeCo/OmniScript/actions/workflows/build.yml/badge.svg)](https://github.com/OmniNodeCo/OmniScript/actions/workflows/build.yml)
+
 A language with four commands. That is the whole idea: the things you actually
 reach for, spelled the short way, and Python one `import` away when you need more.
 
