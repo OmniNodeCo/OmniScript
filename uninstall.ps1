@@ -130,6 +130,12 @@ function Test-Ours {
     if ($head -match 'from omniscript\.cli import main' -or $head -match 'omniscript\.cli:main') {
         return $true
     }
+    # No manifest to compare with: a shim we wrote quotes the launcher it runs,
+    # so see whether any path in it lives beside an OmniScript source tree.
+    foreach ($match in [regex]::Matches($head, '"([^"]+)"')) {
+        $dir = Split-Path $match.Groups[1].Value -Parent
+        if ($dir -and (Test-Path (Join-Path $dir 'omniscript/cli.py'))) { return $true }
+    }
     return $false
 }
 

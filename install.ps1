@@ -323,7 +323,7 @@ if ($VsCode) {
 if (-not $DryRun) {
     New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
     $history = Join-Path $(if ($IsWin) { $env:USERPROFILE } else { $env:HOME }) '.omniscript_history'
-    $manifest = [ordered]@{
+    $record = [ordered]@{
         package                 = 'omniscript-lang'
         version                 = $OmniVersion
         installed_at            = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
@@ -342,7 +342,8 @@ if (-not $DryRun) {
         history_file            = $history
         data_dir                = $DataDir
     }
-    $manifest | ConvertTo-Json -Depth 5 | Set-Content -Path $Manifest -Encoding UTF8
+    $record | ConvertTo-Json -Depth 5 | Set-Content -Path $Manifest -Encoding UTF8
+    if (-not (Test-Path -LiteralPath $Manifest)) { Stop-Die "the manifest did not get written to $Manifest" }
     Write-Note "wrote $Manifest"
 
     Write-Info 'Checking the install'
