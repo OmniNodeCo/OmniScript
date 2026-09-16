@@ -1,0 +1,9 @@
+# The four commands, one after another. Each one says what it did.
+
+cmd("echo OmniScript runs shell commands")
+cmd("python3 --version")
+
+file(create, "notes.txt", "first line\nsecond line\n")
+file(edit, "notes.txt", "first", "FIRST")
+cmd("cat notes.txt")
+file(delete, "notes.txt")

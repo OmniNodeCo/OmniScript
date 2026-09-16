@@ -60,7 +60,7 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import json, pathlib, tomllib
+          import pathlib, tomllib
 
           meta = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
           project = meta["project"]
@@ -72,13 +72,9 @@ jobs:
           print(f"pyproject ok -- {project['name']} {version}")
 
           # One source of truth for the version: nothing may drift apart.
-          stdlib = pathlib.Path("omniscript/stdlib/__init__.py").read_text()
-          assert f'VERSION = "{version}"' in stdlib, "stdlib VERSION != pyproject"
-          print(f"version ok -- stdlib/__init__.py agrees on {version}")
-
-          for path in sorted(pathlib.Path("extras/vscode").rglob("*.json")):
-              json.loads(path.read_text())
-              print("json ok --", path)
+          package = pathlib.Path("omniscript/__init__.py").read_text()
+          assert f'VERSION = "{version}"' in package, "omniscript VERSION != pyproject"
+          print(f"version ok -- omniscript/__init__.py agrees on {version}")
           PY
 
       - name: Workflows are well formed
@@ -131,15 +127,11 @@ jobs:
         run: |
           python --version
           ./omni --version
-          ./omni -e 'print("running on ${platform()} ${os}, OmniScript ${version}")'
+          ./omni -e 'import python
+          python("import sys; print(sys.version.split()[0], sys.platform)")'
 
-      - name: Interpreter test suite (unittest)
-        # tools/ci_unittest.py is unittest plus one annotation per failure, so a
-        # red job says what broke without anyone needing the log.
-        run: python tools/ci_unittest.py discover -s tests
-
-      - name: Language test suite (./omni test)
-        run: ./omni test
+      - name: Test suite (unittest)
+        run: python -m unittest discover -s tests
 
       - name: Every example runs
         run: |
@@ -150,25 +142,14 @@ jobs:
             echo "::endgroup::"
           done
 
-      - name: Docs reach every built-in
-        run: |
-          set -euo pipefail
-          header="$(./omni docs | head -1)"
-          echo "$header"
-          count="$(printf '%s' "$header" | grep -oE '[0-9]+' | tail -1)"
-          test "$count" -ge 250 || { echo "::error::only $count built-ins"; exit 1; }
-          for name in print draw cmd parallel_map date read_json regex_replace chart; do
-            ./omni docs "$name" | head -1
-          done
-
       - name: A drawn picture is a real, complete PNG
         run: |
           set -euo pipefail
-          ./omni -e 'let c = draw(48, 32)
-          c.rect(0, 0, 48, 32, "#1f6feb")
-          c.circle(24, 16, 10, "#ffffff")
-          c.text(4, 4, "ci", "#0b0b0b")
-          c.save("ci-check.png")'
+          ./omni -e 'draw(window(48, 32, "ci"),
+                        rect(0, 0, 48, 32, "#1f6feb"),
+                        circle(24, 16, 10, white),
+                        text(4, 4, "ci", black, 10),
+                        save("ci-check.png"))'
           python - <<'PY'
           import pathlib, struct, zlib
 
@@ -192,16 +173,6 @@ jobs:
           print(f"PNG ok -- {width}x{height}, depth {depth}, colour type {colour}, "
                 f"{len(raw)} bytes of pixels, chunks: {' '.join(kinds)}")
           PY
-
-      - name: The standard library modules load
-        run: |
-          set -euo pipefail
-          ./omni -e 'use std/math
-          use std/text
-          use std/list
-          use std/stats
-          print("std ok:", factorial(10), summary([1, 2, 3, 4, 100]).median,
-                slug("Hello Continuous Integration"))'
 
       - name: Collect example output
         if: always()
@@ -269,7 +240,7 @@ jobs:
           test -f "$root/home/data/omniscript/install.txt"
           grep -q "^command=$root/prefix/bin/omni$" "$root/home/data/omniscript/install.txt"
           "$root/prefix/bin/omni" --version
-          "$root/prefix/bin/omni" -e 'print("installed by CI:", 6 * 7)'
+          "$root/prefix/bin/omni" -e 'cmd("echo installed by CI")'
 
           # Installing again is a no-op, not an error.
           ./install.sh --prefix "$root/prefix" | grep "already points at"
@@ -313,7 +284,7 @@ jobs:
           Write-Host $version
           if ($LASTEXITCODE -ne 0) { Fail "the installed command would not report its version" $version }
 
-          $smoke = (& $omni -e 'print(6 * 7, [1, 2, 3].map((x) -> x * x).len())' *>&1 | Out-String)
+          $smoke = (& $omni -e 'cmd("echo 42 3")' *>&1 | Out-String)
           Write-Host $smoke
           if ($smoke -notmatch '42 3') { Fail "the installed command did not run a program" $smoke }
 
@@ -324,8 +295,6 @@ jobs:
           if (-not (Test-Path (Join-Path $PWD "omniscript/cli.py"))) { Fail "the source tree was touched" $out }
           Write-Host "install.ps1 / uninstall.ps1 cycle ok"
 
-      - name: The installer test suite agrees
-        run: python tools/ci_unittest.py tests.test_install
 
   executable:
     name: Executables (${{ matrix.os }})
@@ -349,7 +318,7 @@ jobs:
 
       - name: Build the standalone executable and the zipapp
         # build_executable.py freezes each artifact, runs it (--version, a
-        # program, a `use std/...` import, a drawing), and writes SHA256SUMS.txt.
+        # program, a drawing and the python import), and writes SHA256SUMS.txt.
         run: python tools/build_executable.py --out dist
 
       - name: Upload the artifacts
@@ -378,7 +347,7 @@ jobs:
       - name: Build the sdist and the wheel
         run: python -m build
 
-      - name: The wheel carries the standard library
+      - name: The wheel carries the whole language
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -388,9 +357,10 @@ jobs:
               print(path)
           wheel = glob.glob("dist/*.whl")[0]
           names = zipfile.ZipFile(wheel).namelist()
-          std = sorted(n.rsplit("/", 1)[-1] for n in names if n.endswith(".omni"))
-          assert std, f"no std/*.omni inside {wheel}"
-          print(f"{wheel} ships: {', '.join(std)}")
+          for wanted in ("omniscript/__init__.py", "omniscript/language.py",
+                         "omniscript/draw.py", "omniscript/cli.py", "omniscript/update.py"):
+              assert wanted in names, f"{wheel} has no {wanted}"
+          print(f"{wheel} ships {len(names)} files, the language among them")
           PY
 
       - name: Install the wheel into a clean venv and use it
@@ -401,14 +371,13 @@ jobs:
           # Run from outside the checkout so nothing resolves to local sources.
           cd /tmp
           /tmp/smoke/bin/omni --version
-          /tmp/smoke/bin/omni -e 'print("wheel ok:", 6 * 7, [1, 2, 3].map((x) -> x * x),
-                                   "a,b".split(",").join("-"))'
-          /tmp/smoke/bin/omniscript -e 'use std/stats
-          print("std ok:", stdev([2, 4, 6]), percentile([1, 2, 3, 4], 75))'
-          /tmp/smoke/bin/omni -e 'let c = draw(16, 16)
-          c.rect(0, 0, 16, 16, "#ff8800")
-          c.save("smoke.png")
-          print("graphics ok:", file_info("smoke.png").size, "bytes")'
+          /tmp/smoke/bin/omni -e 'cmd("echo wheel ok")'
+          /tmp/smoke/bin/omniscript -e 'import python
+          python("print(6 * 7)")'
+          /tmp/smoke/bin/omni -e 'draw(window(16, 16, "smoke"),
+                                      rect(0, 0, 16, 16, "#ff8800"),
+                                      save("smoke.png"))'
+          test -s smoke.png
 
       - name: Upload the distributions
         uses: actions/upload-artifact@v7

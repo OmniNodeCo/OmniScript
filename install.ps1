@@ -102,8 +102,7 @@ is what uninstall.ps1 reads:
   Windows    %LOCALAPPDATA%\OmniScript
   elsewhere  ${XDG_DATA_HOME:-~/.local/share}/omniscript
 
-To install the editor extension, copy extras\vscode into your extensions
-directory; to install into a virtual environment instead, use pip install .
+A virtual environment or a system-wide install is plain `pip install .`.
 '@ | Write-Host
     exit 0
 }
@@ -452,7 +451,7 @@ function Test-Install {
     $reported = (& $probePath --version) 2>&1
     if ($LASTEXITCODE -ne 0) { throw "$probePath --version failed: $reported" }
     Write-Note "$reported"
-    $smoke = & $probePath -e 'print(6 * 7, [1, 2, 3].map((x) -> x * x).len(), 2 ** 10)'
+    $smoke = & $probePath -e 'cmd("echo smoke ok: 42")'
     if ($LASTEXITCODE -ne 0) { throw "the interpreter did not run: $smoke" }
     Write-Note "$smoke"
     if ($RelTag -and $OmniVersion -and $OmniVersion -ne 'unknown') {

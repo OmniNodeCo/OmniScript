@@ -5,38 +5,28 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "omniscript-lang"
 version = "1.0.0"
-description = "OmniScript: a small language for doing big things in few lines"
+description = "OmniScript: four commands -- draw, cmd, file, and python when you need it"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-keywords = ["language", "interpreter", "scripting", "dsl"]
+keywords = ["language", "interpreter", "scripting"]
 
 [project.scripts]
-omniscript = "omniscript.cli:main"
 omni = "omniscript.cli:main"
+omniscript = "omniscript.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/OmniNodeCo/OmniScript"
 
 [tool.setuptools]
-packages = ["omniscript", "omniscript.stdlib"]
-
-[tool.setuptools.package-data]
-omniscript = ["std/*.omni"]
+packages = ["omniscript"]
 
 [tool.ruff]
 target-version = "py310"
 line-length = 120
-extend-exclude = ["extras"]
 
 [tool.ruff.lint]
 # E9 is syntax-level mistakes; F is pyflakes -- undefined names, dead imports,
 # unused locals, duplicate arguments. Style rules are deliberately left out:
 # this source is formatted by hand and reads the way it is written.
 select = ["E9", "F"]
-
-[tool.ruff.lint.per-file-ignores]
-# methods.py registers one method per type through a decorator, so `def len`
-# appears once for str, once for list, once for map and so on. That is the
-# design of the registry, not a redefinition bug.
-"omniscript/stdlib/methods.py" = ["F811"]

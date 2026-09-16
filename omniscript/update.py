@@ -31,8 +31,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from . import _bundle
-from .stdlib import VERSION
+from . import VERSION, _bundle
 
 DEFAULT_REPO = "OmniNodeCo/OmniScript"
 DEFAULT_API = "https://api.github.com"

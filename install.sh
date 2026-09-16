@@ -49,8 +49,7 @@ Usage: install.sh [options]
 Commands go into PREFIX/bin. Everything installed is recorded in
 ~/.local/share/omniscript/install.txt, which is what uninstall.sh reads.
 
-To install the editor extension, copy extras/vscode into your extensions
-directory; to install into a virtual environment instead, use pip install .
+A virtual environment or a system-wide install is plain `pip install .`.
 USAGE
 }
 
@@ -516,9 +515,7 @@ verify_install() {
         return 1
     fi
     note "$reported"
-    smoke="$("$probe" -e 'let c = draw(8, 8)
-c.rect(0, 0, 8, 8, "#2ea043")
-print("smoke ok:", 6 * 7, [1, 2, 3].map((x) -> x * x).join(","))' 2>&1)" || {
+    smoke="$("$probe" -e 'cmd("echo smoke ok: 42")' 2>&1)" || {
         VERIFY_ERROR="the interpreter did not run: $smoke"
         return 1
     }

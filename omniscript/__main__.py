@@ -1,5 +1,5 @@
-"""`python3 -m omniscript ...` runs the same CLI as `./omni ...`."""
+"""So `python -m omniscript` and the zipapp both work."""
+
 from .cli import main
 
-if __name__ == "__main__":
-    raise SystemExit(main())
+raise SystemExit(main())

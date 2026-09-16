@@ -1,57 +1,23 @@
-"""OmniScript -- a small language for doing big things in few lines.
+"""OmniScript: four commands, and Python when you need it.
 
-    from omniscript import run_source
-    run_source('print("hello")')
+    import python                 # the escape hatch
+
+    draw(window(640, 400, "Demo"), text(20, 20, "Hello"), button(..., cmd("ls")))
+    cmd("tree /f")                # a shell command
+    file(create, "a.txt", "hi")   # create, edit, delete
+    python("print(6 * 7)")        # only after `import python`
+
+That is the whole language. A program is a list of commands, and each command
+says what it did.
 """
 
-from __future__ import annotations
+from .language import Interpreter, OmniScriptError
 
-from .errors import (OmniError, OmniLexError, OmniNameError, OmniRuntimeError,
-                     OmniSyntaxError, OmniThrow, OmniTypeError)
-import sys as _sys
+VERSION = "1.0.0"
 
-# One OmniScript call costs several Python frames, so the interpreter's own
-# depth guard (MAX_CALL_DEPTH) has to fire first and report a real error.
-if _sys.getrecursionlimit() < 12000:
-    _sys.setrecursionlimit(12000)
-
-from .interp import Environment, Interpreter
-from .lexer import tokenize
-from .parser import parse
-from .stdlib import VERSION
-
-__version__ = VERSION
-
-__all__ = [
-    "Interpreter", "Environment", "run_source", "run_file", "parse", "tokenize",
-    "OmniError", "OmniSyntaxError", "OmniLexError", "OmniRuntimeError",
-    "OmniTypeError", "OmniNameError", "OmniThrow", "__version__",
-]
+__all__ = ["VERSION", "run", "Interpreter", "OmniScriptError"]
 
 
-def make_interpreter(writer=None, root=".", argv=None, quiet=False,
-                     max_steps=None, stdin=None) -> Interpreter:
-    interp = Interpreter(writer=writer, root=root, argv=argv or [], quiet=quiet,
-                         max_steps=max_steps)
-    if stdin is not None:
-        interp.stdin = stdin
-    interp.load_builtins()
-    return interp
-
-
-def run_source(src: str, path: str = "<program>", writer=None, root: str = ".",
-               argv=None, interp: Interpreter | None = None):
-    """Execute OmniScript source text."""
-    interp = interp or make_interpreter(writer=writer, root=root, argv=argv)
-    interp.run_source(src, path)
-    return interp
-
-
-def run_file(path: str, writer=None, argv=None, interp: Interpreter | None = None):
-    """Execute an OmniScript file."""
-    import os
-    with open(path, "r", encoding="utf-8") as fh:
-        src = fh.read()
-    return run_source(src, os.path.abspath(path), writer=writer,
-                      root=os.path.dirname(os.path.abspath(path)) or ".",
-                      argv=argv, interp=interp)
+def run(source, name="<input>", writer=None, cwd=None):
+    """Run OmniScript source; raise OmniScriptError if it does not."""
+    Interpreter(writer=writer, cwd=cwd).run(source, name)

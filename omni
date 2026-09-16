@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-"""OmniScript launcher.
+"""OmniScript launcher: run this repository's copy without installing anything.
 
-    ./omni run hello.omni
-    ./omni hello.omni              (same thing)
-    ./omni repl
-    ./omni -e 'print("hi")'
-    ./omni test
-    ./omni docs
+    ./omni                       a REPL
+    ./omni hello.omni            run a file
+    ./omni -e 'cmd("tree /f")'   run one line
+    ./omni update --check        what is published, what you have
 """
 import os
 import sys

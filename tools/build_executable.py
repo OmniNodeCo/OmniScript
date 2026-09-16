@@ -13,7 +13,7 @@ right one without asking a server what it runs:
 
 The executable needs PyInstaller (`pip install pyinstaller`); the zipapp needs
 nothing at all. Every artifact is smoke-tested from outside the repository --
-version, a program, a PNG, and a `use std/...` import, which is the part that
+version, a shell command, a drawing and the python import -- the parts that
 breaks if the bundled data files go missing -- and SHA256SUMS.txt is written
 over whatever ends up in the output directory.
 """
@@ -33,7 +33,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from omniscript import __version__  # noqa: E402
+from omniscript import VERSION as __version__  # noqa: E402
 from omniscript.update import (platform_tag, verify_checksums,  # noqa: E402
                                write_checksums)
 
@@ -52,11 +52,10 @@ if __name__ == "__main__":
 # the .omni files are left out of the bundle.
 SMOKE = [
     ("--version", "version", None),
-    ("-e", "run", 'print("smoke:", 6 * 7, [1, 2, 3].map((x) -> x * x).join(","))'),
-    ("-e", "modules", 'use std/math\nuse std/stats\nprint("std:", sqrt(16), stdev([2, 4, 6]))'),
-    ("-e", "graphics", 'let c = draw(16, 16)\nc.rect(0, 0, 16, 16, "#0d1117")\n'
-                        'c.circle(8, 8, 6, "#2ea043")\nc.save("smoke.png")\n'
-                        'print("png:", file_info("smoke.png").size)'),
+    ("-e", "run", 'cmd("echo smoke: 42")'),
+    ("-e", "python", 'import python\npython("print(6 * 7)")'),
+    ("-e", "graphics", 'draw(window(16, 16, "smoke"), rect(0, 0, 16, 16, "#0d1117"),\n'
+                       'circle(8, 8, 6, "#2ea043"), save("smoke.png"))'),
 ]
 
 
@@ -118,8 +117,6 @@ def build_binary(target: str, keep: bool = False) -> str:
     with open(entry, "w", encoding="utf-8") as fh:
         fh.write(MAIN_PY)
 
-    sep = os.pathsep  # ':' on POSIX, ';' on Windows
-    std_src = os.path.join(ROOT, "omniscript", "std")
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--onefile", "--clean", "--noconfirm",
@@ -129,9 +126,6 @@ def build_binary(target: str, keep: bool = False) -> str:
         "--workpath", os.path.join(work, "build"),
         "--specpath", work,
         "--paths", ROOT,
-        # std/*.omni are data, not code: PyInstaller would never find them alone.
-        "--add-data", f"{std_src}{sep}omniscript/std",
-        "--hidden-import", "omniscript.stdlib.concurrent",
         entry,
     ]
     log("    " + " ".join(_quote(part) for part in cmd))
@@ -197,10 +191,10 @@ def smoke_test(artifact: str) -> list[str]:
                 want = f"OmniScript {__version__}"
                 if want not in out:
                     problems.append(f"version: reported {out!r}, wanted {want!r}")
-            elif label == "run" and "smoke: 42 1,4,9" not in out:
+            elif label == "run" and "smoke: 42" not in out:
                 problems.append(f"run: unexpected output {out!r}")
-            elif label == "modules" and "std: 4 2" not in out:
-                problems.append(f"modules: std/ did not load inside the artifact: {out!r}")
+            elif label == "python" and "42" not in out:
+                problems.append(f"python: the import did not run: {out!r}")
             elif label == "graphics":
                 png = os.path.join(cwd, "smoke.png")
                 if not os.path.isfile(png):

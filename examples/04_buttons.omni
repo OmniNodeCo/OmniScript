@@ -1,0 +1,9 @@
+# A button's last argument is what it does when it is clicked. In a window the
+# click runs it; in the PNG it is drawn so you can see what the window has.
+
+draw(window(420, 220, "Buttons"),
+     text(16, 16, "Click one:", white, 14),
+     button(16, 60, 180, 40, "List this folder", cmd("ls")),
+     button(16, 112, 180, 40, "Write a note", file(create, "clicked.txt", "clicked\n")),
+     button(16, 164, 180, 40, "Remove it again", file(delete, "clicked.txt")),
+     save("buttons.png"))

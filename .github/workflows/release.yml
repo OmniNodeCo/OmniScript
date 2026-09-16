@@ -3,7 +3,7 @@
 # Triggered by pushing a version tag -- v1.2.3 -- or from the Actions tab with
 # the name of a tag that already exists.
 #
-#   verify   the tag, pyproject.toml and the interpreter's own __version__ all
+#   verify   the tag, pyproject.toml and omniscript.VERSION all
 #            agree, then the whole test suite runs once more on that commit
 #   build    sdist + wheel, installed into a clean venv and exercised
 #   binaries a standalone executable per platform (PyInstaller) plus a zipapp
@@ -18,7 +18,7 @@
 #
 # Cutting a release is therefore:
 #
-#   1. bump VERSION in omniscript/stdlib/__init__.py and version in
+#   1. bump VERSION in omniscript/__init__.py and version in
 #      pyproject.toml to the same value
 #   2. commit, then tag: git tag v1.2.3 && git push origin v1.2.3
 
@@ -63,12 +63,12 @@ jobs:
         run: |
           set -euo pipefail
           tag="${{ github.event.inputs.tag || github.ref_name }}"
-          version="$(python -c 'import omniscript; print(omniscript.__version__)')"
+          version="$(python -c 'import omniscript; print(omniscript.VERSION)')"
           echo "tag     = $tag"
           echo "version = $version"
           if [ "$tag" != "v$version" ]; then
             echo "::error::tag $tag does not match omniscript/__init__.py, which says $version"
-            echo "::error::bump VERSION in omniscript/stdlib/__init__.py, or move the tag"
+            echo "::error::bump VERSION in omniscript/__init__.py, or move the tag"
             exit 1
           fi
           python - "$version" <<'PY'
@@ -83,11 +83,8 @@ jobs:
           PY
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Interpreter test suite (unittest)
-        run: python tools/ci_unittest.py discover -s tests
-
-      - name: Language test suite (./omni test)
-        run: ./omni test
+      - name: Test suite (unittest)
+        run: python -m unittest discover -s tests
 
       - name: Every example runs
         run: |
@@ -102,11 +99,10 @@ jobs:
         run: |
           set -euo pipefail
           ./omni --version
-          ./omni docs | head -1
-          ./omni -e 'let c = draw(32, 32)
-          c.circle(16, 16, 14, "#2ea043")
-          c.save("release-check.png")
-          print("graphics ok:", file_info("release-check.png").size, "bytes")'
+          ./omni -e 'draw(window(32, 32, "release"),
+                        circle(16, 16, 14, green),
+                        save("release-check.png"))'
+          test -s release-check.png
 
   build:
     name: Build distributions
@@ -142,13 +138,13 @@ jobs:
           test -n "$version"
           test "$reported" = "$version" || {
             echo "::error::the wheel reports $reported but the tag says $version"; exit 1; }
-          /tmp/relcheck/bin/omni -e 'print("wheel ok:", [1, 2, 3].reduce((a, b) -> a + b))'
-          /tmp/relcheck/bin/omniscript -e 'use std/stats
-          print("std ok:", stdev([2, 4, 6]))'
-          /tmp/relcheck/bin/omni -e 'let c = draw(24, 24)
-          c.rect(0, 0, 24, 24, "#2ea043")
-          c.save("wheel-check.png")
-          print("graphics ok:", file_info("wheel-check.png").size, "bytes")'
+          /tmp/relcheck/bin/omni -e 'cmd("echo wheel ok")'
+          /tmp/relcheck/bin/omniscript -e 'import python
+          python("print(6 * 7)")'
+          /tmp/relcheck/bin/omni -e 'draw(window(24, 24, "wheel"),
+                                        rect(0, 0, 24, 24, green),
+                                        save("wheel-check.png"))'
+          test -s wheel-check.png
 
       - name: Upload the distributions
         uses: actions/upload-artifact@v7
@@ -257,8 +253,8 @@ jobs:
           ## Try it
 
           ```bash
-          omni -e 'print("hello from __VERSION__")'
-          omni docs                            # every built-in
+          omni -e 'cmd("echo hello from __VERSION__")'
+          omni -e 'draw(window(200, 120, "hi"), circle(100, 60, 40, blue))'
           omni examples/04_drawing.omni        # writes a real PNG
           ```
 
