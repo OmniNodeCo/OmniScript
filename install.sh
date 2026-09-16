@@ -162,8 +162,10 @@ while [ $# -gt 0 ]; do
 done
 
 case "$MODE" in
-    symlink|venv|pip) ;;
-    *) usage >&2; die "--mode must be symlink, venv or pip (got '$MODE')" ;;
+    # binary is what a release install becomes: one downloaded file, no Python.
+    # Asking for it by hand means "give me that", which is the release channel.
+    symlink|venv|pip|binary) ;;
+    *) usage >&2; die "--mode must be symlink, venv, pip or binary (got '$MODE')" ;;
 esac
 [ -n "$PREFIX" ] || die "--prefix needs a directory"
 [ -n "$BIN_DIR" ] || BIN_DIR="$PREFIX/bin"
@@ -422,13 +424,13 @@ pick_release_asset() {
     suffix=""
     is_windows_host && suffix=".exe"
     case "$MODE" in
-        symlink)
-            candidates="omni-$REL_VERSION-$tag$suffix omni-$REL_VERSION-any.pyz"
-            kinds="binary pyz"
-            ;;
         venv|pip)
             candidates="omniscript_lang-$REL_VERSION-py3-none-any.whl"
             kinds="wheel"
+            ;;
+        *)
+            candidates="omni-$REL_VERSION-$tag$suffix omni-$REL_VERSION-any.pyz"
+            kinds="binary pyz"
             ;;
     esac
     set -- $candidates
@@ -445,7 +447,11 @@ pick_release_asset() {
             return 0
         fi
     done
-    warn "nothing in $RELEASE_TAG is built for $tag$( [ "$MODE" != symlink ] && printf ' and no wheel is attached')"
+    missing_note=""
+    case "$MODE" in
+        venv|pip) missing_note=" and no wheel is attached" ;;
+    esac
+    warn "nothing in $RELEASE_TAG is built for $tag$missing_note"
     return 1
 }
 
@@ -900,6 +906,14 @@ source_beside_us() {
     return 1
 }
 
+if [ "$MODE" = binary ]; then
+    case "$CHANNEL" in
+        ""|release) ;;
+        *) usage >&2; die "--mode binary comes from a release, so --channel $CHANNEL does not apply" ;;
+    esac
+    CHANNEL="release"
+fi
+
 if [ -z "$CHANNEL" ]; then
     if source_beside_us; then
         CHANNEL="beta"
@@ -926,6 +940,7 @@ if [ "$CHANNEL" = release ]; then
         0)  info "OmniScript $OMNI_VERSION from $RELEASE_TAG ($REL_ASSET_NAME)" ;;
         10) info "OmniScript $OMNI_VERSION from $RELEASE_TAG ($REL_ASSET_NAME)" ;;
         *)  [ -n "$REL_FATAL" ] && die "$REL_FATAL"
+            [ "$MODE" = binary ] && die "--mode binary needs a release to download, and $REPO_SLUG has nothing that fits this machine"
             warn "the release channel did not deliver; installing from $REPO_URL instead"
             CHANNEL="beta"
             ;;

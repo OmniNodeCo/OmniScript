@@ -535,6 +535,15 @@ class BashReleaseTests(ReleaseCase):
         self.assertFalse(self.bin_dir.exists() and any(self.bin_dir.iterdir()))
         self.assertFalse(self.manifest_path.exists())
 
+    def test_mode_binary_is_a_way_of_asking_for_the_release_channel(self):
+        result = self.install("--mode", "binary", "--api-url", self.github.api)
+        self.assertIn("is installed (release channel)", result.stdout)
+        self.assertEqual("binary", self.manifest()["mode"])
+        self.assertTrue(self.command_path("omni").is_file())
+
+        conflict = self.install("--mode", "binary", "--channel", "beta", expect=1)
+        self.assertIn("comes from a release", conflict.stderr)
+
     def test_an_unknown_channel_is_refused(self):
         result = self.install("--channel", "gamma", expect=1)
         self.assertIn("--channel must be release or beta", result.stderr)

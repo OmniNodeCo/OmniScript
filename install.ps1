@@ -33,7 +33,9 @@
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
-    [ValidateSet('symlink', 'venv', 'pip')]
+    # 'binary' is what a release install becomes: one downloaded file, no Python.
+    # Asking for it by hand means "give me that", which is the release channel.
+    [ValidateSet('symlink', 'venv', 'pip', 'binary')]
     [string]$Mode = 'symlink',
     [ValidateSet('', 'release', 'beta')]
     [string]$Channel = '',
@@ -304,12 +306,12 @@ function Install-FromRelease {
 
     $suffix = ''
     if ($IsWin) { $suffix = '.exe' }
-    if ($Mode -eq 'symlink') {
-        $wanted = @("omni-$RelVersion-$platform$suffix", "omni-$RelVersion-$platform", "omni-$RelVersion-any.pyz")
-        $kinds = @('binary', 'binary', 'pyz')
-    } else {
+    if ($Mode -eq 'venv' -or $Mode -eq 'pip') {
         $wanted = @("omniscript_lang-$RelVersion-py3-none-any.whl")
         $kinds = @('wheel')
+    } else {
+        $wanted = @("omni-$RelVersion-$platform$suffix", "omni-$RelVersion-$platform", "omni-$RelVersion-any.pyz")
+        $kinds = @('binary', 'binary', 'pyz')
     }
     $asset = $null
     $kind = ''
@@ -575,6 +577,13 @@ if ($Source) { $besideUs = $true }
 elseif ($here -and (Test-Path (Join-Path $here 'omniscript/cli.py'))) { $besideUs = $true }
 elseif ($env:OMNI_HOME -and (Test-Path (Join-Path $env:OMNI_HOME 'omniscript/cli.py'))) { $besideUs = $true }
 
+if ($Mode -eq 'binary') {
+    if ($Channel -and $Channel -ne 'release') {
+        Stop-Die "-Mode binary comes from a release, so -Channel $Channel does not apply"
+    }
+    $Channel = 'release'
+}
+
 if (-not $Channel) {
     if ($besideUs) {
         $Channel = 'beta'
@@ -607,6 +616,9 @@ if ($Channel -eq 'release') {
         10 { Write-Info "OmniScript $OmniVersion from $RelTag ($RelAssetName)" }
         default {
             if ($RelFatal) { Stop-Die $RelFatal }
+            if ($Mode -eq 'binary') {
+                Stop-Die "-Mode binary needs a release to download, and $Repo has nothing that fits this machine"
+            }
             Write-Warn "the release channel did not deliver; installing from $RepoUrl instead"
             $Channel = 'beta'
         }
@@ -726,6 +738,7 @@ function Test-NoForeignCommands {
 }
 
 switch ($Mode) {
+    default { Stop-Die "-Mode must be symlink, venv, pip or binary, not '$Mode'" }
     'symlink' {
         Test-NoForeignCommands
         $launcher = Join-Path $Source 'omni'
