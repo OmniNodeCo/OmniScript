@@ -209,7 +209,18 @@ function Read-Url {
     }
     $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 60 `
         -Headers @{ 'User-Agent' = 'omniscript-install' }
-    return $response.Content
+    return ConvertTo-Text $response.Content
+}
+
+# PowerShell 7.4 and newer answer with bytes when a server does not call its body
+# text -- a mirror, a proxy or a plain file server easily manages that. Everything
+# downstream of here wants a string.
+function ConvertTo-Text {
+    param($Content)
+    if ($null -eq $Content) { return '' }
+    if ($Content -is [byte[]]) { return [System.Text.Encoding]::UTF8.GetString($Content) }
+    if ($Content -is [string]) { return $Content }
+    return "$Content"
 }
 
 function Save-Url {
@@ -271,19 +282,23 @@ function Install-FromRelease {
     }
 
     Write-Info "Asking $Repo what it has published"
+    $answer = ''
     try {
-        $release = (Read-Url $url) | ConvertFrom-Json
+        $answer = Read-Url $url
+        $release = $answer | ConvertFrom-Json
     } catch {
-        Write-Warn "no answer from $url"
+        Write-Warn "no answer from $url ($($_.Exception.Message))"
         if ($Version) { $script:RelFatal = "$Repo has no release tagged $RelTag" }
         return
     }
-    if (-not $release -or -not $release.tag_name) {
+    $script:RelTag = "$($release.tag_name)"
+    if (-not $RelTag) {
         Write-Warn 'that release has no tag on it'
+        $head = $answer.Substring(0, [Math]::Min(160, $answer.Length)) -replace "\s+", ' '
+        Write-Note "$url answered: $head"
         if ($Version) { $script:RelFatal = "$Repo has no release tagged $Version" }
         return
     }
-    $script:RelTag = "$($release.tag_name)"
     $script:RelVersion = $RelTag.TrimStart('v')
     Write-Note "the newest release is $RelTag"
 

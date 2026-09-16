@@ -68,6 +68,14 @@ class QuietHandler(SimpleHTTPRequestHandler):
             return
         super().do_GET()
 
+    def guess_type(self, path):
+        # GitHub answers application/json; a file server guesses from the
+        # extension, and /releases/latest has none to guess from.
+        name = os.path.basename(str(path))
+        if name == "latest" or name.startswith("v") or name.endswith(".json"):
+            return "application/json"
+        return super().guess_type(path)
+
     def log_message(self, *args):
         pass
 

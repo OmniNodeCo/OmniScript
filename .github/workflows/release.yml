@@ -88,7 +88,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Interpreter test suite (unittest)
-        run: python -m unittest discover -s tests
+        run: python tools/ci_unittest.py discover -s tests
 
       - name: Language test suite (./omni test)
         run: ./omni test

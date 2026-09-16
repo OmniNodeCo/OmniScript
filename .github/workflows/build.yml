@@ -135,7 +135,9 @@ jobs:
           ./omni -e 'print("running on ${platform()} ${os}, OmniScript ${version}")'
 
       - name: Interpreter test suite (unittest)
-        run: python -m unittest discover -s tests -v
+        # tools/ci_unittest.py is unittest plus one annotation per failure, so a
+        # red job says what broke without anyone needing the log.
+        run: python tools/ci_unittest.py discover -s tests
 
       - name: Language test suite (./omni test)
         run: ./omni test
@@ -323,28 +325,7 @@ jobs:
           Write-Host "install.ps1 / uninstall.ps1 cycle ok"
 
       - name: The installer test suite agrees
-        # Git Bash, because the default shell on a Windows runner is pwsh and
-        # this step is a heredoc.
-        shell: bash
-        run: |
-          python - <<'PY'
-          import subprocess, sys
-
-          proc = subprocess.run(
-              [sys.executable, "-m", "unittest", "tests.test_install", "-v"],
-              capture_output=True, text=True)
-          blob = (proc.stdout + proc.stderr).replace("\r", "")
-          sys.stdout.write(blob[-6000:])
-          if proc.returncode:
-              for line in blob.splitlines():
-                  if line.startswith(("FAIL: ", "ERROR: ")):
-                      print(f"::error::{line}")
-              start = blob.find("=" * 20)
-              detail = blob[start:start + 2500] if start >= 0 else blob[-2500:]
-              print("::error file=tests/test_install.py,line=1::"
-                    + detail.replace("\n", " | "))
-              raise SystemExit(1)
-          PY
+        run: python tools/ci_unittest.py tests.test_install
 
   executable:
     name: Executables (${{ matrix.os }})
@@ -381,10 +362,10 @@ jobs:
           sys.path.insert(0, str(pathlib.Path(".").resolve()))
           from omniscript.update import verify_checksums
 
-          ok, problems = verify_checksums("dist")
+          problems = verify_checksums("dist")
           for problem in problems:
               print(f"::error::{problem}")
-          if not ok:
+          if problems:
               raise SystemExit(1)
           print("every artifact in dist/ matches SHA256SUMS.txt")
           PY
