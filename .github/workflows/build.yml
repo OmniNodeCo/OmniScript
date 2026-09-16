@@ -103,6 +103,12 @@ jobs:
               print(f"yaml ok -- {path.name}: {', '.join(jobs)}")
           PY
 
+      - name: The release notes can still be generated
+        # release.yml only builds its notes when a tag is pushed. This runs those
+        # two steps here, against pretend artifacts, so a renamed placeholder or a
+        # broken sed is caught on the pull request instead of at release time.
+        run: python tools/check_release_notes.py
+
       - name: The launcher is executable
         run: |
           set -euo pipefail

@@ -164,7 +164,10 @@ jobs:
         id: stats
         run: |
           set -euo pipefail
-          loc="$(find omniscript -name '*.py' -print0 | xargs -0 cat | wc -l | tr -d ' ')"
+          # Grouped so the notes read "11,055 lines": numfmt --grouping follows the
+          # locale, and a runner's C locale has no thousands separator to follow.
+          loc="$(find omniscript -name '*.py' -print0 | xargs -0 cat | wc -l |
+                 python -c 'import sys; print(f"{int(sys.stdin.read()):,}")')"
           builtins="$(./omni docs | head -1 | grep -oE '[0-9]+' | tail -1)"
           examples="$(ls -1 examples/*.omni | wc -l | tr -d ' ')"
           cases="$(./omni test 2>&1 | tail -1 | grep -oE '^[0-9]+')"

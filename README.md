@@ -391,7 +391,7 @@ request:
 
 | job | what it does |
 | --- | --- |
-| `lint` | ruff (pyflakes rules), `compileall`, metadata and workflow validity |
+| `lint` | ruff (pyflakes rules), `compileall`, metadata and workflow validity, and a rehearsal of the release notes |
 | `test` | both suites, all 10 examples, `docs`, and a PNG that is decoded chunk by chunk -- on ubuntu and macOS, Python 3.10 to 3.14 |
 | `installer` | `install.sh` and `install.ps1` install, run and uninstall cleanly -- including on Windows, which the test matrix does not cover, and including a whole release channel served from `localhost` |
 | `executable` | builds the standalone binary (PyInstaller) and the zipapp on ubuntu and Windows, then installs and uninstalls them from a rehearsal of a release |
