@@ -14,7 +14,6 @@ shapes, and CI builds the frozen one on real runners.
 
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import stat
@@ -76,7 +75,7 @@ class UpdateCase(unittest.TestCase):
 
     @property
     def manifest_path(self) -> Path:
-        return self.home / "data" / "omniscript" / "install.json"
+        return self.home / "data" / "omniscript" / "install.txt"
 
     def isolate_from_the_manifest(self) -> None:
         """Make sure no manifest is found anywhere, so inference has to do the work."""
@@ -85,7 +84,7 @@ class UpdateCase(unittest.TestCase):
         self.env["LOCALAPPDATA"] = str(self.home / "appdata2")
 
     def manifest(self) -> dict:
-        return json.loads(self.manifest_path.read_text())
+        return U.parse_manifest(self.manifest_path.read_text())
 
     def stage(self, artifact: Path) -> Path:
         """Put an artifact where an installer would have put it."""
@@ -294,44 +293,6 @@ class ReleaseChannelTests(ArtifactCase):
         self.assertEqual(proc.returncode, 0, self.output(proc))
         self.assertIn("after: 12 42", proc.stdout)
 
-    def test_list_shows_the_releases_newest_first(self):
-        self.github.publish(OLD, [self.old_artifact])
-        self.github.publish(NEW, [self.new_artifact])
-        proc = self.update("--list")
-        out = self.output(proc)
-        self.assertEqual(proc.returncode, 0, out)
-        self.assertIn(f"the newest 2 from {U.DEFAULT_REPO}", out)
-        self.assertIn(f"v{NEW}", out)
-        self.assertIn(U.zipapp_asset(NEW), out)
-        self.assertLess(out.index(f"v{NEW}"), out.index(f"v{OLD}"),
-                        "the newest release should be listed first")
-        self.assertIn("<- installed", out)
-        self.assertEqual(self.run_omni(self.installed, "--version").stdout.strip(),
-                         f"OmniScript {OLD}", "--list must not change anything")
-
-    def test_list_says_which_release_has_nothing_for_this_machine(self):
-        self.github.publish(NEW, [])
-        out = self.output(self.update("--list"))
-        self.assertIn("nothing for this platform", out)
-
-    def test_list_honours_the_limit(self):
-        for version in ("0.1.0", "0.2.0", OLD):
-            self.github.publish(version, [])
-        out = self.output(self.update("--list", "--limit", "2"))
-        self.assertIn("the newest 2 from", out)
-        self.assertNotIn("v0.1.0", out)
-
-    def test_list_of_a_repository_that_has_published_nothing(self):
-        out = self.output(self.update("--list"))
-        self.assertIn("has not published any", out)
-
-    def test_list_of_an_unreachable_repository_says_why(self):
-        proc = self.run_omni(self.installed, "update", "--list", "--api-url",
-                             "http://127.0.0.1:1/")
-        out = self.output(proc)
-        self.assertEqual(proc.returncode, 1, out)
-        self.assertIn("could not reach", out)
-
     def test_a_second_update_has_nothing_to_do(self):
         self.github.publish(NEW, [self.new_artifact])
         self.assertEqual(self.update().returncode, 0)
@@ -416,8 +377,8 @@ class ReleaseChannelTests(ArtifactCase):
 
     def test_an_install_it_cannot_account_for_is_refused(self):
         self.manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        self.manifest_path.write_text(json.dumps(
-            {"package": "omniscript-lang", "version": OLD, "mode": "mystery"}))
+        self.manifest_path.write_text(U.format_manifest(
+{"package": "omniscript-lang", "version": OLD, "mode": "mystery"}))
         self.github.publish(NEW, [self.new_artifact])
         proc = self.run_omni(REPO / "omni", "update", "--api-url", self.github.api)
         out = self.output(proc)
@@ -433,12 +394,13 @@ class BetaChannelTests(ArtifactCase):
         self.origin = make_repository(self.tmp / "origin", OLD)
         self.work = clone(self.origin, self.tmp / "work")
         self.manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        self.manifest_path.write_text(json.dumps({
+        self.manifest_path.write_text(U.format_manifest(
+{
             "package": "omniscript-lang", "version": OLD, "mode": "symlink",
             "channel": "beta", "source": str(self.work), "cloned_by_installer": True,
             "bin_dir": str(self.bin_dir), "commands": [str(self.work / "omni")],
             "ref": "main", "python": sys.executable,
-        }, indent=2))
+        }))
 
     def publish_commit(self, version: str) -> str:
         stamp_version(self.origin, version)
@@ -505,7 +467,8 @@ class BetaChannelTests(ArtifactCase):
                          "next")
 
     def test_a_directory_that_is_not_a_repository_is_refused(self):
-        self.manifest_path.write_text(json.dumps({
+        self.manifest_path.write_text(U.format_manifest(
+{
             "package": "omniscript-lang", "version": OLD, "mode": "symlink",
             "channel": "beta", "source": str(self.tmp), "cloned_by_installer": True,
             "bin_dir": str(self.bin_dir), "commands": [str(self.work / "omni")],
@@ -561,13 +524,13 @@ class SourceInstallTests(ArtifactCase):
         self.manifest_path.parent.mkdir(parents=True, exist_ok=True)
 
     def write_manifest(self, cloned: bool) -> None:
-        self.manifest_path.write_text(json.dumps({
+        self.manifest_path.write_text(U.format_manifest({
             "package": "omniscript-lang", "version": OLD, "mode": "symlink",
             "channel": "release", "source": str(self.work),
             "cloned_by_installer": cloned, "bin_dir": str(self.bin_dir),
             "commands": [str(self.work / "omni")], "ref": "main",
             "python": sys.executable,
-        }, indent=2))
+        }))
 
     def tag_release(self, version: str) -> None:
         stamp_version(self.origin, version)

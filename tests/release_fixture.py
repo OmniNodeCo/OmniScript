@@ -17,13 +17,11 @@ from __future__ import annotations
 
 import functools
 import json
-import os
 import re
 import shutil
 import subprocess
 import sys
 import threading
-import urllib.parse
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -40,42 +38,6 @@ FILES_COPIED = ("omniscript", "tools", "omni", "install.sh", "uninstall.sh",
 
 
 class QuietHandler(SimpleHTTPRequestHandler):
-    """A static file server; a directory is answered from its `.json` twin.
-
-    That is what makes `/repos/OWNER/NAME/releases` -- the listing endpoint, which
-    on the real API is not a file at all -- servable from a directory tree.
-    """
-
-    def do_GET(self):
-        url = urllib.parse.urlsplit(self.path)
-        path = self.translate_path(self.path).rstrip("/\\")
-        twin = path + ".json"
-        if os.path.isdir(path) and os.path.isfile(twin):
-            body = Path(twin).read_bytes()
-            query = urllib.parse.parse_qs(url.query)
-            if query.get("per_page") and body[:1] == b"[":
-                try:
-                    limit = int(query["per_page"][0])
-                except ValueError:
-                    limit = 0
-                if limit > 0:
-                    body = json.dumps(json.loads(body)[:limit]).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            return
-        super().do_GET()
-
-    def guess_type(self, path):
-        # GitHub answers application/json; a file server guesses from the
-        # extension, and /releases/latest has none to guess from.
-        name = os.path.basename(str(path))
-        if name == "latest" or name.startswith("v") or name.endswith(".json"):
-            return "application/json"
-        return super().guess_type(path)
-
     def log_message(self, *args):
         pass
 
@@ -131,12 +93,6 @@ class FakeGitHub:
             target = base / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(json.dumps(release, indent=2))
-        # The listing endpoint keeps every release, newest first.
-        index = base.parent / "releases.json"
-        listed = json.loads(index.read_text()) if index.is_file() else []
-        listed = [item for item in listed if item.get("tag_name") != release["tag_name"]]
-        listed.insert(0, release)
-        index.write_text(json.dumps(listed, indent=2))
 
     def close(self) -> None:
         self.httpd.shutdown()

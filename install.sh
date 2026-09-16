@@ -162,10 +162,8 @@ while [ $# -gt 0 ]; do
 done
 
 case "$MODE" in
-    # binary is what a release install becomes: one downloaded file, no Python.
-    # Asking for it by hand means "give me that", which is the release channel.
-    symlink|venv|pip|binary) ;;
-    *) usage >&2; die "--mode must be symlink, venv, pip or binary (got '$MODE')" ;;
+    symlink|venv|pip) ;;
+    *) usage >&2; die "--mode must be symlink, venv or pip (got '$MODE')" ;;
 esac
 [ -n "$PREFIX" ] || die "--prefix needs a directory"
 [ -n "$BIN_DIR" ] || BIN_DIR="$PREFIX/bin"
@@ -173,7 +171,7 @@ esac
 REPO_URL="${OMNISCRIPT_REPO_URL:-https://github.com/$REPO_SLUG.git}"
 
 DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/omniscript"
-MANIFEST="$DATA_DIR/install.json"
+MANIFEST="$DATA_DIR/install.txt"
 VENV_DIR="$DATA_DIR/venv"
 
 # State the two channels fill in as they go.
@@ -695,117 +693,41 @@ PY
 }
 
 # ------------------------------------------------------------------ manifest
-json_escape() {
-    printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
-}
-
-json_list() {
-    list=""
-    for item in $1; do
-        [ -n "$item" ] || continue
-        [ -n "$list" ] && list="$list, "
-        list="$list\"$(json_escape "$item")\""
-    done
-    printf '[%s]' "$list"
-}
-
-# Written with Python when there is one, because it escapes paths properly. A
-# release-channel install can happen on a machine with no Python at all, so the
-# same manifest is also written in plain shell.
+# One key=value per line, and one repeated line per command or extension. Plain
+# text, so writing it needs no Python and reading it needs no JSON parser:
+# uninstall.sh works with sed on a machine that has nothing else.
 write_manifest() {
-    run mkdir -p "$DATA_DIR"
     if [ "$DRY_RUN" = 1 ]; then
         printf '    [dry-run] write %s\n' "$MANIFEST"
         return 0
     fi
     mkdir -p "$DATA_DIR"
-    if [ -n "$PYTHON" ]; then
-        MODE="$MODE" CHANNEL="$CHANNEL" SOURCE_DIR="$SOURCE_DIR" BIN_DIR="$BIN_DIR" \
-        PYTHON="$PYTHON" VENV_DIR="$INSTALLED_VENV" PIP_TARGET="$PIP_TARGET" \
-        COMMANDS="$INSTALLED_COMMANDS" VSCODE_DIRS="$VSCODE_DIRS" CLONED="$CLONED" \
-        DATA_DIR="$DATA_DIR" BREAK_SYSTEM="$BREAK_SYSTEM" PIP_USER_FLAG="$PIP_USER" \
-        OMNI_VERSION="$OMNI_VERSION" PY_VERSION="$PY_VERSION" REF="$REF" \
-        REPO_SLUG="$REPO_SLUG" REPO_URL="$REPO_URL" API_URL="$API_URL" \
-        RELEASE_TAG="$RELEASE_TAG" BINARY_PATH="$BINARY_PATH" COMMAND_KIND="$COMMAND_KIND" \
-        "$PYTHON" - "$MANIFEST" <<'PY'
-import datetime
-import json
-import os
-import sys
-
-
-def split(value):
-    return [p for p in (value or "").split() if p]
-
-
-manifest = {
-    "package": "omniscript-lang",
-    "version": os.environ["OMNI_VERSION"],
-    "installed_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    "mode": os.environ["MODE"],
-    "channel": os.environ["CHANNEL"],
-    "command_kind": os.environ["COMMAND_KIND"],
-    "source": os.environ["SOURCE_DIR"] or None,
-    "cloned_by_installer": os.environ["CLONED"] == "1",
-    "ref": os.environ["REF"] or None,
-    "repo": os.environ["REPO_SLUG"],
-    "repo_url": os.environ["REPO_URL"],
-    "api_url": os.environ["API_URL"],
-    "release_tag": os.environ["RELEASE_TAG"] or None,
-    "binary": os.environ["BINARY_PATH"] or None,
-    "bin_dir": os.environ["BIN_DIR"],
-    "commands": split(os.environ["COMMANDS"]),
-    "python": os.environ["PYTHON"] or None,
-    "python_version": os.environ["PY_VERSION"] or None,
-    "venv": os.environ["VENV_DIR"] or None,
-    "pip_scripts_dir": os.environ["PIP_TARGET"] or None,
-    # uninstall.sh needs these to talk to the same pip the same way
-    "pip_user": os.environ["PIP_USER_FLAG"] == "1",
-    "pip_break_system_packages": os.environ["BREAK_SYSTEM"] == "1",
-    "editor_extensions": split(os.environ["VSCODE_DIRS"]),
-    "history_file": os.path.join(os.path.expanduser("~"), ".omniscript_history"),
-    "data_dir": os.environ["DATA_DIR"],
-}
-with open(sys.argv[1], "w") as fh:
-    json.dump(manifest, fh, indent=2, sort_keys=True)
-    fh.write("\n")
-print("wrote", sys.argv[1])
-PY
-        return 0
-    fi
-
     {
-        printf '{\n'
-        printf '  "package": "omniscript-lang",\n'
-        printf '  "version": "%s",\n' "$(json_escape "$OMNI_VERSION")"
-        printf '  "installed_at": "%s",\n' \
-            "$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || echo unknown)"
-        printf '  "mode": "%s",\n' "$(json_escape "$MODE")"
-        printf '  "channel": "%s",\n' "$(json_escape "$CHANNEL")"
-        printf '  "command_kind": "%s",\n' "$(json_escape "$COMMAND_KIND")"
-        printf '  "source": %s,\n' \
-            "$( [ -n "$SOURCE_DIR" ] && printf '"%s"' "$(json_escape "$SOURCE_DIR")" || printf null)"
-        printf '  "cloned_by_installer": %s,\n' "$( [ "$CLONED" = 1 ] && printf true || printf false)"
-        printf '  "ref": "%s",\n' "$(json_escape "$REF")"
-        printf '  "repo": "%s",\n' "$(json_escape "$REPO_SLUG")"
-        printf '  "repo_url": "%s",\n' "$(json_escape "$REPO_URL")"
-        printf '  "api_url": "%s",\n' "$(json_escape "$API_URL")"
-        printf '  "release_tag": %s,\n' \
-            "$( [ -n "$RELEASE_TAG" ] && printf '"%s"' "$(json_escape "$RELEASE_TAG")" || printf null)"
-        printf '  "binary": %s,\n' \
-            "$( [ -n "$BINARY_PATH" ] && printf '"%s"' "$(json_escape "$BINARY_PATH")" || printf null)"
-        printf '  "bin_dir": "%s",\n' "$(json_escape "$BIN_DIR")"
-        printf '  "commands": %s,\n' "$(json_list "$INSTALLED_COMMANDS")"
-        printf '  "python": null,\n'
-        printf '  "python_version": null,\n'
-        printf '  "venv": null,\n'
-        printf '  "pip_scripts_dir": null,\n'
-        printf '  "pip_user": false,\n'
-        printf '  "pip_break_system_packages": false,\n'
-        printf '  "editor_extensions": %s,\n' "$(json_list "$VSCODE_DIRS")"
-        printf '  "history_file": "%s",\n' "$(json_escape "$HOME/.omniscript_history")"
-        printf '  "data_dir": "%s"\n' "$(json_escape "$DATA_DIR")"
-        printf '}\n'
+        printf 'api_url=%s\n' "$API_URL"
+        printf 'bin_dir=%s\n' "$BIN_DIR"
+        printf 'binary=%s\n' "$BINARY_PATH"
+        printf 'channel=%s\n' "$CHANNEL"
+        printf 'cloned_by_installer=%s\n' "$( [ "$CLONED" = 1 ] && echo 1 || echo 0)"
+        printf 'command_kind=%s\n' "$COMMAND_KIND"
+        for path in $INSTALLED_COMMANDS; do printf 'command=%s\n' "$path"; done
+        printf 'data_dir=%s\n' "$DATA_DIR"
+        for dir in $VSCODE_DIRS; do printf 'extension=%s\n' "$dir"; done
+        printf 'history_file=%s\n' "$HOME/.omniscript_history"
+        printf 'installed_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || echo unknown)"
+        printf 'mode=%s\n' "$MODE"
+        printf 'package=omniscript-lang\n'
+        printf 'pip_break_system_packages=%s\n' "$( [ "$BREAK_SYSTEM" = 1 ] && echo 1 || echo 0)"
+        printf 'pip_scripts_dir=%s\n' "$PIP_TARGET"
+        printf 'pip_user=%s\n' "$( [ "$PIP_USER" = 1 ] && echo 1 || echo 0)"
+        printf 'python=%s\n' "$PYTHON"
+        printf 'python_version=%s\n' "$PY_VERSION"
+        printf 'ref=%s\n' "$REF"
+        printf 'release_tag=%s\n' "$RELEASE_TAG"
+        printf 'repo=%s\n' "$REPO_SLUG"
+        printf 'repo_url=%s\n' "$REPO_URL"
+        printf 'source=%s\n' "$SOURCE_DIR"
+        printf 'venv=%s\n' "$INSTALLED_VENV"
+        printf 'version=%s\n' "$OMNI_VERSION"
     } > "$MANIFEST"
     note "wrote $MANIFEST"
 }
@@ -906,14 +828,6 @@ source_beside_us() {
     return 1
 }
 
-if [ "$MODE" = binary ]; then
-    case "$CHANNEL" in
-        ""|release) ;;
-        *) usage >&2; die "--mode binary comes from a release, so --channel $CHANNEL does not apply" ;;
-    esac
-    CHANNEL="release"
-fi
-
 if [ -z "$CHANNEL" ]; then
     if source_beside_us; then
         CHANNEL="beta"
@@ -940,7 +854,6 @@ if [ "$CHANNEL" = release ]; then
         0)  info "OmniScript $OMNI_VERSION from $RELEASE_TAG ($REL_ASSET_NAME)" ;;
         10) info "OmniScript $OMNI_VERSION from $RELEASE_TAG ($REL_ASSET_NAME)" ;;
         *)  [ -n "$REL_FATAL" ] && die "$REL_FATAL"
-            [ "$MODE" = binary ] && die "--mode binary needs a release to download, and $REPO_SLUG has nothing that fits this machine"
             warn "the release channel did not deliver; installing from $REPO_URL instead"
             CHANNEL="beta"
             ;;

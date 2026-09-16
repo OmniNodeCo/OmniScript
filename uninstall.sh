@@ -14,21 +14,20 @@
 # command it cannot prove it created: use --force for that, and read what it
 # says first.
 #
-# A release install can happen on a machine that has never had Python on it, so
-# the manifest is read with awk when there is no Python to read it with.
+# The manifest is one key=value per line, so this needs nothing but a shell: a
+# machine that took the executable because it had no Python can still be cleaned
+# up exactly.
 
 set -euo pipefail
 
 DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/omniscript"
-MANIFEST="$DATA_DIR/install.json"
+MANIFEST="$DATA_DIR/install.txt"
 PREFIX="${HOME}/.local"
 BIN_DIR=""
 PURGE=0
 DRY_RUN=0
 FORCE=0
 KEEP_VSCODE=0
-NO_PYTHON=0
-READ_MANIFEST="" 
 
 usage() {
     cat <<'USAGE'
@@ -40,9 +39,6 @@ Usage: uninstall.sh [options]
                      cloned, and the manifest
   --keep-vscode      leave the editor extension in place
   --force            remove commands even when they do not look like ours
-  --no-python        read the manifest with awk even if a Python is on PATH
-  --read-manifest FILE
-                     print the manifest as KEY=value lines and stop
   --dry-run, -n      print what would be removed and remove nothing
   -h, --help         this text
 
@@ -73,10 +69,6 @@ while [ $# -gt 0 ]; do
         --purge) PURGE=1; shift ;;
         --keep-vscode) KEEP_VSCODE=1; shift ;;
         --force) FORCE=1; shift ;;
-        --no-python) NO_PYTHON=1; shift ;;
-        --read-manifest) [ $# -ge 2 ] || die "--read-manifest needs a file"
-                         READ_MANIFEST="$2"; shift 2 ;;
-        --read-manifest=*) READ_MANIFEST="${1#*=}"; shift ;;
         --dry-run|-n) DRY_RUN=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) usage >&2; die "unknown option: $1" ;;
@@ -86,6 +78,7 @@ done
 [ -n "$BIN_DIR" ] || BIN_DIR="$PREFIX/bin"
 
 # ------------------------------------------------------- an interpreter
+# Only the pip mode needs one: the manifest is plain text.
 PYTHON=""
 for candidate in python3 python; do
     if command -v "$candidate" >/dev/null 2>&1; then
@@ -98,136 +91,30 @@ M_MODE="" M_SOURCE="" M_CLONED=0 M_VENV="" M_PIPDIR="" M_VERSION="" M_BREAK_SYST
 M_COMMANDS="" M_EXTENSIONS="" M_HISTORY="$HOME/.omniscript_history"
 M_BINARY="" M_CHANNEL="" M_REF=""
 
-# The manifest as KEY=value lines, read by Python when there is one.
-read_manifest_python() {
-    "$PYTHON" - "$1" <<'PY'
-import json, shlex, sys
-
-with open(sys.argv[1]) as fh:
-    m = json.load(fh)
-
-def lines(values):
-    return "\n".join(v for v in (values or []) if v)
-
-print("M_MODE=%s" % shlex.quote(str(m.get("mode") or "")))
-print("M_SOURCE=%s" % shlex.quote(str(m.get("source") or "")))
-print("M_CLONED=%s" % shlex.quote("1" if m.get("cloned_by_installer") else "0"))
-print("M_VENV=%s" % shlex.quote(str(m.get("venv") or "")))
-print("M_PIPDIR=%s" % shlex.quote(str(m.get("pip_scripts_dir") or "")))
-print("M_VERSION=%s" % shlex.quote(str(m.get("version") or "")))
-print("M_BREAK_SYSTEM=%s" % shlex.quote("1" if m.get("pip_break_system_packages") else "0"))
-print("M_COMMANDS=%s" % shlex.quote(lines(m.get("commands"))))
-print("M_EXTENSIONS=%s" % shlex.quote(lines(m.get("editor_extensions"))))
-print("M_HISTORY=%s" % shlex.quote(str(m.get("history_file") or "~/.omniscript_history")))
-print("M_BINARY=%s" % shlex.quote(str(m.get("binary") or "")))
-print("M_CHANNEL=%s" % shlex.quote(str(m.get("channel") or "")))
-print("M_REF=%s" % shlex.quote(str(m.get("ref") or "")))
-PY
-}
-
-# The same thing in awk, for a machine where a release install was the only
-# thing that ever happened. It reads both shapes install.sh writes: the indented
-# arrays Python produces and the flat ones the shell writer produces. Values come
-# out double-quoted, with the four characters that matter to a shell escaped.
-read_manifest_awk() {
-    awk '
-    function dq(value) {
-        gsub(/\\/, "\\\\", value)
-        gsub(/"/, "\\\"", value)
-        gsub(/\$/, "\\$", value)
-        gsub(/`/, "\\`", value)
-        return "\"" value "\""
-    }
-    function trim(value) {
-        gsub(/^[ \t]+|[ \t]+$/, "", value)
-        return value
-    }
-    function unquote(value) {
-        value = trim(value)
-        sub(/,$/, "", value)
-        if (value == "null") return ""
-        if (value ~ /^".*"$/) return substr(value, 2, length(value) - 2)
-        return value
-    }
-    function emit(key, value) {
-        if (key == "mode") print "M_MODE=" dq(value)
-        else if (key == "source") print "M_SOURCE=" dq(value)
-        else if (key == "cloned_by_installer") print "M_CLONED=" dq(value == "true" ? "1" : "0")
-        else if (key == "venv") print "M_VENV=" dq(value)
-        else if (key == "pip_scripts_dir") print "M_PIPDIR=" dq(value)
-        else if (key == "version") print "M_VERSION=" dq(value)
-        else if (key == "pip_break_system_packages") print "M_BREAK_SYSTEM=" dq(value == "true" ? "1" : "0")
-        else if (key == "commands") print "M_COMMANDS=" dq(value)
-        else if (key == "editor_extensions") print "M_EXTENSIONS=" dq(value)
-        else if (key == "history_file") print "M_HISTORY=" dq(value)
-        else if (key == "binary") print "M_BINARY=" dq(value)
-        else if (key == "channel") print "M_CHANNEL=" dq(value)
-        else if (key == "ref") print "M_REF=" dq(value)
-    }
-    function flat_array(text,   inner, parts, count, i, item, out) {
-        inner = trim(text)
-        sub(/,$/, "", inner)
-        sub(/^\[/, "", inner)
-        sub(/\]$/, "", inner)
-        count = split(inner, parts, ",")
-        out = ""
-        for (i = 1; i <= count; i++) {
-            item = unquote(parts[i])
-            if (item != "") out = (out == "" ? item : out "\n" item)
-        }
-        return out
-    }
-    BEGIN { in_array = 0; key = ""; acc = "" }
-    {
-        line = $0
-        sub(/\r$/, "", line)
-        if (in_array) {
-            if (line ~ /^[ \t]*\]/) { emit(key, acc); in_array = 0; key = ""; acc = ""; next }
-            item = unquote(line)
-            if (item != "") acc = (acc == "" ? item : acc "\n" item)
-            next
-        }
-        if (line !~ /^[ \t]*"[^"]+"[ \t]*:/) next
-        key = line
-        sub(/^[ \t]*"/, "", key)
-        sub(/".*$/, "", key)
-        value = line
-        sub(/^[^:]*:[ \t]*/, "", value)
-        if (value ~ /^[ \t]*\[/) {
-            if (value ~ /\][ \t]*,?[ \t]*$/) { emit(key, flat_array(value)); key = ""; next }
-            in_array = 1
-            acc = ""
-            next
-        }
-        emit(key, unquote(value))
-        key = ""
-    }
-    ' "$1"
-}
+# One key=value per line, so reading it is sed: no Python, no JSON parser, and
+# nothing to escape. A repeated key is a list.
+mget() { sed -n "s/^$1=//p" "$MANIFEST" | head -1; }
+mall() { sed -n "s/^$1=//p" "$MANIFEST"; }
 
 read_manifest() {
-    if [ -n "$PYTHON" ] && [ "$NO_PYTHON" != 1 ]; then
-        read_manifest_python "$1" 2>/dev/null || read_manifest_awk "$1"
-    else
-        read_manifest_awk "$1"
-    fi
+    M_VERSION="$(mget version)"
+    M_MODE="$(mget mode)"
+    M_CHANNEL="$(mget channel)"
+    M_REF="$(mget ref)"
+    M_SOURCE="$(mget source)"
+    M_VENV="$(mget venv)"
+    M_PIPDIR="$(mget pip_scripts_dir)"
+    M_BINARY="$(mget binary)"
+    M_CLONED="$(mget cloned_by_installer)"
+    M_BREAK_SYSTEM="$(mget pip_break_system_packages)"
+    [ -n "$(mget history_file)" ] && M_HISTORY="$(mget history_file)"
+    M_COMMANDS="$(mall command)"
+    M_EXTENSIONS="$(mall extension)"
 }
 
-if [ -n "$READ_MANIFEST" ]; then
-    [ -f "$READ_MANIFEST" ] || die "--read-manifest: there is no file at $READ_MANIFEST"
-    read_manifest "$READ_MANIFEST"
-    exit 0
-fi
-
 if [ -f "$MANIFEST" ]; then
-    if [ -n "$PYTHON" ] && [ "$NO_PYTHON" != 1 ]; then
-        info "Reading $MANIFEST"
-    elif [ -n "$PYTHON" ]; then
-        info "Reading $MANIFEST with awk (--no-python)"
-    else
-        info "Reading $MANIFEST with awk (no python on PATH)"
-    fi
-    eval "$(read_manifest "$MANIFEST")"
+    info "Reading $MANIFEST"
+    read_manifest
     if [ -n "$M_VERSION" ]; then
         info "OmniScript $M_VERSION, installed in $M_MODE mode"
         [ -n "$M_CHANNEL" ] && note "$M_CHANNEL channel$( [ -n "$M_REF" ] && printf ', tracking %s' "$M_REF")"

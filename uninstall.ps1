@@ -77,40 +77,54 @@ if (-not $Prefix) {
 if (-not $Bin) {
     if ($IsWin) { $Bin = $Prefix } else { $Bin = Join-Path $Prefix 'bin' }
 }
-$Manifest = Join-Path $DataDir 'install.json'
+$Manifest = Join-Path $DataDir 'install.txt'
 
-$M = $null
-if (Test-Path $Manifest) {
+# The manifest is one key=value per line, with a repeated line for each command
+# and each editor extension -- the same file install.sh writes and reads with sed.
+$MVersion = ''; $MMode = ''; $MChannel = ''; $MRef = ''; $MSource = ''; $MVenv = ''
+$MPipDir = ''; $MPython = ''; $MBinary = ''; $MCloned = $false
+$MHistory = Join-Path $(if ($IsWin) { $env:USERPROFILE } else { $env:HOME }) '.omniscript_history'
+$MCommands = @()
+$MExtensions = @()
+
+if (Test-Path -LiteralPath $Manifest) {
     Write-Info "Reading $Manifest"
-    $M = Get-Content -Raw $Manifest | ConvertFrom-Json
-    if ($M.version) {
-        Write-Info "OmniScript $($M.version), installed in $($M.mode) mode"
-        if ($M.channel) {
-            $tracking = if ($M.ref) { ", tracking $($M.ref)" } else { '' }
-            Write-Note "$($M.channel) channel$tracking"
+    foreach ($line in (Get-Content -LiteralPath $Manifest)) {
+        $parts = "$line" -split '=', 2
+        if ($parts.Count -lt 2) { continue }
+        $value = $parts[1].Trim()
+        switch ($parts[0].Trim()) {
+            'version'             { $MVersion = $value }
+            'mode'                { $MMode = $value }
+            'channel'             { $MChannel = $value }
+            'ref'                 { $MRef = $value }
+            'source'              { $MSource = $value }
+            'venv'                { $MVenv = $value }
+            'pip_scripts_dir'     { $MPipDir = $value }
+            'python'              { $MPython = $value }
+            'binary'              { $MBinary = $value }
+            'cloned_by_installer' { $MCloned = ($value -eq '1') }
+            'history_file'        { if ($value) { $MHistory = $value } }
+            'command'             { if ($value) { $MCommands += $value } }
+            'extension'           { if ($value) { $MExtensions += $value } }
+        }
+    }
+    if ($MVersion) {
+        Write-Info "OmniScript $MVersion, installed in $MMode mode"
+        if ($MChannel) {
+            $tracking = if ($MRef) { ", tracking $MRef" } else { '' }
+            Write-Note "$MChannel channel$tracking"
         }
     }
 } else {
     Write-Note "no manifest at $Manifest; falling back to $Bin"
 }
 
-$MSource = if ($M) { $M.source } else { '' }
-$MVenv = if ($M -and $M.venv) { $M.venv } else { '' }
-$MPipDir = if ($M -and $M.pip_scripts_dir) { $M.pip_scripts_dir } else { '' }
-$MMode = if ($M) { $M.mode } else { '' }
-$MPython = if ($M -and $M.python) { $M.python } else { '' }
-$MCloned = [bool]($M -and $M.cloned_by_installer)
-$MBinary = if ($M -and $M.binary) { "$($M.binary)" } else { '' }
-$MChannel = if ($M -and $M.channel) { "$($M.channel)" } else { '' }
-$MHistory = if ($M -and $M.history_file) { $M.history_file } else { Join-Path $(if ($IsWin) { $env:USERPROFILE } else { $env:HOME }) '.omniscript_history' }
-
-if ($M -and $M.commands) { $MCommands = @($M.commands) } else {
-    $MCommands = @()
+if ($MCommands.Count -eq 0) {
     foreach ($name in @('omni', 'omniscript')) {
         $MCommands += $(if ($IsWin) { Join-Path $Bin "$name.cmd" } else { Join-Path $Bin $name })
     }
 }
-if ($M -and $M.editor_extensions) { $MExtensions = @($M.editor_extensions) } else { $MExtensions = @() }
 
 $Removed = 0
 $Kept = 0

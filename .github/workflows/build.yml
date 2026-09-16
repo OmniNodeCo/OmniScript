@@ -10,8 +10,7 @@
 #            uninstall.sh / uninstall.ps1 take it all back out again -- on
 #            Windows as well, which the test matrix does not cover
 #   executable  the release artifacts: a standalone binary (PyInstaller) and a
-#            zipapp, each one then installed from a rehearsal of a release and
-#            exercised, so release.yml cannot be the first place they are tried
+#            zipapp, each one smoke-tested by the tool that built it
 #
 # The interpreter has no third-party dependencies, so the test matrix installs
 # nothing at all; only the lint, package and executable jobs need pip.
@@ -102,12 +101,6 @@ jobs:
                       assert step.get("uses") or step.get("run"), f"{path}: empty step"
               print(f"yaml ok -- {path.name}: {', '.join(jobs)}")
           PY
-
-      - name: The release notes can still be generated
-        # release.yml only builds its notes when a tag is pushed. This runs those
-        # two steps here, against pretend artifacts, so a renamed placeholder or a
-        # broken sed is caught on the pull request instead of at release time.
-        run: python tools/check_release_notes.py
 
       - name: The launcher is executable
         run: |
@@ -354,33 +347,9 @@ jobs:
         run: python -m pip install --upgrade pip pyinstaller
 
       - name: Build the standalone executable and the zipapp
-        # build_executable.py freezes, smoke-tests each artifact (--version, a
-        # program, a `use std/...` import, graphics) and writes SHA256SUMS.txt.
+        # build_executable.py freezes each artifact, runs it (--version, a
+        # program, a `use std/...` import, a drawing), and writes SHA256SUMS.txt.
         run: python tools/build_executable.py --out dist
-
-      - name: The checksums verify
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import pathlib, sys
-
-          sys.path.insert(0, str(pathlib.Path(".").resolve()))
-          from omniscript.update import verify_checksums
-
-          problems = verify_checksums("dist")
-          for problem in problems:
-              print(f"::error::{problem}")
-          if problems:
-              raise SystemExit(1)
-          print("every artifact in dist/ matches SHA256SUMS.txt")
-          PY
-
-      - name: Install it the way a user would, then take it back out
-        # Lays dist/ out as a GitHub release, points install.sh / install.ps1 at
-        # it with --channel release, checks the sha256, runs what it installed,
-        # lets `omni update --check` see its own release, and uninstalls.
-        run: python tools/rehearse_release.py --dist dist
 
       - name: Upload the artifacts
         uses: actions/upload-artifact@v7

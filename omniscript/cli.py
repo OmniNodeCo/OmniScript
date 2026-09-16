@@ -511,10 +511,6 @@ def build_parser() -> argparse.ArgumentParser:
                           "beta: the newest commit in the repository")
     upd.add_argument("--check", action="store_true",
                      help="say what is available and change nothing")
-    upd.add_argument("--list", dest="list_releases", action="store_true",
-                     help="list the published releases, and which fit this machine")
-    upd.add_argument("--limit", type=int, default=10, metavar="N",
-                     help="how many releases --list shows [10]")
     upd.add_argument("--version", "--tag", dest="version", default="", metavar="VERSION",
                      help="a particular release, for example 1.2.0 or v1.2.0")
     upd.add_argument("--ref", default="", metavar="REF",

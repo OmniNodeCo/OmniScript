@@ -6,7 +6,6 @@ PowerShell scripts are parsed and run wherever pwsh does, and skipped
 elsewhere rather than pretending to pass.
 """
 
-import json
 import os
 import shutil
 import stat
@@ -22,6 +21,10 @@ except ImportError:  # `python -m unittest tests.test_install` does not
     from tests.release_fixture import NEW, FakeGitHub, build_artifact
 
 REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO))
+
+from omniscript.update import parse_manifest  # noqa: E402
+
 BASH = shutil.which("bash")
 PWSH = shutil.which("pwsh") or shutil.which("powershell")
 POSIX = os.name == "posix"
@@ -65,10 +68,10 @@ class ScriptCase(unittest.TestCase):
 
     @property
     def manifest_path(self):
-        return self.data_dir / "install.json"
+        return self.data_dir / "install.txt"
 
     def manifest(self):
-        return json.loads(self.manifest_path.read_text())
+        return parse_manifest(self.manifest_path.read_text())
 
     def command_path(self, name):
         if POSIX:
@@ -441,7 +444,7 @@ class BashReleaseTests(ReleaseCase):
         self.assertEqual(str(self.command_path("omni")), record["binary"])
         self.assertIn(str(self.command_path("omni")), record["commands"])
         self.assertIn(str(self.command_path("omniscript")), record["commands"])
-        self.assertIsNone(record["source"], "a release install has no source tree")
+        self.assertEqual("", record["source"], "a release install has no source tree")
 
     def test_what_it_installed_can_update_itself(self):
         self.from_release()
@@ -461,31 +464,6 @@ class BashReleaseTests(ReleaseCase):
         self.assertFalse(self.command_path("omniscript").exists())
         self.assertFalse(self.manifest_path.exists())
         self.assertEqual([], [p for p in self.bin_dir.iterdir() if p.suffix != ".bak"])
-
-    def test_uninstall_reads_the_manifest_without_python(self):
-        self.from_release()
-        removal = self.uninstall("--no-python", "--purge")
-        self.assertIn("with awk", removal.stdout)
-        self.assertIn("uninstalled", removal.stdout)
-        self.assertFalse(self.command_path("omni").exists())
-        self.assertFalse(self.manifest_path.exists())
-
-    def test_both_manifest_readers_agree(self):
-        self.from_release()
-        fields = '"$M_MODE" "$M_VERSION" "$M_CHANNEL" "$M_BINARY" "$M_CLONED" "$M_COMMANDS"'
-        script = f'eval "$1"\nprintf "%s\\n" {fields}'
-
-        def read(*flags):
-            out = self.run_script("uninstall", "--read-manifest", str(self.manifest_path),
-                                  *flags).stdout
-            proc = subprocess.run([BASH, "-c", script, "reader", out], env=self.env,
-                                  capture_output=True, text=True, timeout=60)
-            self.assertEqual(0, proc.returncode, proc.stderr)
-            return proc.stdout
-
-        self.assertEqual(read(), read("--no-python"))
-        self.assertIn("binary", read("--no-python"))
-        self.assertIn(str(self.command_path("omni")), read("--no-python"))
 
     def test_an_unreachable_release_falls_back_to_the_repository(self):
         result = self.install("--channel", "release", "--api-url", "http://127.0.0.1:1/",
@@ -534,15 +512,6 @@ class BashReleaseTests(ReleaseCase):
         self.assertIn("[dry-run]", result.stdout)
         self.assertFalse(self.bin_dir.exists() and any(self.bin_dir.iterdir()))
         self.assertFalse(self.manifest_path.exists())
-
-    def test_mode_binary_is_a_way_of_asking_for_the_release_channel(self):
-        result = self.install("--mode", "binary", "--api-url", self.github.api)
-        self.assertIn("is installed (release channel)", result.stdout)
-        self.assertEqual("binary", self.manifest()["mode"])
-        self.assertTrue(self.command_path("omni").is_file())
-
-        conflict = self.install("--mode", "binary", "--channel", "beta", expect=1)
-        self.assertIn("comes from a release", conflict.stderr)
 
     def test_an_unknown_channel_is_refused(self):
         result = self.install("--channel", "gamma", expect=1)

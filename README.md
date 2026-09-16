@@ -63,11 +63,6 @@ so (`mut`). Errors point at the exact line, with a caret and a hint.
 
 ## Install
 
-One command, and you get a standalone executable — no Python, no clone, no
-build. It comes from the newest GitHub Release, its SHA-256 is checked against
-the `SHA256SUMS.txt` published beside it, and `omni` and `omniscript` land on
-your PATH:
-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/install.sh | bash
 ```
@@ -76,44 +71,28 @@ curl -fsSL https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/install.
 iwr -use1 https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/install.ps1 | iex
 ```
 
-### Two channels
+That downloads one file from the newest release, checks its SHA-256, and puts
+`omni` and `omniscript` on your PATH. No Python needed.
 
-| channel | flag | where it comes from | needs Python? |
-| --- | --- | --- | --- |
-| **release** (default) | `-s release` / `-Channel release` | the newest GitHub Release: the executable for your platform, else the zipapp, else the wheel | only for the wheel |
-| **beta** | `-s beta` / `-Channel beta` | the repository itself — the tree beside the installer, or a fresh clone of `main` | yes, 3.10+ |
+There are two channels:
+
+* **release** (the default) — the newest GitHub Release.
+* **beta** (`-s beta`) — the repository itself, so `git pull` is the upgrade.
+  Needs Python 3.10+.
 
 ```bash
-./install.sh                             # release channel
-./install.sh -s beta                     # follow the repository instead
-./install.sh -s beta --ref my-branch     # ...at a branch, tag or commit
-./install.sh -s release --version 1.0.0  # pin one release
-./install.sh --mode venv                 # a private venv, so the clone can move or go
-./install.sh --prefix /usr/local --force
-./install.sh --vscode                    # also install the editor extension
-./install.sh --dry-run                   # show what it would do, touch nothing
-./uninstall.sh                           # take it all back out
-./uninstall.sh --purge                   # ...plus the REPL history and the manifest
-./uninstall.sh --no-python               # reads the manifest with awk instead
+./install.sh -s beta --ref my-branch   # follow the repository instead
+./install.sh --version 1.0.0           # pin one release
+./install.sh --dry-run                 # show the plan, touch nothing
+./uninstall.sh                         # take it all back out
+./uninstall.sh --purge                 # ...and the history, the clone, the manifest
 ```
 
-```powershell
-.\install.ps1                           # shims into %LOCALAPPDATA%\Programs\OmniScript
-.\install.ps1 -Channel beta -VsCode
-.\install.ps1 -Version 1.0.0 -Prefix C:\Tools\OmniScript
-.\install.ps1 -DryRun
-.\uninstall.ps1 -Purge
-```
-
-If the release cannot be reached — no network, nothing published yet — the
-installer says so and falls back to the repository, so piping `curl` into `bash`
-never leaves you empty-handed. Two things are a hard stop instead, and install
-nothing: a `--version` that does not exist, and a download whose checksum does
-not match (the half-finished install is rolled back).
+If no release can be reached, the installer says so and uses the repository
+instead. A `--version` that does not exist, or a download whose checksum does not
+match, stops it and installs nothing.
 
 ### From a clone
-
-OmniScript itself needs only **Python 3.10+** — no third-party packages at all:
 
 ```bash
 git clone https://github.com/OmniNodeCo/OmniScript
@@ -122,34 +101,30 @@ cd OmniScript
 ./install.sh              # a source tree implies the beta channel
 ```
 
-Three source modes, same three commands:
+`--mode` says how a source install is wired up: **symlink** (the default — the
+commands point into the tree, so `git pull` upgrades them), **venv** (a private
+environment under `~/.local/share/omniscript/venv`) or **pip** (into the
+interpreter you already use; on a PEP 668 system it stops rather than override
+your package manager).
 
-* **symlink** (default) — `omni` and `omniscript` become links to the launcher in
-  the source tree. Instant, no network, no copies; the tree has to stay put. On
-  Windows the same thing is done with a two-line `.cmd` shim, because symlinks
-  there want administrator rights or Developer Mode.
-* **venv** — builds a virtual environment under `~/.local/share/omniscript/venv`
-  (`%LOCALAPPDATA%\OmniScript\venv` on Windows), installs the package into it and
-  points the commands at that. Survives deleting the source tree.
-* **pip** — installs into the interpreter you already use, then makes sure the
-  commands are reachable from the bin directory. On a PEP 668 system-managed
-  Python it stops and tells you to use `--mode venv` rather than quietly
-  overriding your package manager.
+### What is written down
 
-Every installer verifies its own work by running `omni --version` and a small
-program that draws a picture, tells you the one line to add to your PATH if the
-bin directory is not on it yet, and writes a manifest of everything it created to
-`~/.local/share/omniscript/install.json` — including the channel, the release tag
-and the file it downloaded.
+Every install leaves `~/.local/share/omniscript/install.txt` — one `key=value`
+per line, plain text, so nothing needs Python or a JSON parser to read it:
 
-The uninstaller works from that manifest, so it removes exactly what was
-installed, a downloaded executable as readily as a symlink. It will not delete a
-source tree you cloned yourself, and it will not remove a command it cannot prove
-it created — a stranger's `omni` is reported and left alone, `--force` moves it to
-`omni.bak` instead of overwriting it, and `--dry-run` shows the whole plan without
-touching anything. `uninstall.sh --no-python` reads the same manifest with awk, so
-a machine that took the executable because it had no Python can still be cleaned
-up.
+```
+mode=binary
+channel=release
+release_tag=v1.0.0
+command=/home/you/.local/bin/omni
+command=/home/you/.local/bin/omniscript
+```
+
+The uninstaller reads that file and removes exactly what is listed, a downloaded
+executable as readily as a symlink. It never deletes a source tree you cloned
+yourself, and it will not remove a command it cannot prove it created — `--force`
+moves a stranger's `omni` to `omni.bak` instead of overwriting it, and
+`--dry-run` shows the whole plan and changes nothing.
 
 ## Update
 
@@ -160,7 +135,6 @@ omni update --check       # what is published, what you have, and the difference
 omni update               # download it, check the sha256, swap it in, prove it runs
 omni update --version 1.0.0
 omni update -c beta --ref main    # switch to following the repository
-omni update --list                # the releases that are out there
 ```
 
 `omni update` reads the manifest to find out which channel this install came from
@@ -356,20 +330,18 @@ omniscript/           the language itself
                       swap it in -- shared by `omni update` and the installers
   std/                importable .omni modules: math, text, list, stats
 examples/             10 runnable programs (outputs land in .preview/)
-tests/                222 interpreter cases + 34 in-language @test cases
+tests/                215 interpreter cases + 34 in-language @test cases
 extras/vscode/        syntax highlighting for VS Code / Cursor
 install.sh/.ps1       put omni and omniscript on your PATH, from a release or a tree
 uninstall.sh/.ps1     take them back out again
-tools/                build_executable.py (the release artifacts),
-                      make_release_fixture.py and rehearse_release.py (a dry run
-                      of a release, served from disk instead of GitHub)
+tools/                build_executable.py: the files a release carries
 .github/workflows/    build.yml (CI) and release.yml (tagged releases)
 ```
 
 ## Testing
 
 ```bash
-python3 -m unittest discover -s tests   # 222 interpreter cases
+python3 -m unittest discover -s tests   # 215 interpreter cases
 ./omni test                             # the language's own 34 @test cases
 ```
 
@@ -391,10 +363,10 @@ request:
 
 | job | what it does |
 | --- | --- |
-| `lint` | ruff (pyflakes rules), `compileall`, metadata and workflow validity, and a rehearsal of the release notes |
+| `lint` | ruff (pyflakes rules), `compileall`, metadata and workflow validity |
 | `test` | both suites, all 10 examples, `docs`, and a PNG that is decoded chunk by chunk -- on ubuntu and macOS, Python 3.10 to 3.14 |
-| `installer` | `install.sh` and `install.ps1` install, run and uninstall cleanly -- including on Windows, which the test matrix does not cover, and including a whole release channel served from `localhost` |
-| `executable` | builds the standalone binary (PyInstaller) and the zipapp on ubuntu and Windows, then installs and uninstalls them from a rehearsal of a release |
+| `installer` | `install.sh` and `install.ps1` install, run and uninstall cleanly -- including on Windows, which the test matrix does not cover, and including the release channel served from `localhost` |
+| `executable` | builds the standalone binary (PyInstaller) and the zipapp on ubuntu and Windows, and runs each one |
 | `package` | builds the sdist and wheel, installs the wheel in a clean venv and runs it |
 
 Linting is deliberately narrow: `select = ["E9", "F"]` in `pyproject.toml`
@@ -422,19 +394,11 @@ commit. Then, in parallel:
 | job | what it produces |
 | --- | --- |
 | `build` | the sdist and the wheel, installed into a clean venv and exercised |
-| `binaries` | a frozen executable per platform (Linux, Windows, macOS) plus one `.pyz`, each smoke-tested by `tools/build_executable.py` and then installed, run, updated and uninstalled by `tools/rehearse_release.py` against a rehearsal of this very release |
-| `assemble` | every file above in one directory, with `SHA256SUMS.txt` covering all of them |
-| `release` | the GitHub Release, with the notes filled in from the tree -- line counts, built-in counts, example and test counts are measured, not typed -- and a list of what was attached |
+| `binaries` | a frozen executable per platform (Linux, Windows, macOS) plus one `.pyz`, each one run by the tool that built it |
+| `release` | one GitHub Release carrying all of it with `SHA256SUMS.txt`, and notes measured from the tree -- line counts, built-in counts, example and test counts are read, not typed |
 
-Because the artifacts are rehearsed before they are published, the release channel
-that `install.sh` uses is the same path CI has just walked on the same files.
-
-To rehearse a release yourself, without a tag:
-
-```bash
-python3 tools/build_executable.py --out dist          # needs `pip install pyinstaller`
-python3 tools/rehearse_release.py --dist dist         # install it, run it, remove it
-```
+`build.yml` builds the same artifacts on every pull request, so a tag is never the
+first time an executable has been made.
 
 Publishing to PyPI is opt-in and off by default: add a repository variable
 `PYPI_PUBLISH` set to `true` and configure trusted publishing for the project on

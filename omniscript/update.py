@@ -94,22 +94,76 @@ def version_of_tag(tag: str) -> str:
 
 
 # ------------------------------------------------------------------- manifests
+MANIFEST_NAME = "install.txt"
+
+# Written as one repeated line each; read back as a list under the plural name.
+LIST_KEYS = {"commands": "command", "editor_extensions": "extension"}
+BOOL_KEYS = ("cloned_by_installer", "pip_user", "pip_break_system_packages")
+
+
+def parse_manifest(text: str) -> dict:
+    """`key=value` lines: repeated keys are lists, 0 and 1 are booleans.
+
+    Deliberately the simplest thing that can be read from a shell with sed, from
+    PowerShell with -split and from here with a loop -- so a machine with no
+    Python on it can still be uninstalled exactly, and nothing has to escape a
+    path into JSON.
+    """
+    data: dict = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        for plural, singular in LIST_KEYS.items():
+            if key == singular:
+                data.setdefault(plural, []).append(value.strip())
+                break
+        else:
+            data[key] = value.strip()
+    for key in BOOL_KEYS:
+        if key in data:
+            data[key] = data[key] == "1"
+    return data
+
+
+def format_manifest(data: dict) -> str:
+    """The other direction; empty and None both become `key=`."""
+    lines = []
+    for key in sorted(data):
+        value = data[key]
+        if key in LIST_KEYS:
+            for item in value or []:
+                lines.append(f"{LIST_KEYS[key]}={item}")
+        elif isinstance(value, bool):
+            lines.append(f"{key}={1 if value else 0}")
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                lines.append(f"{key}={item}")
+        elif value is not None:
+            lines.append(f"{key}={value}")
+        else:
+            lines.append(f"{key}=")
+    return "\n".join(lines) + "\n"
+
+
 def manifest_candidates() -> list[str]:
     """Every place an installer might have left a manifest, most specific first."""
     override = os.environ.get("OMNISCRIPT_MANIFEST")
     found = [override] if override else []
     data = os.environ.get("XDG_DATA_HOME")
     if data:
-        found.append(os.path.join(data, "omniscript", "install.json"))
+        found.append(os.path.join(data, "omniscript", MANIFEST_NAME))
     home = os.path.expanduser("~")
-    found.append(os.path.join(home, ".local", "share", "omniscript", "install.json"))
+    found.append(os.path.join(home, ".local", "share", "omniscript", MANIFEST_NAME))
     local = os.environ.get("LOCALAPPDATA")
     if local:
-        found.append(os.path.join(local, "OmniScript", "install.json"))
+        found.append(os.path.join(local, "OmniScript", MANIFEST_NAME))
     profile = os.environ.get("USERPROFILE")
     if profile:
         found.append(os.path.join(profile, "AppData", "Local", "OmniScript",
-                                  "install.json"))
+                                  MANIFEST_NAME))
     seen, unique = set(), []
     for path in found:
         real = os.path.abspath(path)
@@ -125,8 +179,8 @@ def read_manifest(path: str | None = None) -> tuple[dict, str]:
         if candidate and os.path.isfile(candidate):
             try:
                 with open(candidate, "r", encoding="utf-8") as fh:
-                    data = json.load(fh)
-                if isinstance(data, dict):
+                    data = parse_manifest(fh.read())
+                if data:
                     return data, candidate
             except (OSError, ValueError):
                 continue
@@ -315,24 +369,6 @@ def fetch_release(api: str, repo: str, tag: str = "", prerelease: bool = False) 
         if isinstance(item, dict) and item.get("tag_name"):
             return item
     return {}
-
-
-def fetch_releases(api: str, repo: str, limit: int = 10) -> list:
-    """The recent releases, newest first -- what `omni update --list` shows."""
-    per_page = max(1, min(int(limit or 10), 100))
-    url = f"{api.rstrip('/')}/repos/{repo}/releases?per_page={per_page}"
-    try:
-        data = fetch_json(url)
-    except urllib.error.HTTPError as err:
-        # 404 is what an empty release list looks like from here: the repository
-        # has published nothing yet, so there is nothing to list. Anything else
-        # -- a rate limit, a server error -- is worth reporting.
-        if err.code == 404:
-            return []
-        raise UpdateError(f"could not list the releases of {repo} ({err.code})") from err
-    except (urllib.error.URLError, OSError, ValueError) as err:
-        raise UpdateError(f"could not reach {repo}: {_reason(err)}") from err
-    return [item for item in data if isinstance(item, dict)] if isinstance(data, list) else []
 
 
 def _reason(err: Exception) -> str:
@@ -594,8 +630,7 @@ def _write_manifest(install: Install, changes: dict) -> None:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         staged = path + ".new"
         with open(staged, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, indent=2, sort_keys=True)
-            fh.write("\n")
+            fh.write(format_manifest(data))
         os.replace(staged, path)
     except OSError:
         return
@@ -1152,29 +1187,6 @@ def _source_version(source: str) -> str:
 
 
 # ------------------------------------------------------------------ the command
-def list_releases(install: Install, report: Reporter, limit: int = 10) -> int:
-    """`omni update --list`: what is published, and which of it fits this machine."""
-    releases = fetch_releases(install.api, install.repo, limit)
-    if not releases:
-        report.step("releases", f"{install.repo} has not published any")
-        return 0
-    report.step("releases", f"the newest {len(releases)} from {install.repo}")
-    mine = install.version.lstrip("vV")
-    for release in releases:
-        tag = str(release.get("tag_name") or "?")
-        version = version_of_tag(tag)
-        when = str(release.get("published_at") or "")[:10]
-        asset = pick_asset(release, version)
-        bits = [f"{tag:<14}", when or "no date"]
-        if release.get("prerelease"):
-            bits.append("prerelease")
-        bits.append(asset.name if asset else "nothing for this platform")
-        if version and version == mine:
-            bits.append("<- installed")
-        report.note("  ".join(bit for bit in bits if bit))
-    return 0
-
-
 def run(args) -> int:
     """`omni update` -- see the module docstring for what the channels mean."""
     cleanup_stale()
@@ -1208,17 +1220,6 @@ def run(args) -> int:
     report.step("installed", install.describe())
     if not install.manifest_path:
         report.note("no manifest found; going by how this copy was started")
-    if getattr(args, "list_releases", False):
-        try:
-            # Asking for a list is asking to be told: --quiet must not blank it.
-            return list_releases(install, Reporter(False),
-                                 int(getattr(args, "limit", 0) or 10))
-        except UpdateError as err:
-            report.error(str(err))
-            return 1
-        except (urllib.error.URLError, OSError) as err:
-            report.error(f"could not reach {install.repo}: {_reason(err)}")
-            return 1
     try:
         if channel == "release":
             return update_release(install, opts, report)

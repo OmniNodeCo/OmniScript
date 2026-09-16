@@ -33,8 +33,8 @@
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
-    # 'binary' is what a release install becomes: one downloaded file, no Python.
-    # Asking for it by hand means "give me that", which is the release channel.
+    # 'binary' is not a choice you make: it is what a release install becomes, and
+    # a validated parameter has to accept the value the script assigns to it.
     [ValidateSet('symlink', 'venv', 'pip', 'binary')]
     [string]$Mode = 'symlink',
     [ValidateSet('', 'release', 'beta')]
@@ -164,7 +164,7 @@ if ($IsWin) {
 } else {
     $DataDir = Join-Path $env:HOME '.local/share/omniscript'
 }
-$Manifest = Join-Path $DataDir 'install.json'
+$Manifest = Join-Path $DataDir 'install.txt'
 $VenvDir = Join-Path $DataDir 'venv'
 
 # ------------------------------------------------------------- this machine
@@ -244,11 +244,15 @@ function Get-Sha256 {
 function Test-Recorded {
     param([string]$Path)
     if (-not (Test-Path -LiteralPath $Manifest)) { return $false }
-    try {
-        $existing = Get-Content -Raw -LiteralPath $Manifest | ConvertFrom-Json
-    } catch { return $false }
-    foreach ($recorded in @($existing.commands)) { if ("$recorded" -eq $Path) { return $true } }
-    if ("$($existing.binary)" -eq $Path) { return $true }
+    # The manifest is key=value, so "did we put this here" is a line to match.
+    foreach ($line in (Get-Content -LiteralPath $Manifest)) {
+        $parts = "$line" -split '=', 2
+        if ($parts.Count -lt 2) { continue }
+        $key = $parts[0].Trim()
+        if (($key -eq 'command' -or $key -eq 'binary') -and $parts[1].Trim() -eq $Path) {
+            return $true
+        }
+    }
     return $false
 }
 
@@ -449,6 +453,10 @@ function Install-FromRelease {
 }
 
 # ------------------------------------------------------- the shared tail
+# One key=value per line, and one repeated line per command or extension: the
+# same file install.sh writes, so a shell can read it with sed and this can read
+# it with -split. WriteAllLines because Set-Content -Encoding UTF8 leaves a BOM
+# on PowerShell 5.1, and a BOM becomes part of the first key.
 function Write-Manifest {
     if ($DryRun) {
         Write-Note "[dry-run] write $Manifest"
@@ -456,33 +464,33 @@ function Write-Manifest {
     }
     New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
     $history = Join-Path $(if ($IsWin) { $env:USERPROFILE } else { $env:HOME }) '.omniscript_history'
-    $record = [ordered]@{
-        package                 = 'omniscript-lang'
-        version                 = $OmniVersion
-        installed_at            = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-        mode                    = $Mode
-        channel                 = $Channel
-        command_kind            = $CommandKind
-        source                  = $(if ($Source) { $Source } else { $null })
-        cloned_by_installer     = [bool]$Cloned
-        ref                     = $Ref
-        repo                    = $Repo
-        repo_url                = $RepoUrl
-        api_url                 = $ApiUrl
-        release_tag             = $(if ($RelTag) { $RelTag } else { $null })
-        binary                  = $(if ($BinaryPath) { $BinaryPath } else { $null })
-        bin_dir                 = $Bin
-        commands                = @($InstalledCommands)
-        python                  = $(if ($Python) { $Python } else { $null })
-        python_version          = $(if ($PyVersion) { $PyVersion } else { $null })
-        venv                    = $(if ($InstalledVenv) { $InstalledVenv } else { $null })
-        pip_scripts_dir         = $(if ($PipTarget) { $PipTarget } else { $null })
-        pip_user                = [bool]$User
-        editor_extensions       = @($ExtensionDirs)
-        history_file            = $history
-        data_dir                = $DataDir
-    }
-    $record | ConvertTo-Json -Depth 5 | Set-Content -Path $Manifest -Encoding UTF8
+    $lines = @(
+        "api_url=$ApiUrl",
+        "bin_dir=$Bin",
+        "binary=$BinaryPath",
+        "channel=$Channel",
+        "cloned_by_installer=$(if ($Cloned) { 1 } else { 0 })",
+        "command_kind=$CommandKind",
+        "data_dir=$DataDir",
+        "history_file=$history",
+        "installed_at=$((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'))",
+        "mode=$Mode",
+        "package=omniscript-lang",
+        "pip_scripts_dir=$PipTarget",
+        "pip_user=$(if ($User) { 1 } else { 0 })",
+        "python=$Python",
+        "python_version=$PyVersion",
+        "ref=$Ref",
+        "release_tag=$RelTag",
+        "repo=$Repo",
+        "repo_url=$RepoUrl",
+        "source=$Source",
+        "venv=$InstalledVenv",
+        "version=$OmniVersion"
+    )
+    foreach ($path in $InstalledCommands) { if ($path) { $lines += "command=$path" } }
+    foreach ($dir in $ExtensionDirs) { if ($dir) { $lines += "extension=$dir" } }
+    [System.IO.File]::WriteAllLines($Manifest, [string[]]$lines)
     if (-not (Test-Path -LiteralPath $Manifest)) { Stop-Die "the manifest did not get written to $Manifest" }
     Write-Note "wrote $Manifest"
 }
@@ -577,13 +585,6 @@ if ($Source) { $besideUs = $true }
 elseif ($here -and (Test-Path (Join-Path $here 'omniscript/cli.py'))) { $besideUs = $true }
 elseif ($env:OMNI_HOME -and (Test-Path (Join-Path $env:OMNI_HOME 'omniscript/cli.py'))) { $besideUs = $true }
 
-if ($Mode -eq 'binary') {
-    if ($Channel -and $Channel -ne 'release') {
-        Stop-Die "-Mode binary comes from a release, so -Channel $Channel does not apply"
-    }
-    $Channel = 'release'
-}
-
 if (-not $Channel) {
     if ($besideUs) {
         $Channel = 'beta'
@@ -616,9 +617,6 @@ if ($Channel -eq 'release') {
         10 { Write-Info "OmniScript $OmniVersion from $RelTag ($RelAssetName)" }
         default {
             if ($RelFatal) { Stop-Die $RelFatal }
-            if ($Mode -eq 'binary') {
-                Stop-Die "-Mode binary needs a release to download, and $Repo has nothing that fits this machine"
-            }
             Write-Warn "the release channel did not deliver; installing from $RepoUrl instead"
             $Channel = 'beta'
         }

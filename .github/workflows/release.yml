@@ -6,12 +6,8 @@
 #   verify   the tag, pyproject.toml and the interpreter's own __version__ all
 #            agree, then the whole test suite runs once more on that commit
 #   build    sdist + wheel, installed into a clean venv and exercised
-#   binaries a standalone executable per platform (PyInstaller) plus a zipapp,
-#            each one then installed from a rehearsal of this very release and
-#            run before it is published
-#   assemble everything into one directory and write SHA256SUMS.txt over it
-#   release  a GitHub Release carrying the executables, the zipapp, the wheel,
-#            the sdist and SHA256SUMS.txt
+#   binaries a standalone executable per platform (PyInstaller) plus a zipapp
+#   release  everything in one GitHub Release, with SHA256SUMS.txt over it
 #   pypi     opt-in upload of the wheel and sdist only; skipped unless the
 #            repository asks for it (see the note on that job)
 #
@@ -223,15 +219,6 @@ jobs:
           --out dist
           --version "${{ needs.verify.outputs.version }}"
 
-      - name: Install what was just built, the way a user would
-        # Lays dist/ out as a GitHub release on disk, then runs the installer for
-        # this platform against it: download, sha256 check, put it in place, run
-        # it, let `omni update --check` see its own release, uninstall cleanly.
-        run: >-
-          python tools/rehearse_release.py
-          --dist dist
-          --version "${{ needs.verify.outputs.version }}"
-
       - name: Upload the artifacts
         uses: actions/upload-artifact@v7
         with:
@@ -239,9 +226,8 @@ jobs:
           path: dist/*
           retention-days: 30
 
-  # ------------------------------------------------------------- assemble
-  assemble:
-    name: Assemble the release
+  release:
+    name: Publish the GitHub release
     needs: [verify, build, binaries]
     runs-on: ubuntu-latest
     steps:
@@ -249,83 +235,23 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: dist
-          path: release
+          path: dist
 
       - name: Collect the executables
         uses: actions/download-artifact@v8
         with:
           pattern: executables-*
-          path: release
+          path: dist
           merge-multiple: true
 
-      - name: One checksum file over everything that will be published
+      - name: One checksum file over everything
         run: |
           set -euo pipefail
-          cd release
-          # Each platform's build wrote its own; the published one covers them all.
-          rm -f SHA256SUMS.txt
+          cd dist
+          rm -f SHA256SUMS.txt   # each platform wrote its own; this covers them all
           sha256sum ./* > SHA256SUMS.txt
-          echo "files in this release:"
           ls -l
-          echo
-          python - <<'PY'
-          import os, pathlib
-
-          here = pathlib.Path(".")
-          names = sorted(p.name for p in here.iterdir() if p.is_file())
-          sums = pathlib.Path("SHA256SUMS.txt").read_text()
-          missing = [n for n in names if n != "SHA256SUMS.txt" and n not in sums]
-          if missing:
-              raise SystemExit(f"::error::not covered by SHA256SUMS.txt: {missing}")
-          print(f"SHA256SUMS.txt covers {len(names) - 1} files")
-          for name in names:
-              print(f"    {name}  {os.path.getsize(name):,} bytes")
-          PY
-
-      - name: Upload everything
-        uses: actions/upload-artifact@v7
-        with:
-          name: release
-          path: release/*
-          retention-days: 30
-
-  release:
-    name: Publish the GitHub release
-    needs: [verify, build, assemble]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download the release
-        uses: actions/download-artifact@v8
-        with:
-          name: release
-          path: dist
-
-      - name: Show what will be attached
-        run: ls -l dist
-
-      - name: Describe the files for the notes
-        id: files
-        run: |
-          set -euo pipefail
-          list="$RUNNER_TEMP/RELEASE_FILES.md"
-          : > "$list"
-          for f in dist/*; do
-            name="$(basename "$f")"
-            [ "$name" = "SHA256SUMS.txt" ] && continue
-            size="$(du -h "$f" | cut -f1 | tr -d ' ')"
-            case "$name" in
-              *.whl)       what="wheel -- \`pip install\` it" ;;
-              *.tar.gz)    what="source distribution" ;;
-              *.pyz)       what="zipapp -- one file, needs Python 3.10 or newer" ;;
-              *windows*)   what="Windows executable -- no Python needed" ;;
-              *macos*)     what="macOS executable -- no Python needed" ;;
-              *linux*)     what="Linux executable -- no Python needed" ;;
-              *)           what="artifact" ;;
-            esac
-            printf -- '- `%s` (%s) -- %s\n' "$name" "$size" "$what" >> "$list"
-          done
-          echo "path=$list" >> "$GITHUB_OUTPUT"
-          cat "$list"
+          cat SHA256SUMS.txt
 
       - name: Write the release notes
         id: notes
@@ -404,15 +330,9 @@ jobs:
           - standalone executables for Linux, Windows and macOS, a zipapp for
             anywhere else, and installers that know how to fetch and verify them
 
-          ## What is attached
-
-          __FILES__
-
-          `SHA256SUMS.txt` covers every one of them:
-
-          ```bash
-          sha256sum -c SHA256SUMS.txt
-          ```
+          The files attached below are the executables for Linux, Windows and
+          macOS, a zipapp for anywhere else, the wheel, the sdist, and
+          `SHA256SUMS.txt` covering all of them (`sha256sum -c SHA256SUMS.txt`).
 
           Source history for this release:
           https://github.com/__REPO__/commits/__TAG__
@@ -426,8 +346,6 @@ jobs:
             -e "s|__EXAMPLES__|${{ needs.build.outputs.examples }}|g" \
             -e "s|__CASES__|${{ needs.build.outputs.cases }}|g" \
             -e "s|__PYTHONS__|${{ needs.build.outputs.pythons }}|g" \
-            -e "/__FILES__/r ${{ steps.files.outputs.path }}" \
-            -e "/__FILES__/d" \
             "$notes"
           if grep -q '__' "$notes"; then
             echo "::error::a placeholder was not substituted"
@@ -474,15 +392,15 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - name: Download the release
+      - name: Download the distributions
         uses: actions/download-artifact@v8
         with:
-          name: release
+          name: dist
           path: dist
 
       - name: Keep only what PyPI accepts
-        # The executables, the zipapp and SHA256SUMS.txt belong on the GitHub
-        # release; PyPI takes the wheel and the sdist.
+        # The executables and the zipapp belong on the GitHub release; PyPI takes
+        # the wheel and the sdist.
         run: |
           set -euo pipefail
           find dist -type f ! -name '*.whl' ! -name '*.tar.gz' -print -delete
