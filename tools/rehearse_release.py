@@ -52,8 +52,13 @@ def annotate(message: str) -> None:
         print(f"::error file=tools/rehearse_release.py,line=1::{flat}", flush=True)
 
 
+LAST_OUTPUT = ""
+
+
 def show(label: str, proc: subprocess.CompletedProcess) -> str:
+    global LAST_OUTPUT
     out = (proc.stdout or "") + (proc.stderr or "")
+    LAST_OUTPUT = out.strip()
     print(f"--- {label} (exit {proc.returncode}) ---", flush=True)
     for line in out.strip().splitlines()[-40:]:
         print(f"    {line}", flush=True)
@@ -178,8 +183,10 @@ def main(argv: list[str] | None = None) -> int:
         shutil.rmtree(work, ignore_errors=True)
 
     if problems:
+        tail = [line for line in LAST_OUTPUT.splitlines() if line.strip()][-3:]
         for problem in problems:
-            annotate(f"release rehearsal: {problem}")
+            detail = "\n".join([problem, *tail]) if tail else problem
+            annotate(f"release rehearsal: {detail}")
         return 1
     print("release rehearsal ok: installed, ran, saw its own release, and uninstalled clean")
     return 0

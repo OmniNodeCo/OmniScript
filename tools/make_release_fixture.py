@@ -21,6 +21,7 @@ import json
 import os
 import shutil
 import sys
+from pathlib import Path
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
@@ -51,7 +52,9 @@ def build(dist: str, out: str, repo: str, version: str, base: str,
         write_checksums(assets)
         names.append("SHA256SUMS.txt")
 
-    api = base or "file://" + out
+    # Path.as_uri() is the form every client here can open -- urllib on Windows
+    # reads file://C:\... as a host called "C:", and install.ps1 accepts both.
+    api = base or Path(out).as_uri()
     listing = [{"name": name,
                 "size": os.path.getsize(os.path.join(assets, name)),
                 "browser_download_url": f"{api}/assets/{name}"}
@@ -81,7 +84,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--repo", default=DEFAULT_REPO, help=f"owner/name   [{DEFAULT_REPO}]")
     p.add_argument("--version", default=__version__, help=f"tag to publish   [{__version__}]")
     p.add_argument("--base-url", default="",
-                   help="URL prefix for the assets [file://OUT]")
+                   help="URL prefix for the assets [the file:// URL of OUT]")
     p.add_argument("--no-checksums", action="store_true",
                    help="leave SHA256SUMS.txt out, to rehearse an unchecked release")
     args = p.parse_args(argv)
