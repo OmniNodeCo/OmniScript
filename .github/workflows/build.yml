@@ -131,7 +131,16 @@ jobs:
           python("import sys; print(sys.version.split()[0], sys.platform)")'
 
       - name: Test suite (unittest)
-        run: python -m unittest discover -s tests
+        run: |
+          python -m unittest discover -s tests 2>&1 | tee "$RUNNER_TEMP/unittest.log"
+          status="${PIPESTATUS[0]}"
+          if [ "$status" != 0 ]; then
+            # Raw job logs need a browser session; an annotation does not, so
+            # put the tail of the failure where `gh api` can read it.
+            tail -n 30 "$RUNNER_TEMP/unittest.log" | python -c \
+              'import sys, urllib.parse; print("::error::unittest tail%0A" + urllib.parse.quote(sys.stdin.read()))'
+            exit "$status"
+          fi
 
       - name: Every example runs
         run: |
