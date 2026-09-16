@@ -4,6 +4,7 @@
     omniscript repl
     omniscript test
     omniscript docs chart
+    omniscript update --check
     omniscript -e 'print(1 + 1)'
 """
 
@@ -426,6 +427,14 @@ def cmd_test(args) -> int:
 
 
 # ------------------------------------------------------------------- main
+# ------------------------------------------------------------------ update
+def cmd_update(args) -> int:
+    """Follow a channel: the published releases, or the repository itself."""
+    from . import update
+
+    return update.run(args)
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="omniscript",
@@ -495,6 +504,38 @@ def build_parser() -> argparse.ArgumentParser:
     common(test)
     test.set_defaults(func=cmd_test)
 
+    upd = sub.add_parser("update", help="update OmniScript",
+                         description="Update OmniScript along one of two channels.")
+    upd.add_argument("--channel", "-c", choices=("release", "beta"), default="",
+                     help="release (the default): the newest published release; "
+                          "beta: the newest commit in the repository")
+    upd.add_argument("--check", action="store_true",
+                     help="say what is available and change nothing")
+    upd.add_argument("--list", dest="list_releases", action="store_true",
+                     help="list the published releases, and which fit this machine")
+    upd.add_argument("--limit", type=int, default=10, metavar="N",
+                     help="how many releases --list shows [10]")
+    upd.add_argument("--version", "--tag", dest="version", default="", metavar="VERSION",
+                     help="a particular release, for example 1.2.0 or v1.2.0")
+    upd.add_argument("--ref", default="", metavar="REF",
+                     help="beta channel: the branch to follow "
+                          "[the one already tracked, or main]")
+    upd.add_argument("--bin", dest="bin_dir", default="", metavar="DIR",
+                     help="where a downloaded executable goes [where this one is]")
+    upd.add_argument("--repo", default="", metavar="OWNER/NAME",
+                     help="the repository to ask [OmniNodeCo/OmniScript]")
+    upd.add_argument("--api-url", default="", metavar="URL",
+                     help="the API root to ask [https://api.github.com]")
+    upd.add_argument("--prerelease", action="store_true",
+                     help="count prereleases when looking for the newest release")
+    upd.add_argument("--no-verify", action="store_true",
+                     help="skip the SHA256 check on whatever is downloaded")
+    upd.add_argument("--force", action="store_true",
+                     help="update even when it looks like nothing has changed")
+    upd.add_argument("--quiet", "-q", action="store_true",
+                     help="report only what matters")
+    upd.set_defaults(func=cmd_update)
+
     # shorthand: `omniscript -e 'code'` and `omniscript file.omni`
     p.add_argument("-e", dest="inline", help="run this code and exit")
     p.add_argument("target", nargs="?", help="a .omni file to run")
@@ -523,7 +564,8 @@ def _main(argv: list[str] | None = None) -> int:
                                 max_steps=None, no_pictures=False)
         return cmd_eval(ns)
     if not argv[0].startswith("-") and argv[0] not in (
-            "run", "eval", "repl", "check", "tokens", "ast", "docs", "test"):
+            "run", "eval", "repl", "check", "tokens", "ast", "docs", "test",
+            "update"):
         ns = argparse.Namespace(file=argv[0], script_args=argv[1:], quiet=False,
                                 max_steps=None, no_pictures=False, timing=False)
         return cmd_run(ns)

@@ -9,9 +9,12 @@
 #   installer  install.sh and install.ps1 put `omni` somewhere, run it, and
 #            uninstall.sh / uninstall.ps1 take it all back out again -- on
 #            Windows as well, which the test matrix does not cover
+#   executable  the release artifacts: a standalone binary (PyInstaller) and a
+#            zipapp, each one then installed from a rehearsal of a release and
+#            exercised, so release.yml cannot be the first place they are tried
 #
 # The interpreter has no third-party dependencies, so the test matrix installs
-# nothing at all; only the lint and package jobs need pip.
+# nothing at all; only the lint, package and executable jobs need pip.
 
 name: build
 
@@ -342,6 +345,62 @@ jobs:
                     + detail.replace("\n", " | "))
               raise SystemExit(1)
           PY
+
+  executable:
+    name: Executables (${{ matrix.os }})
+    needs: lint
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ["ubuntu-latest", "windows-latest"]
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install PyInstaller
+        run: python -m pip install --upgrade pip pyinstaller
+
+      - name: Build the standalone executable and the zipapp
+        # build_executable.py freezes, smoke-tests each artifact (--version, a
+        # program, a `use std/...` import, graphics) and writes SHA256SUMS.txt.
+        run: python tools/build_executable.py --out dist
+
+      - name: The checksums verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib, sys
+
+          sys.path.insert(0, str(pathlib.Path(".").resolve()))
+          from omniscript.update import verify_checksums
+
+          ok, problems = verify_checksums("dist")
+          for problem in problems:
+              print(f"::error::{problem}")
+          if not ok:
+              raise SystemExit(1)
+          print("every artifact in dist/ matches SHA256SUMS.txt")
+          PY
+
+      - name: Install it the way a user would, then take it back out
+        # Lays dist/ out as a GitHub release, points install.sh / install.ps1 at
+        # it with --channel release, checks the sha256, runs what it installed,
+        # lets `omni update --check` see its own release, and uninstalls.
+        run: python tools/rehearse_release.py --dist dist
+
+      - name: Upload the artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: executables-${{ matrix.os }}
+          path: dist/*
+          retention-days: 3
 
   package:
     name: Package

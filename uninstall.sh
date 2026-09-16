@@ -8,9 +8,14 @@
 #                                 #    the manifest itself
 #
 # This works from the manifest install.sh wrote, so it removes exactly what was
-# installed and nothing else. It never deletes a source tree you cloned
-# yourself, and it will not touch a command it cannot prove it created: use
-# --force for that, and read what it says first.
+# installed and nothing else -- whether that was a symlink into a source tree, a
+# venv, a pip install, or a standalone executable downloaded from a release. It
+# never deletes a source tree you cloned yourself, and it will not touch a
+# command it cannot prove it created: use --force for that, and read what it
+# says first.
+#
+# A release install can happen on a machine that has never had Python on it, so
+# the manifest is read with awk when there is no Python to read it with.
 
 set -euo pipefail
 
@@ -22,6 +27,8 @@ PURGE=0
 DRY_RUN=0
 FORCE=0
 KEEP_VSCODE=0
+NO_PYTHON=0
+READ_MANIFEST="" 
 
 usage() {
     cat <<'USAGE'
@@ -33,6 +40,9 @@ Usage: uninstall.sh [options]
                      cloned, and the manifest
   --keep-vscode      leave the editor extension in place
   --force            remove commands even when they do not look like ours
+  --no-python        read the manifest with awk even if a Python is on PATH
+  --read-manifest FILE
+                     print the manifest as KEY=value lines and stop
   --dry-run, -n      print what would be removed and remove nothing
   -h, --help         this text
 
@@ -63,6 +73,10 @@ while [ $# -gt 0 ]; do
         --purge) PURGE=1; shift ;;
         --keep-vscode) KEEP_VSCODE=1; shift ;;
         --force) FORCE=1; shift ;;
+        --no-python) NO_PYTHON=1; shift ;;
+        --read-manifest) [ $# -ge 2 ] || die "--read-manifest needs a file"
+                         READ_MANIFEST="$2"; shift 2 ;;
+        --read-manifest=*) READ_MANIFEST="${1#*=}"; shift ;;
         --dry-run|-n) DRY_RUN=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) usage >&2; die "unknown option: $1" ;;
@@ -82,10 +96,11 @@ done
 
 M_MODE="" M_SOURCE="" M_CLONED=0 M_VENV="" M_PIPDIR="" M_VERSION="" M_BREAK_SYSTEM=0
 M_COMMANDS="" M_EXTENSIONS="" M_HISTORY="$HOME/.omniscript_history"
+M_BINARY="" M_CHANNEL="" M_REF=""
 
-if [ -f "$MANIFEST" ] && [ -n "$PYTHON" ]; then
-    info "Reading $MANIFEST"
-    eval "$("$PYTHON" - "$MANIFEST" <<'PY'
+# The manifest as KEY=value lines, read by Python when there is one.
+read_manifest_python() {
+    "$PYTHON" - "$1" <<'PY'
 import json, shlex, sys
 
 with open(sys.argv[1]) as fh:
@@ -104,20 +119,142 @@ print("M_BREAK_SYSTEM=%s" % shlex.quote("1" if m.get("pip_break_system_packages"
 print("M_COMMANDS=%s" % shlex.quote(lines(m.get("commands"))))
 print("M_EXTENSIONS=%s" % shlex.quote(lines(m.get("editor_extensions"))))
 print("M_HISTORY=%s" % shlex.quote(str(m.get("history_file") or "~/.omniscript_history")))
+print("M_BINARY=%s" % shlex.quote(str(m.get("binary") or "")))
+print("M_CHANNEL=%s" % shlex.quote(str(m.get("channel") or "")))
+print("M_REF=%s" % shlex.quote(str(m.get("ref") or "")))
 PY
-    )"
-    [ -n "$M_VERSION" ] && info "OmniScript $M_VERSION, installed in $M_MODE mode"
+}
+
+# The same thing in awk, for a machine where a release install was the only
+# thing that ever happened. It reads both shapes install.sh writes: the indented
+# arrays Python produces and the flat ones the shell writer produces. Values come
+# out double-quoted, with the four characters that matter to a shell escaped.
+read_manifest_awk() {
+    awk '
+    function dq(value) {
+        gsub(/\\/, "\\\\", value)
+        gsub(/"/, "\\\"", value)
+        gsub(/\$/, "\\$", value)
+        gsub(/`/, "\\`", value)
+        return "\"" value "\""
+    }
+    function trim(value) {
+        gsub(/^[ \t]+|[ \t]+$/, "", value)
+        return value
+    }
+    function unquote(value) {
+        value = trim(value)
+        sub(/,$/, "", value)
+        if (value == "null") return ""
+        if (value ~ /^".*"$/) return substr(value, 2, length(value) - 2)
+        return value
+    }
+    function emit(key, value) {
+        if (key == "mode") print "M_MODE=" dq(value)
+        else if (key == "source") print "M_SOURCE=" dq(value)
+        else if (key == "cloned_by_installer") print "M_CLONED=" dq(value == "true" ? "1" : "0")
+        else if (key == "venv") print "M_VENV=" dq(value)
+        else if (key == "pip_scripts_dir") print "M_PIPDIR=" dq(value)
+        else if (key == "version") print "M_VERSION=" dq(value)
+        else if (key == "pip_break_system_packages") print "M_BREAK_SYSTEM=" dq(value == "true" ? "1" : "0")
+        else if (key == "commands") print "M_COMMANDS=" dq(value)
+        else if (key == "editor_extensions") print "M_EXTENSIONS=" dq(value)
+        else if (key == "history_file") print "M_HISTORY=" dq(value)
+        else if (key == "binary") print "M_BINARY=" dq(value)
+        else if (key == "channel") print "M_CHANNEL=" dq(value)
+        else if (key == "ref") print "M_REF=" dq(value)
+    }
+    function flat_array(text,   inner, parts, count, i, item, out) {
+        inner = trim(text)
+        sub(/,$/, "", inner)
+        sub(/^\[/, "", inner)
+        sub(/\]$/, "", inner)
+        count = split(inner, parts, ",")
+        out = ""
+        for (i = 1; i <= count; i++) {
+            item = unquote(parts[i])
+            if (item != "") out = (out == "" ? item : out "\n" item)
+        }
+        return out
+    }
+    BEGIN { in_array = 0; key = ""; acc = "" }
+    {
+        line = $0
+        sub(/\r$/, "", line)
+        if (in_array) {
+            if (line ~ /^[ \t]*\]/) { emit(key, acc); in_array = 0; key = ""; acc = ""; next }
+            item = unquote(line)
+            if (item != "") acc = (acc == "" ? item : acc "\n" item)
+            next
+        }
+        if (line !~ /^[ \t]*"[^"]+"[ \t]*:/) next
+        key = line
+        sub(/^[ \t]*"/, "", key)
+        sub(/".*$/, "", key)
+        value = line
+        sub(/^[^:]*:[ \t]*/, "", value)
+        if (value ~ /^[ \t]*\[/) {
+            if (value ~ /\][ \t]*,?[ \t]*$/) { emit(key, flat_array(value)); key = ""; next }
+            in_array = 1
+            acc = ""
+            next
+        }
+        emit(key, unquote(value))
+        key = ""
+    }
+    ' "$1"
+}
+
+read_manifest() {
+    if [ -n "$PYTHON" ] && [ "$NO_PYTHON" != 1 ]; then
+        read_manifest_python "$1" 2>/dev/null || read_manifest_awk "$1"
+    else
+        read_manifest_awk "$1"
+    fi
+}
+
+if [ -n "$READ_MANIFEST" ]; then
+    [ -f "$READ_MANIFEST" ] || die "--read-manifest: there is no file at $READ_MANIFEST"
+    read_manifest "$READ_MANIFEST"
+    exit 0
+fi
+
+if [ -f "$MANIFEST" ]; then
+    if [ -n "$PYTHON" ] && [ "$NO_PYTHON" != 1 ]; then
+        info "Reading $MANIFEST"
+    elif [ -n "$PYTHON" ]; then
+        info "Reading $MANIFEST with awk (--no-python)"
+    else
+        info "Reading $MANIFEST with awk (no python on PATH)"
+    fi
+    eval "$(read_manifest "$MANIFEST")"
+    if [ -n "$M_VERSION" ]; then
+        info "OmniScript $M_VERSION, installed in $M_MODE mode"
+        [ -n "$M_CHANNEL" ] && note "$M_CHANNEL channel$( [ -n "$M_REF" ] && printf ', tracking %s' "$M_REF")"
+    fi
 else
-    [ -f "$MANIFEST" ] || note "no manifest at $MANIFEST; falling back to $BIN_DIR"
-    [ -n "$PYTHON" ] || note "no python on PATH; falling back to $BIN_DIR"
+    note "no manifest at $MANIFEST; falling back to $BIN_DIR"
 fi
 
 REMOVED=0 KEPT=0
 
-# A path is ours if it is a symlink into something we installed, or a real file
-# that pip wrote for us.
+# A path is ours when the manifest lists it -- that record was written by
+# install.sh, so it is the strongest evidence there is, and the only evidence a
+# downloaded executable can ever offer. Failing that: a symlink into something we
+# installed, or a real file that pip wrote for us.
 belongs_to_us() {
     path="$1"
+    if [ -n "$M_COMMANDS" ]; then
+        while IFS= read -r recorded; do
+            [ -n "$recorded" ] || continue
+            [ "$recorded" = "$path" ] && return 0
+        done <<EOF
+$M_COMMANDS
+EOF
+    fi
+    if [ -n "$M_BINARY" ] && [ "$M_BINARY" = "$path" ]; then
+        return 0
+    fi
     if [ -L "$path" ]; then
         target="$(readlink "$path" 2>/dev/null || true)"
         case "$target" in
@@ -183,6 +320,24 @@ for name in omni omniscript; do
         note "a backup of your previous $name is still at $BIN_DIR/$name.bak"
     fi
 done
+
+# ---------------------------------------------------- a downloaded executable
+# Normally the commands list already covered it; this catches a binary that was
+# moved or a manifest written by an older installer.
+if [ -n "$M_BINARY" ] && [ -f "$M_BINARY" ]; then
+    listed=0
+    if [ -n "$M_COMMANDS" ]; then
+        while IFS= read -r recorded; do
+            [ "$recorded" = "$M_BINARY" ] && listed=1
+        done <<EOF
+$M_COMMANDS
+EOF
+    fi
+    if [ "$listed" != 1 ]; then
+        info "Removing the downloaded executable"
+        remove_path "$M_BINARY" "executable"
+    fi
+fi
 
 # ----------------------------------------------------------------- venv
 if [ -n "$M_VENV" ] && [ -d "$M_VENV" ]; then
@@ -297,3 +452,6 @@ if [ "$KEPT" != 0 ]; then
     note "anything left alone is listed above; re-run with --force if you want it gone"
 fi
 note "a source tree you cloned yourself is never deleted by this script"
+if [ "$M_CHANNEL" = release ]; then
+    note "to put the published release back: curl -fsSL https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/install.sh | bash"
+fi

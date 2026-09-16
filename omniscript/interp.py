@@ -12,6 +12,7 @@ import sys
 from typing import Any
 
 from . import ast as A
+from ._bundle import std_base
 from .errors import (OmniBreak, OmniContinue, OmniError, OmniNameError, OmniReturn,
                      OmniRuntimeError, OmniThrow, OmniTypeError, describe, suggest)
 from .parser import parse
@@ -479,8 +480,9 @@ class Interpreter:
         if self.current_file:
             bases.append(os.path.dirname(self.current_file))
         bases.append(self.root)
-        # the std/ modules that ship with the language
-        bases.append(os.path.dirname(os.path.abspath(__file__)))
+        # the std/ modules that ship with the language -- on disk, or copied out
+        # of the archive when we are running as a zipapp
+        bases.append(std_base())
         for base in bases:
             for cand in candidates:
                 full = os.path.normpath(os.path.join(base, cand))

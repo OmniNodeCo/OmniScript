@@ -6,9 +6,10 @@
 #                                   #    tree, and the manifest itself
 #
 # This works from the manifest install.ps1 wrote, so it removes exactly what was
-# installed. It never deletes a source tree you cloned yourself, and it will not
-# remove a command it cannot prove it created: use -Force for that, and read
-# what it says first.
+# installed -- a shim into a source tree, a venv, a pip install, or a standalone
+# executable downloaded from a release. It never deletes a source tree you cloned
+# yourself, and it will not remove a command it cannot prove it created: use
+# -Force for that, and read what it says first.
 
 #Requires -Version 5.1
 [CmdletBinding()]
@@ -82,7 +83,13 @@ $M = $null
 if (Test-Path $Manifest) {
     Write-Info "Reading $Manifest"
     $M = Get-Content -Raw $Manifest | ConvertFrom-Json
-    if ($M.version) { Write-Info "OmniScript $($M.version), installed in $($M.mode) mode" }
+    if ($M.version) {
+        Write-Info "OmniScript $($M.version), installed in $($M.mode) mode"
+        if ($M.channel) {
+            $tracking = if ($M.ref) { ", tracking $($M.ref)" } else { '' }
+            Write-Note "$($M.channel) channel$tracking"
+        }
+    }
 } else {
     Write-Note "no manifest at $Manifest; falling back to $Bin"
 }
@@ -93,6 +100,8 @@ $MPipDir = if ($M -and $M.pip_scripts_dir) { $M.pip_scripts_dir } else { '' }
 $MMode = if ($M) { $M.mode } else { '' }
 $MPython = if ($M -and $M.python) { $M.python } else { '' }
 $MCloned = [bool]($M -and $M.cloned_by_installer)
+$MBinary = if ($M -and $M.binary) { "$($M.binary)" } else { '' }
+$MChannel = if ($M -and $M.channel) { "$($M.channel)" } else { '' }
 $MHistory = if ($M -and $M.history_file) { $M.history_file } else { Join-Path $(if ($IsWin) { $env:USERPROFILE } else { $env:HOME }) '.omniscript_history' }
 
 if ($M -and $M.commands) { $MCommands = @($M.commands) } else {
@@ -108,6 +117,10 @@ $Kept = 0
 
 function Test-Ours {
     param([string]$Path)
+    # The manifest is our own record: anything it lists, install.ps1 put there.
+    # For a downloaded executable that is the only evidence there could ever be.
+    foreach ($recorded in $MCommands) { if ($recorded -and "$recorded" -eq $Path) { return $true } }
+    if ($MBinary -and $MBinary -eq $Path) { return $true }
     $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
     if (-not $item) { return $false }
     if ($item.LinkType -and $item.Target) {
@@ -160,6 +173,18 @@ foreach ($path in $MCommands) {
 foreach ($name in @('omni', 'omniscript')) {
     $bak = Join-Path $Bin $(if ($IsWin) { "$name.cmd.bak" } else { "$name.bak" })
     if (Test-Path $bak) { Write-Note "a backup of your previous $name is still at $bak" }
+}
+
+# ---------------------------------------------------- a downloaded executable
+# Normally the commands list covered it already; this catches a binary that was
+# moved, or a manifest an older installer wrote.
+if ($MBinary -and (Test-Path -LiteralPath $MBinary)) {
+    $listed = $false
+    foreach ($recorded in $MCommands) { if ("$recorded" -eq $MBinary) { $listed = $true } }
+    if (-not $listed) {
+        Write-Info 'Removing the downloaded executable'
+        Remove-Item-IfOurs -Path $MBinary -What 'executable'
+    }
 }
 
 # ------------------------------------------------------------- venv
@@ -254,3 +279,6 @@ if ($Kept -ne 0) {
     Write-Note 'anything left alone is listed above; re-run with -Force if you want it gone'
 }
 Write-Note 'a source tree you cloned yourself is never deleted by this script'
+if ($MChannel -eq 'release') {
+    Write-Note 'to put the published release back: iwr -use1 https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/install.ps1 | iex'
+}

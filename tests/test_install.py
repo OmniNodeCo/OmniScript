@@ -16,6 +16,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
+try:  # `unittest discover -s tests` puts tests/ on the path
+    from release_fixture import NEW, FakeGitHub, build_artifact
+except ImportError:  # `python -m unittest tests.test_install` does not
+    from tests.release_fixture import NEW, FakeGitHub, build_artifact
+
 REPO = Path(__file__).resolve().parent.parent
 BASH = shutil.which("bash")
 PWSH = shutil.which("pwsh") or shutil.which("powershell")
@@ -368,6 +373,243 @@ class PowerShellScriptTests(ScriptCase):
                                  "-Python", sys.executable, expect=1)
         self.assertIn("not created by this script", result.stdout + result.stderr)
         self.assertIn("not omniscript", stranger.read_text())
+
+
+# ------------------------------------------------------- the release channel
+class ReleaseCase(ScriptCase):
+    """Installs from a published release instead of from a source tree.
+
+    The release is served from localhost by a directory shaped like the GitHub
+    API, so the installer really does ask, choose an asset, download it, check
+    its sha256 and put it in place -- without an internet connection.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.fixture = Path(tempfile.mkdtemp(prefix="omni-release-"))
+        cls.artifact = build_artifact(cls.fixture, NEW)
+        cls.github = FakeGitHub(cls.fixture / "api")
+        cls.github.publish(NEW, [cls.artifact])
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.github.close()
+        for path in cls.fixture.rglob("*"):
+            try:
+                path.chmod(stat.S_IRWXU)
+            except OSError:
+                pass
+        shutil.rmtree(cls.fixture, ignore_errors=True)
+
+
+@unittest.skipUnless(BASH and POSIX, "install.sh needs bash on a POSIX system")
+class BashReleaseTests(ReleaseCase):
+    def setUp(self):
+        super().setUp()
+        self.interpreter = BASH
+        self.scripts = {"install": "install.sh", "uninstall": "uninstall.sh"}
+
+    def install(self, *args, expect=0):
+        return self.run_script("install", "--prefix", str(self.prefix), *args, expect=expect)
+
+    def uninstall(self, *args, expect=0):
+        return self.run_script("uninstall", "--prefix", str(self.prefix), *args, expect=expect)
+
+    def from_release(self, *args, expect=0):
+        return self.install("--channel", "release", "--api-url", self.github.api,
+                            *args, expect=expect)
+
+    def test_a_release_installs_one_file_that_works(self):
+        result = self.from_release()
+        self.assertIn("sha256 verified", result.stdout)
+        self.assertIn(f"OmniScript {NEW} is installed (release channel)", result.stdout)
+        command = self.command_path("omni")
+        self.assertTrue(command.is_file(), result.stdout)
+        self.assertFalse(command.is_symlink(), "a release install is a real file")
+        done = self.output_of(command)
+        self.assertEqual(0, done.returncode, done.stdout + done.stderr)
+        self.assertIn(f"OmniScript {NEW}", done.stdout)
+        self.assertTrue(self.command_path("omniscript").exists())
+
+    def test_the_manifest_records_the_release(self):
+        self.from_release()
+        record = self.manifest()
+        self.assertEqual("binary", record["mode"])
+        self.assertEqual("release", record["channel"])
+        self.assertEqual(NEW, record["version"])
+        self.assertEqual(f"v{NEW}", record["release_tag"])
+        self.assertEqual(str(self.command_path("omni")), record["binary"])
+        self.assertIn(str(self.command_path("omni")), record["commands"])
+        self.assertIn(str(self.command_path("omniscript")), record["commands"])
+        self.assertIsNone(record["source"], "a release install has no source tree")
+
+    def test_what_it_installed_can_update_itself(self):
+        self.from_release()
+        command = self.command_path("omni")
+        proc = subprocess.run([str(command), "update", "--check"], env=self.env,
+                              cwd=str(self.tmp), capture_output=True, text=True, timeout=300)
+        out = proc.stdout + proc.stderr
+        self.assertEqual(0, proc.returncode, out)
+        self.assertIn("binary install", out)
+        self.assertIn("up to date", out)
+
+    def test_uninstall_removes_a_release_install(self):
+        self.from_release()
+        removal = self.uninstall("--purge")
+        self.assertIn("uninstalled", removal.stdout)
+        self.assertFalse(self.command_path("omni").exists())
+        self.assertFalse(self.command_path("omniscript").exists())
+        self.assertFalse(self.manifest_path.exists())
+        self.assertEqual([], [p for p in self.bin_dir.iterdir() if p.suffix != ".bak"])
+
+    def test_uninstall_reads_the_manifest_without_python(self):
+        self.from_release()
+        removal = self.uninstall("--no-python", "--purge")
+        self.assertIn("with awk", removal.stdout)
+        self.assertIn("uninstalled", removal.stdout)
+        self.assertFalse(self.command_path("omni").exists())
+        self.assertFalse(self.manifest_path.exists())
+
+    def test_both_manifest_readers_agree(self):
+        self.from_release()
+        fields = '"$M_MODE" "$M_VERSION" "$M_CHANNEL" "$M_BINARY" "$M_CLONED" "$M_COMMANDS"'
+        script = f'eval "$1"\nprintf "%s\\n" {fields}'
+
+        def read(*flags):
+            out = self.run_script("uninstall", "--read-manifest", str(self.manifest_path),
+                                  *flags).stdout
+            proc = subprocess.run([BASH, "-c", script, "reader", out], env=self.env,
+                                  capture_output=True, text=True, timeout=60)
+            self.assertEqual(0, proc.returncode, proc.stderr)
+            return proc.stdout
+
+        self.assertEqual(read(), read("--no-python"))
+        self.assertIn("binary", read("--no-python"))
+        self.assertIn(str(self.command_path("omni")), read("--no-python"))
+
+    def test_an_unreachable_release_falls_back_to_the_repository(self):
+        result = self.install("--channel", "release", "--api-url", "http://127.0.0.1:1/",
+                              "--source", str(REPO))
+        self.assertIn("did not deliver", result.stdout + result.stderr)
+        self.assertIn("is installed (beta channel)", result.stdout)
+        self.assertTrue(self.command_path("omni").is_symlink())
+        self.assertEqual("symlink", self.manifest()["mode"])
+
+    def test_a_bad_checksum_is_fatal_and_installs_nothing(self):
+        broken = FakeGitHub(self.tmp / "broken-api")
+        self.addCleanup(broken.close)
+        broken.publish(NEW, [self.artifact], sums="wrong")
+        result = self.install("--channel", "release", "--api-url", broken.api,
+                              "--source", str(REPO), expect=1)
+        out = result.stdout + result.stderr
+        self.assertIn("checksum mismatch", out)
+        self.assertIn("does not match the checksum", out)
+        self.assertFalse(self.command_path("omni").exists())
+        self.assertFalse(self.manifest_path.exists())
+
+    def test_a_pinned_release_that_does_not_exist_is_fatal(self):
+        result = self.install("--channel", "release", "--api-url", self.github.api,
+                              "--version", "7.7.7", "--source", str(REPO), expect=1)
+        out = result.stdout + result.stderr
+        self.assertIn("no release tagged v7.7.7", out)
+        self.assertFalse(self.command_path("omni").exists())
+
+    def test_a_pinned_release_that_does_exist_is_installed(self):
+        result = self.install("--channel", "release", "--api-url", self.github.api,
+                              "--version", NEW)
+        self.assertIn(f"OmniScript {NEW} is installed", result.stdout)
+        self.assertEqual(f"v{NEW}", self.manifest()["release_tag"])
+
+    def test_no_verify_skips_the_checksum(self):
+        broken = FakeGitHub(self.tmp / "broken-api2")
+        self.addCleanup(broken.close)
+        broken.publish(NEW, [self.artifact], sums="wrong")
+        result = self.install("--channel", "release", "--api-url", broken.api, "--no-verify")
+        self.assertIn("not checking the checksum", result.stdout)
+        self.assertTrue(self.command_path("omni").is_file())
+
+    def test_dry_run_downloads_nothing(self):
+        result = self.from_release("--dry-run")
+        self.assertIn("Dry run", result.stdout)
+        self.assertIn("[dry-run]", result.stdout)
+        self.assertFalse(self.bin_dir.exists() and any(self.bin_dir.iterdir()))
+        self.assertFalse(self.manifest_path.exists())
+
+    def test_an_unknown_channel_is_refused(self):
+        result = self.install("--channel", "gamma", expect=1)
+        self.assertIn("--channel must be release or beta", result.stderr)
+
+
+@unittest.skipUnless(PWSH, "PowerShell is not installed")
+class PowerShellReleaseTests(ReleaseCase):
+    def setUp(self):
+        super().setUp()
+        self.interpreter = PWSH
+        self.scripts = {"install": "install.ps1", "uninstall": "uninstall.ps1"}
+
+    def install(self, *args, expect=0):
+        return self.run_script("install", "-Prefix", str(self.prefix), *args, expect=expect)
+
+    def uninstall(self, *args, expect=0):
+        return self.run_script("uninstall", "-Prefix", str(self.prefix), *args, expect=expect)
+
+    def from_release(self, *args, expect=0):
+        return self.install("-Channel", "release", "-ApiUrl", self.github.api, *args,
+                            expect=expect)
+
+    def test_both_scripts_still_parse(self):
+        for script in self.scripts.values():
+            check = (
+                "$errors = $null\n"
+                "[System.Management.Automation.Language.Parser]::ParseFile("
+                f"'{REPO / script}', [ref]$null, [ref]$errors) | Out-Null\n"
+                "if ($errors) { $errors | ForEach-Object { Write-Host $_.Message }; exit 1 }\n"
+            )
+            proc = subprocess.run([PWSH, "-NoProfile", "-Command", check],
+                                  capture_output=True, text=True, timeout=300)
+            self.assertEqual(0, proc.returncode, f"{script}: {proc.stdout}{proc.stderr}")
+
+    def test_a_release_installs_and_uninstalls(self):
+        result = self.from_release()
+        out = result.stdout + result.stderr
+        self.assertIn("sha256 verified", out)
+        self.assertIn(f"OmniScript {NEW} is installed (release channel)", out)
+
+        record = self.manifest()
+        self.assertEqual("binary", record["mode"])
+        self.assertEqual("release", record["channel"])
+        self.assertEqual(f"v{NEW}", record["release_tag"])
+        self.assertTrue(record["binary"], "the manifest does not say what was downloaded")
+
+        command = self.command_path("omni")
+        self.assertTrue(command.exists(), out)
+        done = self.output_of(command)
+        self.assertEqual(0, done.returncode, done.stdout + done.stderr)
+        self.assertIn(f"OmniScript {NEW}", done.stdout)
+
+        removal = self.uninstall("-Purge")
+        self.assertIn("uninstalled", removal.stdout + removal.stderr)
+        self.assertFalse(command.exists())
+        self.assertFalse(self.manifest_path.exists())
+
+    def test_an_unreachable_release_falls_back_to_the_repository(self):
+        result = self.install("-Channel", "release", "-ApiUrl", "http://127.0.0.1:1/",
+                              "-Source", str(REPO), "-Python", sys.executable)
+        out = result.stdout + result.stderr
+        self.assertIn("did not deliver", out)
+        self.assertIn("is installed (beta channel)", out)
+        self.assertEqual("symlink", self.manifest()["mode"])
+
+    def test_a_bad_checksum_is_fatal(self):
+        broken = FakeGitHub(self.tmp / "broken-api")
+        self.addCleanup(broken.close)
+        broken.publish(NEW, [self.artifact], sums="wrong")
+        result = self.install("-Channel", "release", "-ApiUrl", broken.api,
+                              "-Source", str(REPO), expect=1)
+        out = result.stdout + result.stderr
+        self.assertIn("checksum mismatch", out)
+        self.assertFalse(self.command_path("omni").exists())
+
 
 
 if __name__ == "__main__":

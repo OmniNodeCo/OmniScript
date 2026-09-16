@@ -5,11 +5,20 @@
 #
 #   verify   the tag, pyproject.toml and the interpreter's own __version__ all
 #            agree, then the whole test suite runs once more on that commit
-#   build    sdist + wheel, installed into a clean venv and exercised, with
-#            checksums recorded
-#   release  a GitHub Release carrying the wheel, the sdist and SHA256SUMS.txt
-#   pypi     opt-in upload; skipped unless the repository asks for it (see the
-#            note on that job)
+#   build    sdist + wheel, installed into a clean venv and exercised
+#   binaries a standalone executable per platform (PyInstaller) plus a zipapp,
+#            each one then installed from a rehearsal of this very release and
+#            run before it is published
+#   assemble everything into one directory and write SHA256SUMS.txt over it
+#   release  a GitHub Release carrying the executables, the zipapp, the wheel,
+#            the sdist and SHA256SUMS.txt
+#   pypi     opt-in upload of the wheel and sdist only; skipped unless the
+#            repository asks for it (see the note on that job)
+#
+# What lands on the release decides how people install: install.sh and
+# install.ps1 prefer the executable for their platform, then the zipapp, then
+# the wheel -- so the release channel needs no Python at all, and `omni update`
+# can replace one of these files in place later.
 #
 # Cutting a release is therefore:
 #
@@ -151,13 +160,6 @@ jobs:
           c.save("wheel-check.png")
           print("graphics ok:", file_info("wheel-check.png").size, "bytes")'
 
-      - name: Record checksums
-        run: |
-          set -euo pipefail
-          cd dist
-          sha256sum ./* > SHA256SUMS.txt
-          cat SHA256SUMS.txt
-
       - name: Gather the numbers for the release notes
         id: stats
         run: |
@@ -186,19 +188,141 @@ jobs:
           path: dist/*
           retention-days: 30
 
-  release:
-    name: Publish the GitHub release
-    needs: [verify, build]
+  # ---------------------------------------------------------- executables
+  binaries:
+    name: Executables (${{ matrix.os }})
+    needs: verify
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # One runner per family. Other architectures -- an Intel Mac, an ARM
+        # Windows box, a musl container -- install the zipapp from the same
+        # release instead, which is why it is always built here too.
+        os: ["ubuntu-latest", "windows-latest", "macos-latest"]
+    steps:
+      - name: Check out the tagged commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install PyInstaller
+        run: python -m pip install --upgrade pip pyinstaller
+
+      - name: Build the executable and the zipapp
+        run: >-
+          python tools/build_executable.py
+          --out dist
+          --version "${{ needs.verify.outputs.version }}"
+
+      - name: Install what was just built, the way a user would
+        # Lays dist/ out as a GitHub release on disk, then runs the installer for
+        # this platform against it: download, sha256 check, put it in place, run
+        # it, let `omni update --check` see its own release, uninstall cleanly.
+        run: >-
+          python tools/rehearse_release.py
+          --dist dist
+          --version "${{ needs.verify.outputs.version }}"
+
+      - name: Upload the artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: executables-${{ matrix.os }}
+          path: dist/*
+          retention-days: 30
+
+  # ------------------------------------------------------------- assemble
+  assemble:
+    name: Assemble the release
+    needs: [verify, build, binaries]
     runs-on: ubuntu-latest
     steps:
-      - name: Download the distributions
+      - name: Collect the distributions
         uses: actions/download-artifact@v8
         with:
           name: dist
+          path: release
+
+      - name: Collect the executables
+        uses: actions/download-artifact@v8
+        with:
+          pattern: executables-*
+          path: release
+          merge-multiple: true
+
+      - name: One checksum file over everything that will be published
+        run: |
+          set -euo pipefail
+          cd release
+          # Each platform's build wrote its own; the published one covers them all.
+          rm -f SHA256SUMS.txt
+          sha256sum ./* > SHA256SUMS.txt
+          echo "files in this release:"
+          ls -l
+          echo
+          python - <<'PY'
+          import os, pathlib
+
+          here = pathlib.Path(".")
+          names = sorted(p.name for p in here.iterdir() if p.is_file())
+          sums = pathlib.Path("SHA256SUMS.txt").read_text()
+          missing = [n for n in names if n != "SHA256SUMS.txt" and n not in sums]
+          if missing:
+              raise SystemExit(f"::error::not covered by SHA256SUMS.txt: {missing}")
+          print(f"SHA256SUMS.txt covers {len(names) - 1} files")
+          for name in names:
+              print(f"    {name}  {os.path.getsize(name):,} bytes")
+          PY
+
+      - name: Upload everything
+        uses: actions/upload-artifact@v7
+        with:
+          name: release
+          path: release/*
+          retention-days: 30
+
+  release:
+    name: Publish the GitHub release
+    needs: [verify, build, assemble]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the release
+        uses: actions/download-artifact@v8
+        with:
+          name: release
           path: dist
 
       - name: Show what will be attached
         run: ls -l dist
+
+      - name: Describe the files for the notes
+        id: files
+        run: |
+          set -euo pipefail
+          list="$RUNNER_TEMP/RELEASE_FILES.md"
+          : > "$list"
+          for f in dist/*; do
+            name="$(basename "$f")"
+            [ "$name" = "SHA256SUMS.txt" ] && continue
+            size="$(du -h "$f" | cut -f1 | tr -d ' ')"
+            case "$name" in
+              *.whl)       what="wheel -- \`pip install\` it" ;;
+              *.tar.gz)    what="source distribution" ;;
+              *.pyz)       what="zipapp -- one file, needs Python 3.10 or newer" ;;
+              *windows*)   what="Windows executable -- no Python needed" ;;
+              *macos*)     what="macOS executable -- no Python needed" ;;
+              *linux*)     what="Linux executable -- no Python needed" ;;
+              *)           what="artifact" ;;
+            esac
+            printf -- '- `%s` (%s) -- %s\n' "$name" "$size" "$what" >> "$list"
+          done
+          echo "path=$list" >> "$GITHUB_OUTPUT"
+          cat "$list"
 
       - name: Write the release notes
         id: notes
@@ -207,21 +331,45 @@ jobs:
           notes="$RUNNER_TEMP/RELEASE_NOTES.md"
           cat > "$notes" <<'MD'
           **OmniScript __VERSION__** -- a small language for doing big things in
-          few lines. No dependencies: it runs on a stock Python 3.10 or newer.
+          few lines. No dependencies: it runs on a stock Python 3.10 or newer,
+          and the executables attached below need no Python at all.
 
           ## Install
 
+          One command, and it fetches the executable for your machine from this
+          release, checks its sha256 and puts `omni` on your PATH:
+
           ```bash
-          pip install omniscript-lang==__VERSION__
+          curl -fsSL https://raw.githubusercontent.com/__REPO__/main/install.sh | bash
           ```
 
-          Or take one of the files attached below -- the wheel is all you need:
+          ```powershell
+          iwr -use1 https://raw.githubusercontent.com/__REPO__/main/install.ps1 | iex
+          ```
+
+          Both default to the **release channel** -- this page. `-s beta`
+          (`-Channel beta`) tracks the repository instead, and `--version`
+          (`-Version`) pins one release.
+
+          Or install it another way:
 
           ```bash
+          pip install omniscript-lang==__VERSION__    # PyPI, when it is published
+          python3 omni-__VERSION__-any.pyz            # the zipapp: one file
           pip install omniscript_lang-__VERSION__-py3-none-any.whl
           ```
 
           Or skip installing entirely: clone the repository and run `./omni`.
+
+          ## Update
+
+          An install that came from a release updates itself in place:
+
+          ```bash
+          omni update --check     # what is published, and what you are on
+          omni update             # fetch it, check the sha256, swap it in
+          omni update --channel beta --ref main   # follow the repository instead
+          ```
 
           ## Try it
 
@@ -250,7 +398,18 @@ jobs:
           - __EXAMPLES__ runnable examples and __CASES__ language test cases,
             all green on Python __PYTHONS__
           - a VS Code extension under `extras/vscode`
-          - `SHA256SUMS.txt`, attached below, covers every file in this release
+          - standalone executables for Linux, Windows and macOS, a zipapp for
+            anywhere else, and installers that know how to fetch and verify them
+
+          ## What is attached
+
+          __FILES__
+
+          `SHA256SUMS.txt` covers every one of them:
+
+          ```bash
+          sha256sum -c SHA256SUMS.txt
+          ```
 
           Source history for this release:
           https://github.com/__REPO__/commits/__TAG__
@@ -264,6 +423,8 @@ jobs:
             -e "s|__EXAMPLES__|${{ needs.build.outputs.examples }}|g" \
             -e "s|__CASES__|${{ needs.build.outputs.cases }}|g" \
             -e "s|__PYTHONS__|${{ needs.build.outputs.pythons }}|g" \
+            -e "/__FILES__/r ${{ steps.files.outputs.path }}" \
+            -e "/__FILES__/d" \
             "$notes"
           if grep -q '__' "$notes"; then
             echo "::error::a placeholder was not substituted"
@@ -310,16 +471,22 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - name: Download the distributions
+      - name: Download the release
         uses: actions/download-artifact@v8
         with:
-          name: dist
+          name: release
           path: dist
 
       - name: Keep only what PyPI accepts
+        # The executables, the zipapp and SHA256SUMS.txt belong on the GitHub
+        # release; PyPI takes the wheel and the sdist.
         run: |
           set -euo pipefail
-          rm -f dist/SHA256SUMS.txt
+          find dist -type f ! -name '*.whl' ! -name '*.tar.gz' -print -delete
+          if ! ls dist/*.whl > /dev/null 2>&1; then
+            echo "::error::there is no wheel to upload"
+            exit 1
+          fi
           ls -l dist
 
       - name: Upload to PyPI
