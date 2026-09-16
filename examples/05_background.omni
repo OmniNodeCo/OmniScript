@@ -1,0 +1,4 @@
+# cmd(background, ...) starts a command and carries on without waiting for it.
+
+cmd(background, "sleep 1")
+cmd("echo the sleep is still running while this line prints")

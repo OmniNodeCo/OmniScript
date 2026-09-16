@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omniscript-lang"
+version = "1.0.0"
+description = "OmniScript: four commands -- draw, cmd, file, and python when you need it"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["language", "interpreter", "scripting"]
+
+[project.scripts]
+omni = "omniscript.cli:main"
+omniscript = "omniscript.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/OmniNodeCo/OmniScript"
+
+[tool.setuptools]
+packages = ["omniscript"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+# E9 is syntax-level mistakes; F is pyflakes -- undefined names, dead imports,
+# unused locals, duplicate arguments. Style rules are deliberately left out:
+# this source is formatted by hand and reads the way it is written.
+select = ["E9", "F"]

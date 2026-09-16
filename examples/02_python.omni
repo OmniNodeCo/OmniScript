@@ -1,0 +1,11 @@
+# `import python` and Python itself is a command. Anything Python can do,
+# OmniScript can do -- usually in one line less.
+
+import python
+
+python("print(6 * 7)")
+python("import math; print(math.sqrt(144))")
+python("""
+words = "the quick brown fox".split()
+print([w.upper() for w in words])
+""")

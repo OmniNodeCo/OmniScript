@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.preview/
+*.png
+*.log
+.DS_Store
+.ruff_cache/
+.venv/

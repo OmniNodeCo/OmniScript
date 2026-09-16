@@ -1,0 +1,17 @@
+#!/usr/bin/env python3
+"""OmniScript launcher: run this repository's copy without installing anything.
+
+    ./omni                       a REPL
+    ./omni hello.omni            run a file
+    ./omni -e 'cmd("tree /f")'   run one line
+    ./omni update --check        what is published, what you have
+"""
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(os.path.realpath(__file__))))
+
+from omniscript.cli import main  # noqa: E402
+
+if __name__ == "__main__":
+    raise SystemExit(main())
