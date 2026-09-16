@@ -73,7 +73,12 @@ class ScriptCase(unittest.TestCase):
 
     def run_script(self, which, *args, expect=0):
         script = REPO / self.scripts[which]
-        command = [self.interpreter, str(script), *args]
+        if self.interpreter == PWSH:
+            # -File, not a bare path: without it pwsh parses the call as
+            # -Command and the arguments never reach the script's param block.
+            command = [self.interpreter, "-NoProfile", "-File", str(script), *args]
+        else:
+            command = [self.interpreter, str(script), *args]
         proc = subprocess.run(command, env=self.env, cwd=str(self.tmp),
                               capture_output=True, text=True, timeout=900)
         if expect is not None:
@@ -313,7 +318,8 @@ class PowerShellScriptTests(ScriptCase):
             "exit 0"
         )
         proc = subprocess.run([PWSH, "-NoProfile", "-Command", program],
-                              capture_output=True, text=True, timeout=300)
+                              capture_output=True, text=True, timeout=300,
+                              env=self.env)
         self.assertEqual(0, proc.returncode,
                          f"{script} does not parse:\n{proc.stdout}\n{proc.stderr}")
 

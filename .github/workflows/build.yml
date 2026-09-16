@@ -280,6 +280,12 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          function Fail([string]$what, [string]$detail) {
+            $flat = ($detail -replace "`r?`n", " | ")
+            if ($flat.Length -gt 2000) { $flat = $flat.Substring(0, 2000) }
+            Write-Host "::error file=install.ps1,line=1::$what -- $flat"
+            throw $what
+          }
           $root = Join-Path $env:RUNNER_TEMP "installer-check-ps"
           Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
           $fakeHome = Join-Path $root "home"
@@ -292,18 +298,47 @@ jobs:
           $bin = if ($IsWindows) { $prefix } else { Join-Path $prefix "bin" }
           $omni = if ($IsWindows) { Join-Path $bin "omni.cmd" } else { Join-Path $bin "omni" }
 
-          ./install.ps1 -Prefix $prefix -Source $PWD.Path -Python (Get-Command python).Source
-          if (-not (Test-Path $omni)) { throw "no command at $omni" }
-          & $omni --version
-          & $omni -e 'print(6 * 7, [1, 2, 3].map((x) -> x * x).len())'
+          # *>&1 so the scripts' Write-Host output is captured, not just their errors
+          $out = (& ./install.ps1 -Prefix $prefix -Source $PWD.Path -Python (Get-Command python).Source *>&1 | Out-String)
+          Write-Host $out
+          if ($LASTEXITCODE -ne 0) { Fail "install.ps1 exited with $LASTEXITCODE" $out }
+          if (-not (Test-Path $omni)) { Fail "install.ps1 left no command at $omni" $out }
 
-          ./uninstall.ps1 -Prefix $prefix -Purge
-          if (Test-Path $omni) { throw "$omni survived the uninstall" }
-          if (-not (Test-Path (Join-Path $PWD "omniscript/cli.py"))) { throw "the source tree was touched" }
+          $version = (& $omni --version *>&1 | Out-String)
+          Write-Host $version
+          if ($LASTEXITCODE -ne 0) { Fail "the installed command would not report its version" $version }
+
+          $smoke = (& $omni -e 'print(6 * 7, [1, 2, 3].map((x) -> x * x).len())' *>&1 | Out-String)
+          Write-Host $smoke
+          if ($smoke -notmatch '42 3') { Fail "the installed command did not run a program" $smoke }
+
+          $out = (& ./uninstall.ps1 -Prefix $prefix -Purge *>&1 | Out-String)
+          Write-Host $out
+          if ($LASTEXITCODE -ne 0) { Fail "uninstall.ps1 exited with $LASTEXITCODE" $out }
+          if (Test-Path $omni) { Fail "$omni survived the uninstall" $out }
+          if (-not (Test-Path (Join-Path $PWD "omniscript/cli.py"))) { Fail "the source tree was touched" $out }
           Write-Host "install.ps1 / uninstall.ps1 cycle ok"
 
       - name: The installer test suite agrees
-        run: python -m unittest tests.test_install -v
+        run: |
+          python - <<'PY'
+          import subprocess, sys
+
+          proc = subprocess.run(
+              [sys.executable, "-m", "unittest", "tests.test_install", "-v"],
+              capture_output=True, text=True)
+          blob = (proc.stdout + proc.stderr).replace("\r", "")
+          sys.stdout.write(blob[-6000:])
+          if proc.returncode:
+              for line in blob.splitlines():
+                  if line.startswith(("FAIL: ", "ERROR: ")):
+                      print(f"::error::{line}")
+              start = blob.find("=" * 20)
+              detail = blob[start:start + 2500] if start >= 0 else blob[-2500:]
+              print("::error file=tests/test_install.py,line=1::"
+                    + detail.replace("\n", " | "))
+              raise SystemExit(1)
+          PY
 
   package:
     name: Package
