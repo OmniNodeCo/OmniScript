@@ -584,7 +584,7 @@ if [ "$INSTALLED" != 1 ]; then
     if [ -n "$PINNED" ]; then
         OMNI_VERSION="${PINNED#v}"
     else
-        OMNI_VERSION="$("$PYTHON" -c "import sys; sys.path.insert(0, '$SOURCE_DIR'); import omniscript; print(omniscript.__version__)" 2>/dev/null || echo unknown)"
+        OMNI_VERSION="$("$PYTHON" -c "import sys; sys.path.insert(0, '$SOURCE_DIR'); import omniscript; print(omniscript.VERSION)" 2>/dev/null || echo unknown)"
     fi
     info "OmniScript $OMNI_VERSION from $SOURCE_DIR"
     note "python $PY_VERSION ($PYTHON), commands into $BIN_DIR"

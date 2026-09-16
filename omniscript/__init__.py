@@ -14,6 +14,7 @@ says what it did.
 from .language import Interpreter, OmniScriptError
 
 VERSION = "1.0.0"
+__version__ = VERSION          # what packaging tools and the installers look for
 
 __all__ = ["VERSION", "run", "Interpreter", "OmniScriptError"]
 

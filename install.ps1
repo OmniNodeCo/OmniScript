@@ -610,7 +610,8 @@ if ($LASTEXITCODE -ne 0) {
     Stop-Die "$Python is Python $found; OmniScript needs $MinPython or newer (try -Python PATH)"
 }
 $PyVersion = (& $Python -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])').Trim()
-$OmniVersion = (& $Python -c "import sys; sys.path.insert(0, r'$Source'); import omniscript; print(omniscript.__version__)").Trim()
+$OmniVersion = (& $Python -c "import sys; sys.path.insert(0, r'$Source'); import omniscript; print(omniscript.VERSION)" 2>$null).Trim()
+if ($LASTEXITCODE -ne 0 -or -not $OmniVersion) { $OmniVersion = 'unknown' }
 Write-Info "OmniScript $OmniVersion from $Source"
 Write-Note "python $PyVersion ($Python), commands into $Bin"
 
