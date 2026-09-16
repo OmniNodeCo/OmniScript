@@ -92,7 +92,7 @@ If no release can be reached, the installer says so and uses the repository
 instead. A `--version` that does not exist, or a download whose checksum does not
 match, stops it and installs nothing.
 
-### From a clone
+## Installation
 
 ```bash
 git clone https://github.com/OmniNodeCo/OmniScript
@@ -100,11 +100,6 @@ cd OmniScript
 ./omni --version          # that is the whole install: nothing to build
 ./install.sh              # a source tree implies the beta channel
 ```
-
-The commands then point into the tree, so `git pull` is the upgrade. A virtual
-environment or a system-wide install is plain `pip install .`; the editor
-extension is a copy of `extras/vscode` into your extensions directory. The
-installer does neither for you — it has one job.
 
 ### What is written down
 
@@ -336,14 +331,14 @@ tools/                build_executable.py: the files a release carries
 .github/workflows/    build.yml (CI) and release.yml (tagged releases)
 ```
 
-## Testing
+## Tests
 
 ```bash
 python3 -m unittest discover -s tests   # 215 interpreter cases
 ./omni test                             # the language's own 34 @test cases
 ```
 
-The unittest count includes the installers and the update machinery: they are
+The unit test count includes the installers and the update machinery: they are
 driven against a fake GitHub release served from `localhost` (or from `file://`),
 so the download, checksum, install, update and uninstall paths are all really
 executed — on Windows too, wherever `pwsh` is installed.
@@ -354,23 +349,6 @@ Both suites also run every time the examples do:
 for f in examples/*.omni; do ./omni "$f"; done
 ```
 
-## Continuous integration
-
-`.github/workflows/build.yml` runs on every push to `main` and on every pull
-request:
-
-| job | what it does |
-| --- | --- |
-| `lint` | ruff (pyflakes rules), `compileall`, metadata and workflow validity |
-| `test` | both suites, all 10 examples, `docs`, and a PNG that is decoded chunk by chunk -- on ubuntu and macOS, Python 3.10 to 3.14 |
-| `installer` | `install.sh` and `install.ps1` install, run and uninstall cleanly -- including on Windows, which the test matrix does not cover, and including the release channel served from `localhost` |
-| `executable` | builds the standalone binary (PyInstaller) and the zipapp on ubuntu and Windows, and runs each one |
-| `package` | builds the sdist and wheel, installs the wheel in a clean venv and runs it |
-
-Linting is deliberately narrow: `select = ["E9", "F"]` in `pyproject.toml`
-catches real mistakes (undefined names, dead imports, unused locals) and leaves
-the hand-formatted source alone. `methods.py` is exempt from `F811` because it
-defines `len`, `map` and friends once per type through a decorator.
 
 ## Release 
 It's current release is `1.1.0`.
