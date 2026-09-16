@@ -2,7 +2,7 @@
 
 [![build](https://github.com/OmniNodeCo/OmniScript/actions/workflows/build.yml/badge.svg)](https://github.com/OmniNodeCo/OmniScript/actions/workflows/build.yml)
 
-**A small language for doing big things in few lines.**
+**A small language based on python for simplifying complex tasks.**
 
 OmniScript is a from-scratch programming language with its own syntax, its own
 interpreter and its own standard library. There is nothing to import: reading a
@@ -372,38 +372,8 @@ catches real mistakes (undefined names, dead imports, unused locals) and leaves
 the hand-formatted source alone. `methods.py` is exempt from `F811` because it
 defines `len`, `map` and friends once per type through a decorator.
 
-## Releasing
-
-`.github/workflows/release.yml` runs when a version tag is pushed:
-
-```bash
-# 1. bump both of these to the same value
-#      VERSION in omniscript/stdlib/__init__.py
-#      version in pyproject.toml
-git commit -am "Release 1.1.0"
-git tag v1.1.0
-git push origin v1.1.0
-```
-
-The workflow refuses to continue unless the tag, `pyproject.toml` and
-`omniscript.__version__` all agree, and re-runs the full test suite on the tagged
-commit. Then, in parallel:
-
-| job | what it produces |
-| --- | --- |
-| `build` | the sdist and the wheel, installed into a clean venv and exercised |
-| `binaries` | a frozen executable per platform (Linux, Windows, macOS) plus one `.pyz`, each one run by the tool that built it |
-| `release` | one GitHub Release carrying all of it with `SHA256SUMS.txt`, and notes measured from the tree -- line counts, built-in counts, example and test counts are read, not typed |
-
-`build.yml` builds the same artifacts on every pull request, so a tag is never the
-first time an executable has been made.
-
-Publishing to PyPI is opt-in and off by default: add a repository variable
-`PYPI_PUBLISH` set to `true` and configure trusted publishing for the project on
-pypi.org, and the final job uploads with an OIDC token instead of a stored API
-key. You can also run the workflow by hand from the Actions tab against a tag
-that already exists.
+## Release 
+It's current release is `1.1.0`.
 
 ## License
-
-MIT.
+See `License` for more information. 
