@@ -266,7 +266,8 @@ jobs:
           ./install.sh --prefix "$root/prefix"
           test -L "$root/prefix/bin/omni"
           test -L "$root/prefix/bin/omniscript"
-          test -f "$root/home/data/omniscript/install.json"
+          test -f "$root/home/data/omniscript/install.txt"
+          grep -q "^command=$root/prefix/bin/omni$" "$root/home/data/omniscript/install.txt"
           "$root/prefix/bin/omni" --version
           "$root/prefix/bin/omni" -e 'print("installed by CI:", 6 * 7)'
 

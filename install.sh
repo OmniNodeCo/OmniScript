@@ -92,7 +92,7 @@ Modes:
             commands are reachable from DIR/bin.
 
 The default mode needs no network and no root. Everything installed is recorded
-in ~/.local/share/omniscript/install.json for uninstall.sh.
+in ~/.local/share/omniscript/install.txt for uninstall.sh.
 USAGE
 }
 
