@@ -68,11 +68,68 @@ OmniScript needs only **Python 3.10+** — no third-party packages at all.
 ```bash
 git clone https://github.com/OmniNodeCo/OmniScript
 cd OmniScript
-./omni --version
-
-# optional: put it on your PATH as `omniscript`
-pip install -e .
+./omni --version          # that is the whole install: nothing to build
 ```
+
+To get `omni` and `omniscript` onto your PATH, use the installer for your
+shell:
+
+| | Linux / macOS | Windows (or any pwsh) |
+| --- | --- | --- |
+| install | `./install.sh` | `.\install.ps1` |
+| uninstall | `./uninstall.sh` | `.\uninstall.ps1` |
+
+```bash
+./install.sh                          # symlink both commands into ~/.local/bin
+./install.sh --mode venv              # a private venv, so the clone can move or go
+./install.sh --prefix /usr/local --force
+./install.sh --vscode                 # also install the editor extension
+./install.sh --dry-run                # show what it would do, touch nothing
+./uninstall.sh                        # take it all back out
+./uninstall.sh --purge                # ...plus the REPL history and the manifest
+```
+
+```powershell
+.\install.ps1                        # shims into %LOCALAPPDATA%\Programs\OmniScript
+.\install.ps1 -Mode venv -VsCode
+.\install.ps1 -DryRun
+.\uninstall.ps1 -Purge
+```
+
+Or without cloning anything first:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/install.sh | bash
+```
+
+which fetches the source into `~/.local/share/omniscript/src` and installs from
+there (`--ref v1.0.0` picks a tag).
+
+Three modes, same three commands:
+
+* **symlink** (default) — `omni` and `omniscript` become links to the launcher in
+  the source tree. Instant, no network, no copies; the tree has to stay put. On
+  Windows the same thing is done with a two-line `.cmd` shim, because symlinks
+  there want administrator rights or Developer Mode.
+* **venv** — builds a virtual environment under `~/.local/share/omniscript/venv`
+  (`%LOCALAPPDATA%\OmniScript\venv` on Windows), installs the package into it and
+  points the commands at that. Survives deleting the source tree.
+* **pip** — installs into the interpreter you already use, then makes sure the
+  commands are reachable from the bin directory. On a PEP 668 system-managed
+  Python it stops and tells you to use `--mode venv` rather than quietly
+  overriding your package manager.
+
+Both installers check the Python version first, verify the result by actually
+running `omni --version` and a small program that draws a picture, tell you the
+one line to add to your PATH if the bin directory is not on it yet, and write a
+manifest of everything they created to
+`~/.local/share/omniscript/install.json`.
+
+The uninstaller works from that manifest, so it removes exactly what was
+installed. It will not delete a source tree you cloned yourself, and it will not
+remove a command it cannot prove it created — a stranger's `omni` is reported and
+left alone, `--force` moves it to `omni.bak` instead of overwriting it, and
+`--dry-run` shows the whole plan without touching anything.
 
 ## Use it
 
@@ -256,15 +313,17 @@ omniscript/           the language itself
     dates.py          date(), date ranges, and the Date type
   std/                importable .omni modules: math, text, list, stats
 examples/             10 runnable programs (outputs land in .preview/)
-tests/                122 interpreter cases + 34 in-language @test cases
+tests/                150 interpreter cases + 34 in-language @test cases
 extras/vscode/        syntax highlighting for VS Code / Cursor
+install.sh/.ps1       put omni and omniscript on your PATH
+uninstall.sh/.ps1     take them back out again
 .github/workflows/    build.yml (CI) and release.yml (tagged releases)
 ```
 
 ## Testing
 
 ```bash
-python3 -m unittest discover -s tests   # 122 interpreter cases
+python3 -m unittest discover -s tests   # 150 interpreter cases
 ./omni test                             # the language's own 34 @test cases
 ```
 
@@ -283,6 +342,7 @@ request:
 | --- | --- |
 | `lint` | ruff (pyflakes rules), `compileall`, metadata and workflow validity |
 | `test` | both suites, all 10 examples, `docs`, and a PNG that is decoded chunk by chunk -- on ubuntu and macOS, Python 3.10 to 3.14 |
+| `installer` | `install.sh` and `install.ps1` install, run and uninstall cleanly -- including on Windows, which the test matrix does not cover |
 | `package` | builds the sdist and wheel, installs the wheel in a clean venv and runs it |
 
 Linting is deliberately narrow: `select = ["E9", "F"]` in `pyproject.toml`

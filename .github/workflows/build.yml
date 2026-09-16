@@ -6,6 +6,9 @@
 #            systems and Python versions
 #   package  build the distributions, then install the wheel somewhere clean
 #            and use it the way a real user would
+#   installer  install.sh and install.ps1 put `omni` somewhere, run it, and
+#            uninstall.sh / uninstall.ps1 take it all back out again -- on
+#            Windows as well, which the test matrix does not cover
 #
 # The interpreter has no third-party dependencies, so the test matrix installs
 # nothing at all; only the lint and package jobs need pip.
@@ -206,6 +209,97 @@ jobs:
             *.png
           if-no-files-found: ignore
           retention-days: 3
+
+  installer:
+    name: Installers (${{ matrix.os }})
+    needs: lint
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ["ubuntu-latest", "windows-latest"]
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Both PowerShell scripts parse
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          foreach ($name in @("install.ps1", "uninstall.ps1")) {
+            $path = (Resolve-Path $name).Path
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors) {
+              foreach ($e in $errors) {
+                Write-Host "::error::$name line $($e.Extent.StartLineNumber): $($e.Message)"
+              }
+              throw "$name has $($errors.Count) parse error(s)"
+            }
+            Write-Host "$name parses cleanly"
+          }
+
+      - name: install.sh, then uninstall.sh
+        if: runner.os != 'Windows'
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/installer-check"
+          rm -rf "$root"
+          mkdir -p "$root/home" "$root/prefix"
+          export HOME="$root/home"
+          export XDG_DATA_HOME="$root/home/data"
+
+          ./install.sh --prefix "$root/prefix"
+          test -L "$root/prefix/bin/omni"
+          test -L "$root/prefix/bin/omniscript"
+          test -f "$root/home/data/omniscript/install.json"
+          "$root/prefix/bin/omni" --version
+          "$root/prefix/bin/omni" -e 'print("installed by CI:", 6 * 7)'
+
+          # Installing again is a no-op, not an error.
+          ./install.sh --prefix "$root/prefix" | grep "already points at"
+
+          ./uninstall.sh --prefix "$root/prefix" --purge
+          test ! -e "$root/prefix/bin/omni"
+          test ! -e "$root/prefix/bin/omniscript"
+          test ! -e "$root/home/data/omniscript"
+          test -f omniscript/cli.py
+          echo "install.sh / uninstall.sh cycle ok"
+
+      - name: install.ps1, then uninstall.ps1
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $root = Join-Path $env:RUNNER_TEMP "installer-check-ps"
+          Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
+          $fakeHome = Join-Path $root "home"
+          $prefix = Join-Path $root "prefix"
+          New-Item -ItemType Directory -Force -Path $fakeHome, $prefix | Out-Null
+          $env:HOME = $fakeHome
+          $env:USERPROFILE = $fakeHome
+          $env:XDG_DATA_HOME = Join-Path $fakeHome "data"
+          $env:LOCALAPPDATA = Join-Path $fakeHome "appdata"
+          $bin = if ($IsWindows) { $prefix } else { Join-Path $prefix "bin" }
+          $omni = if ($IsWindows) { Join-Path $bin "omni.cmd" } else { Join-Path $bin "omni" }
+
+          ./install.ps1 -Prefix $prefix -Source $PWD.Path -Python (Get-Command python).Source
+          if (-not (Test-Path $omni)) { throw "no command at $omni" }
+          & $omni --version
+          & $omni -e 'print("installed by pwsh:", 6 * 7)'
+
+          ./uninstall.ps1 -Prefix $prefix -Purge
+          if (Test-Path $omni) { throw "$omni survived the uninstall" }
+          if (-not (Test-Path (Join-Path $PWD "omniscript/cli.py"))) { throw "the source tree was touched" }
+          Write-Host "install.ps1 / uninstall.ps1 cycle ok"
+
+      - name: The installer test suite agrees
+        run: python -m unittest tests.test_install -v
 
   package:
     name: Package
