@@ -320,6 +320,9 @@ jobs:
           Write-Host "install.ps1 / uninstall.ps1 cycle ok"
 
       - name: The installer test suite agrees
+        # Git Bash, because the default shell on a Windows runner is pwsh and
+        # this step is a heredoc.
+        shell: bash
         run: |
           python - <<'PY'
           import subprocess, sys
