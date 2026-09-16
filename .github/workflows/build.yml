@@ -231,6 +231,8 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          $failed = 0
+          # Check every file before throwing, so one bad script cannot hide another.
           foreach ($name in @("install.ps1", "uninstall.ps1")) {
             $path = (Resolve-Path $name).Path
             $tokens = $null
@@ -240,10 +242,12 @@ jobs:
               foreach ($e in $errors) {
                 Write-Host "::error::$name line $($e.Extent.StartLineNumber): $($e.Message)"
               }
-              throw "$name has $($errors.Count) parse error(s)"
+              $failed += $errors.Count
+            } else {
+              Write-Host "$name parses cleanly"
             }
-            Write-Host "$name parses cleanly"
           }
+          if ($failed) { throw "$failed PowerShell parse error(s)" }
 
       - name: install.sh, then uninstall.sh
         if: runner.os != 'Windows'
@@ -291,7 +295,7 @@ jobs:
           ./install.ps1 -Prefix $prefix -Source $PWD.Path -Python (Get-Command python).Source
           if (-not (Test-Path $omni)) { throw "no command at $omni" }
           & $omni --version
-          & $omni -e 'print("installed by pwsh:", 6 * 7)'
+          & $omni -e 'print(6 * 7, [1, 2, 3].map((x) -> x * x).len())'
 
           ./uninstall.ps1 -Prefix $prefix -Purge
           if (Test-Path $omni) { throw "$omni survived the uninstall" }

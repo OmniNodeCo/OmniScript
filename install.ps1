@@ -351,7 +351,7 @@ if (-not $DryRun) {
     $reported = (& $omniCommand --version) 2>&1
     if ($LASTEXITCODE -ne 0) { Stop-Die "$omniCommand --version failed: $reported" }
     Write-Note "$reported"
-    $smoke = & $omniCommand -e 'print("smoke ok:", 6 * 7, [1, 2, 3].map((x) -> x * x).join(","))'
+    $smoke = & $omniCommand -e 'print(6 * 7, [1, 2, 3].map((x) -> x * x).len(), 2 ** 10)'
     if ($LASTEXITCODE -ne 0) { Stop-Die "the interpreter did not run: $smoke" }
     Write-Note "$smoke"
 }
@@ -372,7 +372,7 @@ if ($onPath) {
 } else {
     Write-Note "$Bin is not on your PATH yet. In PowerShell:"
     Write-Host ''
-    Write-Host "        `$env:PATH = `"$Bin`$([System.IO.Path]::PathSeparator)`$env:PATH`""
+    Write-Host "        `$env:PATH = `"${Bin}${separator}`$env:PATH`""
     Write-Host ''
     if ($IsWin) {
         Write-Note 'or make it permanent for your account:'
@@ -381,7 +381,7 @@ if ($onPath) {
         Write-Host ''
         Write-Note 'then open a new terminal.'
     } else {
-        Write-Note "or add this to your shell profile:  export PATH=`"$Bin:`$PATH`""
+        Write-Note "or add this to your shell profile:  export PATH=`"${Bin}:`$PATH`""
     }
 }
 Write-Note "uninstall with: $(Join-Path $Source $(if ($IsWin) { 'uninstall.ps1' } else { 'uninstall.sh' }))"
