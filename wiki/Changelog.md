@@ -4,6 +4,14 @@ Mirrors [`CHANGELOG.md`](../CHANGELOG.md) — the file in the repository is the
 source of truth. Versions are `MAJOR.MINOR.PATCH`; to install one in
 particular: `./install.sh --version 1.1.0`.
 
+## [1.1.1] - 2026-09-17
+
+Scripts that Windows editors saved with a byte-order mark failed with a
+cryptic `cannot read` error instead of running. Script files are now decoded
+so the mark is silently accepted, with a backstop in the interpreter for pasted
+or piped programs. CRLF endings, empty files and `#!` first lines are covered
+by tests.
+
 ## [1.1.0] - 2026-09-17
 
 The four initial drawing commands: imports, `draw()`, `draw_gui.button()` and
