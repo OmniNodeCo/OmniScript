@@ -1,19 +1,20 @@
-"""OmniScript: four commands, and Python when you need it.
+"""OmniScript: four commands to draw with, and Python when you need it.
 
-    import python                 # the escape hatch
+    import math                   # imports work like Python
+    from math import sqrt
 
-    draw(window(640, 400, "Demo"), text(20, 20, "Hello"), button(..., cmd("ls")))
-    cmd("tree /f")                # a shell command
-    file(create, "a.txt", "hi")   # create, edit, delete
-    python("print(6 * 7)")        # only after `import python`
+    draw(window(640, 400, "Demo"), text(20, 20, "Hello"), save("hi.png"))
+    draw_gui.window_size(640, 400, "Demo")
+    draw_gui.button(pos=(20, 300), text="List files", action=cmd("ls"))
+    draw_gui()                    # show the window
 
-That is the whole language. A program is a list of commands, and each command
-says what it did.
+That is the drawing side. cmd(), file() and python() are still there for
+shell commands, files and anything else.
 """
 
 from .language import Interpreter, OmniScriptError
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 __version__ = VERSION          # what packaging tools and the installers look for
 
 __all__ = ["VERSION", "run", "Interpreter", "OmniScriptError"]

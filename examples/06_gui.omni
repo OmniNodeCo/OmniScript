@@ -1,0 +1,15 @@
+# draw_gui: set the window size, add buttons with pos=, then show it.
+# On a machine with a screen draw_gui() opens a real window (clicking a button
+# runs its action); anywhere else the same picture is written as a PNG.
+
+draw_gui.window_size(420, 260, "GUI demo")
+
+draw_gui.button(pos=(16, 60), size=(180, 40), text="List this folder",
+                action=cmd("ls"))
+draw_gui.button(pos=(16, 112), size=(180, 40), text="Write a note",
+                action=file(create, "clicked.txt", "clicked\n"))
+draw_gui.button(pos=(16, 164), size=(180, 40), text="Remove it again",
+                action=file(delete, "clicked.txt"))
+
+draw_gui(text(16, 16, "Click one:", white, 14),
+         save("gui.png"))

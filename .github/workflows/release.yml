@@ -103,6 +103,10 @@ jobs:
                         circle(16, 16, 14, green),
                         save("release-check.png"))'
           test -s release-check.png
+          ./omni -e 'draw_gui.window_size(32, 32, "release")
+          draw_gui.button(pos=(4, 4), text="Go")
+          draw_gui(save("gui-check.png"))'
+          test -s gui-check.png
 
   build:
     name: Build distributions
@@ -197,6 +201,11 @@ jobs:
     needs: [verify, build, binaries]
     runs-on: ubuntu-latest
     steps:
+      - name: Check out the tagged commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
       - name: Collect the distributions
         uses: actions/download-artifact@v8
         with:
@@ -228,6 +237,24 @@ jobs:
           version="${{ needs.verify.outputs.version }}"
           repo="${{ github.repository }}"
           notes="$RUNNER_TEMP/notes.md"
+          changes="$RUNNER_TEMP/changes.md"
+          python3 - "$version" CHANGELOG.md "$changes" <<'PY'
+          import pathlib, sys
+
+          version, src, dst = sys.argv[1], pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3])
+          lines = src.read_text().splitlines()
+          start = next((i for i, line in enumerate(lines)
+                        if line.startswith("## [") and version in line), None)
+          body = []
+          if start is not None:
+              for line in lines[start + 1:]:
+                  if line.startswith("## ["):
+                      break
+                  body.append(line)
+          text = "\n".join(body).strip() or f"See CHANGELOG.md at {version}."
+          dst.write_text(text + "\n")
+          print(f"changelog: {len(text.splitlines())} line(s) for {version}")
+          PY
           cat > "$notes" <<'MD'
           **OmniScript __VERSION__** -- a small language for doing big things in few
           lines. No dependencies, and the executables attached below need no Python
@@ -255,8 +282,13 @@ jobs:
           ```bash
           omni -e 'cmd("echo hello from __VERSION__")'
           omni -e 'draw(window(200, 120, "hi"), circle(100, 60, 40, blue))'
-          omni examples/04_drawing.omni        # writes a real PNG
+          omni -e 'draw_gui.window_size(200, 120, "hi")'
+          omni examples/06_gui.omni        # buttons, and a real PNG
           ```
+
+          ## What changed
+
+          __CHANGES__
 
           Attached below: the executables for Linux, Windows and macOS, a zipapp for
           anywhere else, the wheel, the sdist, and `SHA256SUMS.txt` covering all of
@@ -269,6 +301,13 @@ jobs:
             -e "s|__REPO__|$repo|g" \
             -e "s|__TAG__|$tag|g" \
             "$notes"
+          python3 - "$notes" "$changes" <<'PY'
+          import pathlib, sys
+
+          notes, changes = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+          notes.write_text(notes.read_text().replace("__CHANGES__",
+                                                      changes.read_text().rstrip()))
+          PY
           if grep -q '__' "$notes"; then
             echo "::error::a placeholder was not substituted"; exit 1
           fi

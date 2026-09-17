@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "omniscript-lang"
-version = "1.0.0"
-description = "OmniScript: four commands -- draw, cmd, file, and python when you need it"
+version = "1.1.0"
+description = "OmniScript: draw, draw_gui.button, draw_gui.window_size, Python-like imports -- plus cmd, file, python"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

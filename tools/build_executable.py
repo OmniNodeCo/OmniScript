@@ -8,8 +8,8 @@
 Two artifacts come out, named so an installer on any platform can pick the
 right one without asking a server what it runs:
 
-    omni-1.0.0-linux-x86_64        a standalone executable, no Python needed
-    omni-1.0.0-any.pyz             one file, runs on any Python 3.10+
+    omni-1.1.0-linux-x86_64        a standalone executable, no Python needed
+    omni-1.1.0-any.pyz             one file, runs on any Python 3.10+
 
 The executable needs PyInstaller (`pip install pyinstaller`); the zipapp needs
 nothing at all. Every artifact is smoke-tested from outside the repository --
@@ -56,6 +56,9 @@ SMOKE = [
     ("-e", "python", 'import python\npython("print(6 * 7)")'),
     ("-e", "graphics", 'draw(window(16, 16, "smoke"), rect(0, 0, 16, 16, "#0d1117"),\n'
                        'circle(8, 8, 6, "#2ea043"), save("smoke.png"))'),
+    ("-e", "gui", 'draw_gui.window_size(16, 16, "smoke")\n'
+                  'draw_gui.button(pos=(2, 2), text="Go")\n'
+                  'draw_gui(save("gsmoke.png"))'),
 ]
 
 
@@ -203,6 +206,18 @@ def smoke_test(artifact: str) -> list[str]:
                     bad = check_png(png)
                     if bad:
                         problems.append(f"graphics: {bad}")
+            elif label == "gui":
+                if 'window size 16x16 "smoke"' not in out:
+                    problems.append(f"gui: window_size said {out!r}")
+                elif "added button 'Go' at (2, 2)" not in out:
+                    problems.append(f"gui: button said {out!r}")
+                png = os.path.join(cwd, "gsmoke.png")
+                if not os.path.isfile(png):
+                    problems.append(f"gui: no PNG was written ({out!r})")
+                else:
+                    bad = check_png(png)
+                    if bad:
+                        problems.append(f"gui: {bad}")
     except subprocess.TimeoutExpired:
         problems.append("timed out after 180s")
     finally:

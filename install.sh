@@ -615,7 +615,7 @@ fi
 printf '\n'
 info "OmniScript $OMNI_VERSION is installed ($CHANNEL channel)"
 if [ "$on_path" = 1 ]; then
-    note "run it with: omni -e 'print(\"hello\")'   or just: omni"
+    note "run it with: omni -e 'cmd(\"echo hello\")'   or just: omni"
 else
     note "$BIN_DIR is not on your PATH yet. Add this to your shell profile:"
     printf '\n        export PATH="%s:$PATH"\n\n' "$BIN_DIR"

@@ -15,14 +15,15 @@ import sys
 from . import VERSION
 from .language import Interpreter, OmniScriptError
 
-BANNER = f"OmniScript {VERSION} -- draw, cmd, file, python. Ctrl-D to finish."
+BANNER = f"OmniScript {VERSION} -- draw, draw_gui, cmd, file, python. Ctrl-D to finish."
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="omni",
-        description="OmniScript: four commands -- draw(), cmd(), file() and, once "
-                    "you have written `import python`, python().",
+        description="OmniScript: draw(), draw_gui.button(), draw_gui.window_size() "
+                    "and Python-like imports -- plus cmd(), file() and, once you "
+                    "have written an import, python().",
         epilog="With no file and no -e, omni starts a REPL.")
     parser.add_argument("file", nargs="?", metavar="FILE", help="a .omni file to run")
     parser.add_argument("-e", dest="inline", metavar="CODE", help="run this code and exit")

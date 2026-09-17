@@ -1,0 +1,11 @@
+# Imports work like Python. Whatever you import is waiting for you inside
+# python() -- no need to import it twice.
+
+import math
+from math import sqrt
+import os as operating_system
+
+python("print(math.floor(2.9))")
+python("print(sqrt(144))")
+python("print(operating_system.path.join('a', 'b'))")
+python("import sys; print(sys.platform)")

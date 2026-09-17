@@ -492,7 +492,7 @@ function Show-PathAdvice {
     Write-Host ''
     Write-Info "OmniScript $OmniVersion is installed ($Channel channel)"
     if ($onPath) {
-        Write-Note 'run it with: omni -e "print(''hello'')"   or just: omni'
+        Write-Note 'run it with: omni -e "cmd(whoami)"   or just: omni'
     } else {
         Write-Note "$Bin is not on your PATH yet. In PowerShell:"
         Write-Host ''

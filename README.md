@@ -2,32 +2,31 @@
 
 [![build](https://github.com/OmniNodeCo/OmniScript/actions/workflows/build.yml/badge.svg)](https://github.com/OmniNodeCo/OmniScript/actions/workflows/build.yml)
 
-A language with four commands. That is the whole idea: the things you actually
-reach for, spelled the short way, and Python one `import` away when you need more.
+A language with four commands for drawing things. Imports work like Python,
+`draw()` draws anything, and `draw_gui` puts buttons in a window:
 
 ```
-import python                     # the escape hatch, and the only import
+import math                   # imports work like Python
+from math import sqrt
 
-draw(window(640, 400, "Demo"),    # a picture: a window, or a real one on screen
+draw(window(640, 400, "Demo"),  # a picture: a window, or a real one on screen
      rect(0, 0, 640, 60, "#161b22"),
      text(20, 20, "Hello, OmniScript", white, 18),
      circle(320, 240, 80, blue),
-     button(20, 340, 150, 36, "List files", cmd("ls -la")),
      save("hello.png"))
 
-cmd("tree /f")                    # a shell command, and its output
-cmd(background, "python3 -m http.server 8000")   # ...without waiting for it
-
-file(create, "notes.txt", "first line\nsecond line\n")
-file(edit, "notes.txt", "first", "FIRST")
-file(delete, "notes.txt")
-
-python("print(6 * 7)")            # anything Python can do, in one line
+draw_gui.window_size(640, 400, "Demo")
+draw_gui.button(pos=(20, 300), text="List files", action=cmd("ls -la"))
+draw_gui()                    # show the window
 ```
 
 A program is a list of commands. Each one says what it did. There are no
 variables, no loops and nothing to define — a bare word is worth its own name,
 which is how `create`, `background` and `blue` reach a command without quotes.
+
+`cmd()`, `file()` and `python()` are still there for everything else: shell
+commands, files, and anything Python can do. See [the changelog](CHANGELOG.md)
+for what is new, and [the wiki](../../wiki) for the full guides.
 
 ## Install
 
@@ -58,7 +57,22 @@ cd OmniScript
 
 A virtual environment or a system-wide install is plain `pip install .`.
 
+To remove it again:
+
+```bash
+./uninstall.sh --purge
+```
+
+```powershell
+.\uninstall.ps1 -Purge
+```
+
 ## The four commands
+
+**`import ...`** works like Python: `import math`, `import os as o`,
+`from math import sqrt`. Whatever you import is waiting for you inside
+`python()`, and any import enables `python()`. (`import python` still works
+exactly as before.)
 
 **`draw(...)`** takes a list of elements — `window(w, h, title, background)`,
 `rect(x, y, w, h, color)`, `circle(x, y, r, color)`, `line(x1, y1, x2, y2, color,
@@ -67,18 +81,29 @@ and `save("file.png")`. With a screen, it opens a real window and the buttons
 run their action when clicked. Without one — a server, CI — the same picture is
 written as a PNG, drawn here in pure Python: no libraries, nothing to install.
 
-**`cmd(...)`** runs a shell command in the program's directory and prints what
-it said. `cmd(background, ...)` starts it detached and carries on.
+Elements also take keywords: `rect(pos=(0, 0), size=(64, 40), color=blue)`,
+`text(pos=(4, 4), text="hi", size=10)`, `line(from=(0, 0), to=(9, 9))`.
 
-**`file(create | edit | delete, path, ...)`** writes a new file, replaces text
-in an existing one (`file(edit, path, old, new)`), or removes it. It refuses to
-clobber, and it says how many bytes or places it touched.
+**`draw_gui.window_size(...)`** sets the GUI window's size: `window_size(800,
+600)`, `window_size("800x600")`, `window_size(width=800, height=600,
+title="Demo")`. It says the size back.
 
-**`python(...)`** runs Python, once `import python` is at the top. An
-expression prints its value; anything else just runs.
+**`draw_gui.button(...)`** adds a button: `button(pos=(20, 30), text="List
+files", action=cmd("ls"))`. `pos=` is `(x, y)`, `size=` is `(width, height)`,
+and `action=` is the command that runs when the button is clicked — kept for
+later, never run now. Positional arguments work too:
+`button(20, 30, 150, 36, "List files", cmd("ls"))`.
+
+**`draw_gui(...)`** shows the window: the queued buttons plus whatever elements
+it is given, at the `window_size`. Give it `save("gui.png")` and it writes a
+PNG instead — the headless-friendly way, and how the examples keep CI moving.
 
 Colours take `#rrggbb`, `#rgb`, or a name: `red`, `green`, `blue`, `white`,
 `black`, `yellow`, `orange`, `purple`, `pink`, `cyan`, `grey` and a few more.
+
+Beyond the four: **`cmd(...)`** runs a shell command (`cmd(background, ...)`
+without waiting), **`file(create | edit | delete, path, ...)`** writes, edits
+and removes files, and **`python(...)`** runs Python once anything is imported.
 
 ## Update
 
@@ -90,9 +115,9 @@ omni update -c beta     # follow the repository instead
 
 ## How it is put together
 
-`omniscript/language.py` is the lexer, the parser and the interpreter — the
-grammar fits in three lines. `omniscript/draw.py` is the pixels, the shapes,
-the 3x5 font and the PNG writer, plus the tkinter window. `omniscript/cli.py`
-is the command line and the REPL. `omniscript/update.py` is `omni update`.
+`omniscript/language.py` is the lexer, the parser and the interpreter.
+`omniscript/draw.py` is the pixels, the shapes, the 3x5 font and the PNG
+writer, plus the tkinter window. `omniscript/cli.py` is the command line and
+the REPL. `omniscript/update.py` is `omni update`.
 
 Tests: `python -m unittest discover -s tests`.

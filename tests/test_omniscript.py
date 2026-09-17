@@ -75,8 +75,16 @@ class LanguageTests(OmniCase):
     def test_an_unknown_command_is_refused_with_the_list_of_commands(self):
         err = self.omni("bake(a, b)", expect=1).stderr
         self.assertIn("there is no command called bake", err)
-        self.assertIn("draw, cmd, file, python", err)
+        for command in ("draw", "draw_gui", "draw_gui.button",
+                        "draw_gui.window_size", "cmd", "file", "python"):
+            self.assertIn(command, err)
         self.assertIn("^", err)
+
+    def test_an_unknown_draw_gui_subcommand_is_refused(self):
+        err = self.omni("draw_gui.frobnicate(1)", expect=1).stderr
+        self.assertIn("draw_gui has no '.frobnicate'", err)
+        self.assertIn(".button", err)
+        self.assertIn(".window_size", err)
 
     def test_an_element_outside_draw_is_refused(self):
         self.assertIn("only belongs inside draw()",
@@ -93,9 +101,50 @@ class LanguageTests(OmniCase):
         err = self.omni("cmd(\"echo hi\") ;", expect=1).stderr
         self.assertIn("cannot read ';'", err)
 
-    def test_the_only_import_is_python(self):
-        err = self.omni("import os", expect=1).stderr
-        self.assertIn("the only import is python", err)
+    def test_imports_work_like_python(self):
+        self.assertEqual("2\n", self.out('import math\npython("math.floor(2.9)")'))
+
+    def test_import_as_binds_the_alias(self):
+        self.assertEqual("3\n", self.out('import math as m\npython("m.ceil(2.1)")'))
+
+    def test_from_imports_bind_names(self):
+        self.assertEqual("4.0\n",
+                         self.out('from math import sqrt\npython("sqrt(16)")'))
+
+    def test_from_import_star_binds_public_names(self):
+        self.assertEqual("3\n", self.out(
+            'from math import *\npython("floor(3.7)")'))
+
+    def test_an_import_that_does_not_exist_is_refused(self):
+        err = self.omni("import no_such_module_xyz", expect=1).stderr
+        self.assertIn("could not import 'no_such_module_xyz'", err)
+
+    def test_a_from_import_of_nothing_is_refused(self):
+        err = self.omni("from math import no_such_name_xyz", expect=1).stderr
+        self.assertIn("'math' has no 'no_such_name_xyz' to import", err)
+
+    def test_from_needs_import_after_it(self):
+        err = self.omni("from math sqrt", expect=1).stderr
+        self.assertIn("expected 'import' after 'from math'", err)
+
+    def test_keyword_arguments_and_pairs(self):
+        out = self.out('draw(window(20, 10, "t"), rect(pos=(1, 1), size=(4, 4)), '
+                       'save("k.png"))')
+        self.assertIn("wrote k.png (20x10)", out)
+        self.assertTrue((self.tmp / "k.png").is_file())
+
+    def test_a_positional_after_a_keyword_is_refused(self):
+        self.assertIn("a positional argument after a keyword one",
+                      self.omni("draw(rect(x=1, 2))", expect=1).stderr)
+
+    def test_a_repeated_keyword_is_refused(self):
+        self.assertIn("got 'x=' twice",
+                      self.omni("draw(rect(x=1, x=2))", expect=1).stderr)
+
+    def test_an_unknown_keyword_is_refused_with_what_there_is(self):
+        err = self.omni('draw(save(foo="x"))', expect=1).stderr
+        self.assertIn("save() has no 'foo='", err)
+        self.assertIn("path", err)
 
     def test_strings_unescape(self):
         self.assertIn("a\nb", self.out('cmd("printf \'a\\\\nb\'")'))
@@ -237,6 +286,70 @@ class DrawTests(OmniCase):
             self.out(f'draw(rect(0, 0, 4, 4, {colour}), save("c.png"))')
 
 
+# ------------------------------------------------------------------ draw_gui
+class DrawGuiTests(OmniCase):
+    def test_window_size_sets_the_size(self):
+        out = self.out('draw_gui.window_size(200, 120, "Gui")')
+        self.assertIn('window size 200x120 "Gui"', out)
+
+    def test_window_size_takes_keywords_a_pair_or_a_string(self):
+        self.assertIn("100x60", self.out("draw_gui.window_size(size=(100, 60))"))
+        self.assertIn("110x70",
+                      self.out("draw_gui.window_size(width=110, height=70)"))
+        self.assertIn("320x200", self.out('draw_gui.window_size("320x200")'))
+        self.assertIn("130x90", self.out("draw_gui.window_size((130, 90))"))
+
+    def test_a_window_cannot_be_nothing(self):
+        self.assertIn("a window cannot be 0x10",
+                      self.omni("draw_gui.window_size(0, 10)", expect=1).stderr)
+
+    def test_a_button_reports_where_it_landed(self):
+        out = self.out('draw_gui.button(pos=(20, 30), text="Go")')
+        self.assertIn("added button 'Go' at (20, 30)", out)
+
+    def test_a_button_takes_positional_arguments_too(self):
+        out = self.out('draw_gui.button(20, 30, 150, 36, "Go")')
+        self.assertIn("added button 'Go' at (20, 30)", out)
+
+    def test_draw_gui_shows_the_queued_buttons(self):
+        out = self.out('draw_gui.window_size(64, 40, "g")\n'
+                       'draw_gui.button(pos=(4, 4), text="Go")\n'
+                       'draw_gui(save("gui.png"))')
+        self.assertIn("wrote gui.png (64x40)", out)
+        data = (self.tmp / "gui.png").read_bytes()
+        self.assertEqual(b"\x89PNG\r\n\x1a\n", data[:8])
+        self.assertEqual((64, 40), struct.unpack(">II", data[16:24]))
+
+    def test_draw_gui_with_nothing_shows_an_empty_window(self):
+        out = self.out('draw_gui.window_size(32, 24, "empty")\n'
+                       'draw_gui(save("empty.png"))')
+        self.assertIn("wrote empty.png (32x24)", out)
+
+    def test_draw_gui_uses_its_own_window_when_given_one(self):
+        out = self.out('draw_gui.window_size(200, 200, "ignored")\n'
+                       'draw_gui(window(48, 36, "kept"), save("w.png"))')
+        self.assertIn("wrote w.png (48x36)", out)
+
+    def test_a_gui_buttons_command_does_not_run_until_it_is_clicked(self):
+        self.out('draw_gui.button(pos=(2, 2), text="Go", '
+                 'action=file(create, "clicked.txt", "x"))\n'
+                 'draw_gui(save("gb.png"))')
+        self.assertFalse(self.exists("clicked.txt"))
+
+    def test_a_buttons_action_has_to_be_a_command(self):
+        err = self.omni('draw_gui.button(pos=(1, 1), text="Go", action="ls")',
+                        expect=1).stderr
+        self.assertIn("a button's action has to be a command", err)
+
+    def test_a_dotted_button_inside_draw_is_refused(self):
+        err = self.omni("draw(draw_gui.button(pos=(1, 1)))", expect=1).stderr
+        self.assertIn("is a command -- inside draw() write button(...)", err)
+
+    def test_window_size_works_as_an_element_too(self):
+        out = self.out('draw(window_size(40, 30, "e"), save("e.png"))')
+        self.assertIn("wrote e.png (40x30)", out)
+
+
 # ------------------------------------------------------------------------ cli
 class CliTests(OmniCase):
     def test_a_file_runs(self):
@@ -281,7 +394,8 @@ class FakeGitHub(http.server.BaseHTTPRequestHandler):
         base = f"http://127.0.0.1:{self.server.server_address[1]}"
         if self.path.endswith("/releases/latest"):
             names = sorted(p.name for p in FakeGitHub.root.iterdir() if p.is_file())
-            release = {"tag_name": "v1.0.0", "published_at": "2026-01-01T00:00:00Z",
+            release = {"tag_name": "v" + __import__("omniscript").VERSION,
+                       "published_at": "2026-01-01T00:00:00Z",
                        "assets": [{"name": n, "size": (FakeGitHub.root / n).stat().st_size,
                                    "browser_download_url": f"{base}/{n}"} for n in names]}
             self._send(json.dumps(release).encode(), "application/json")
@@ -366,8 +480,9 @@ class InstallerTests(unittest.TestCase):
         self.assertIn("sha256 verified", out)
         self.assertIn("is installed (release channel)", out)
         record = self.manifest()
+        import omniscript
         self.assertEqual("binary", record["mode"])
-        self.assertEqual("v1.0.0", record["release_tag"])
+        self.assertEqual(f"v{omniscript.VERSION}", record["release_tag"])
         self.assertFalse((self.prefix / "bin" / "omni").is_symlink())
         self.uninstall("--purge", expect=0)
 
