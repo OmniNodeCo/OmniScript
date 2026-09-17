@@ -102,7 +102,9 @@ def main(argv=None) -> int:
         source, name = args.inline, "-e"
     elif args.file:
         try:
-            with open(args.file, encoding="utf-8") as handle:
+            # utf-8-sig: a file saved with a byte-order mark (Windows editors
+            # still do this) reads the same as one saved without it.
+            with open(args.file, encoding="utf-8-sig") as handle:
                 source = handle.read()
         except OSError as err:
             print(f"omni: {err}", file=sys.stderr)

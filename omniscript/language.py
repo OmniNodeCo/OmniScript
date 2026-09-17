@@ -419,7 +419,10 @@ class Interpreter:
     # -- running
     def run(self, source: str, name: str = "<input>") -> None:
         self.name = name
-        self.source = source
+        # A pasted or piped program can carry a byte-order mark; files are
+        # already decoded with utf-8-sig, so this is only the backstop.
+        self.source = source[1:] if source.startswith("\ufeff") else source
+        source = self.source
         for statement in Parser(tokenize(source, name), source, name).parse():
             self.statement(statement)
 

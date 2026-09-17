@@ -361,6 +361,34 @@ class CliTests(OmniCase):
         err = run_omni(str(self.tmp / "nope.omni"), cwd=self.tmp, expect=1).stderr
         self.assertIn("nope.omni", err)
 
+    def test_a_file_saved_with_a_bom_runs(self):
+        program = self.tmp / "bom.omni"
+        program.write_bytes(b'\xef\xbb\xbfcmd("echo bom ok")\n')
+        proc = run_omni(str(program), cwd=self.tmp, expect=0)
+        self.assertIn("bom ok", proc.stdout)
+
+    def test_a_bom_pasted_inline_runs(self):
+        self.assertIn("bom ok", self.out('\ufeffcmd("echo bom ok")'))
+
+    def test_a_file_with_crlf_endings_runs(self):
+        program = self.tmp / "crlf.omni"
+        program.write_bytes(b'cmd("echo one")\r\ncmd("echo two")\r\n')
+        proc = run_omni(str(program), cwd=self.tmp, expect=0)
+        self.assertIn("one", proc.stdout)
+        self.assertIn("two", proc.stdout)
+
+    def test_an_empty_file_exits_quietly(self):
+        program = self.tmp / "empty.omni"
+        program.write_text("")
+        proc = run_omni(str(program), cwd=self.tmp, expect=0)
+        self.assertEqual("", proc.stdout)
+
+    def test_a_shebang_line_is_just_a_comment(self):
+        program = self.tmp / "bang.omni"
+        program.write_text('#!/usr/bin/env omni\ncmd("echo bang ok")\n')
+        proc = run_omni(str(program), cwd=self.tmp, expect=0)
+        self.assertIn("bang ok", proc.stdout)
+
     def test_update_is_a_command_and_not_a_file_to_run(self):
         proc = run_omni("update", "--check", "--api-url", "http://127.0.0.1:1/",
                         cwd=self.tmp)
