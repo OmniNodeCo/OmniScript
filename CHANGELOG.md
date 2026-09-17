@@ -3,6 +3,13 @@
 All notable changes to OmniScript, newest first. Versions are `MAJOR.MINOR.PATCH`;
 to install one in particular: `./install.sh --version 1.1.0`.
 
+## [1.1.2] - 2026-09-17
+
+Typing shell commands at the REPL prompt (`omni update`, `omni test.omni`)
+failed with a parse error. The REPL now runs `omni ...` lines in the session --
+files, `-e`, `--version` and `update` -- and understands bare `update`, `help`
+and `exit`. The banner points at `help`.
+
 ## [1.1.1] - 2026-09-17
 
 Scripts that Windows editors saved with a byte-order mark failed with a

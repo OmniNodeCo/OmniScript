@@ -10,12 +10,25 @@
 from __future__ import annotations
 
 import argparse
+import shlex
 import sys
 
 from . import VERSION
 from .language import Interpreter, OmniScriptError
 
-BANNER = f"OmniScript {VERSION} -- draw, draw_gui, cmd, file, python. Ctrl-D to finish."
+BANNER = (f"OmniScript {VERSION} -- draw, draw_gui, cmd, file, python. "
+          "'help' for help, Ctrl-D to finish.")
+
+REPL_HELP = """OmniScript in this session: draw(...), draw_gui(...), draw_gui.button(...),
+draw_gui.window_size(...), cmd(...), file(...), python(...). Also:
+  omni FILE      run a file in this session
+  omni -e CODE   run one line in this session
+  omni update    update OmniScript, then restart omni
+  update ...     the same update
+  help           this text
+  exit           leave (Ctrl-D works too)"""
+
+SHELL_NAMES = ("omni", "omniscript")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -53,6 +66,85 @@ def build_update_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def repl_shell(line: str, interp: Interpreter):
+    """Shell-style lines at the REPL: `omni ...`, `update`, `help`, `exit`.
+
+    Returns "run" when the line was handled here, "leave" to end the session,
+    and None when the line is OmniScript after all.
+    """
+    words = line.strip().split(None, 1)
+    first = words[0]
+    rest = words[1] if len(words) > 1 else ""
+    if first in ("exit", "quit") and not rest:
+        return "leave"
+    if first == "help" and not rest:
+        print(REPL_HELP)
+        return "run"
+    if first in SHELL_NAMES:
+        return repl_omni(rest, interp)
+    if first == "update":
+        try:
+            return repl_update(shlex.split(rest))
+        except ValueError as err:
+            print(f"omni: {err}", file=sys.stderr)
+            return "run"
+    return None
+
+
+def repl_omni(rest: str, interp: Interpreter) -> str:
+    """`omni ...` inside the REPL: the shell command line, run in this session."""
+    if not rest:
+        print("you are already in omni -- type an OmniScript command, or:\n"
+              "  omni FILE     run a file in this session\n"
+              "  omni -e CODE  run one line in this session\n"
+              "  omni update   update OmniScript (then restart omni)\n"
+              "  exit          leave (Ctrl-D works too)")
+        return "run"
+    try:
+        args = shlex.split(rest)
+    except ValueError as err:
+        print(f"omni: {err}", file=sys.stderr)
+        return "run"
+    if args and args[0] == "update":
+        return repl_update(args[1:])
+    try:
+        parsed = build_parser().parse_args(args)
+    except SystemExit:
+        return "run"                               # argparse already said why
+    if parsed.version:
+        print(f"OmniScript {VERSION}")
+        return "run"
+    if parsed.inline is not None:
+        source, name = parsed.inline, "-e"
+    elif parsed.file:
+        try:
+            with open(parsed.file, encoding="utf-8-sig") as handle:
+                source = handle.read()
+        except OSError as err:
+            print(f"omni: {err}", file=sys.stderr)
+            return "run"
+        name = parsed.file
+    else:
+        print("usage: omni FILE | omni -e CODE | omni update | omni --version")
+        return "run"
+    try:
+        interp.run(source, name)
+    except OmniScriptError as err:
+        print(err, file=sys.stderr)
+    return "run"
+
+
+def repl_update(argv: list) -> str:
+    """`update ...` inside the REPL: the same updater the shell runs."""
+    from . import update
+    try:
+        parsed = build_update_parser().parse_args(argv)
+    except SystemExit:
+        return "run"                               # argparse already said why
+    update.run(parsed)
+    return "run"
+
+
 def repl(interp: Interpreter) -> int:
     try:
         import readline                              # noqa: F401 - history and editing
@@ -76,6 +168,12 @@ def repl(interp: Interpreter) -> int:
             continue
         if pending.count("(") > pending.count(")"):
             continue                                 # a call that is not finished yet
+        action = repl_shell(pending, interp)
+        if action == "leave":
+            return 0
+        if action == "run":
+            pending = ""
+            continue
         try:
             interp.run(pending, "<repl>")
         except OmniScriptError as err:

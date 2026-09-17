@@ -400,6 +400,36 @@ class CliTests(OmniCase):
                               capture_output=True, text=True, timeout=120, cwd=str(self.tmp))
         self.assertIn("repl", proc.stdout)
 
+    def test_the_repl_runs_omni_lines_in_session(self):
+        program = self.tmp / "t.omni"
+        program.write_text('cmd("echo from a file")\n')
+        script = (f"omni {program}\n"
+                  "omni -e 'cmd(\"echo inline\")'\n"
+                  "omni --version\n"
+                  "help\n"
+                  "omni\n"
+                  "import math\n"
+                  "omni -e 'python(\"math.floor(2.9)\")'\n"
+                  "exit\n")
+        proc = subprocess.run([sys.executable, str(LAUNCHER)], input=script,
+                              capture_output=True, text=True, timeout=120,
+                              cwd=str(self.tmp))
+        self.assertEqual(0, proc.returncode)
+        for want in ("from a file", "inline", "OmniScript", "run a file",
+                     "already in omni", "2\n"):
+            self.assertIn(want, proc.stdout)
+
+    def test_the_repl_survives_bad_omni_lines(self):
+        proc = subprocess.run(
+            [sys.executable, str(LAUNCHER)],
+            input="omni nope.omni\nomni update --bogus\n"
+                  "update --check --api-url http://127.0.0.1:1/\n",
+            capture_output=True, text=True, timeout=120, cwd=str(self.tmp))
+        self.assertEqual(0, proc.returncode)
+        self.assertIn("nope.omni", proc.stderr)
+        self.assertIn("unrecognized arguments", proc.stderr)
+        self.assertIn("could not reach", proc.stdout + proc.stderr)
+
 
 # ------------------------------------------------------- a published release
 class FakeGitHub(http.server.BaseHTTPRequestHandler):

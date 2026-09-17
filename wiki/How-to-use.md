@@ -34,7 +34,7 @@ did, and writes `hello.png` next to it. Other ways to run:
 |---|---|
 | A file | `omni hello.omni` |
 | One line | `omni -e 'cmd("echo hi")'` |
-| Interactive | `omni` (a REPL; Ctrl-D to leave) |
+| Interactive | `omni` (a REPL — `omni file.omni` and `omni update` work inside too; `exit` or Ctrl-D to leave) |
 | Directly | `chmod +x hello.omni` with `#!/usr/bin/env omni` on the first line |
 
 Paths in a script are relative to **where you run `omni`**, so run it from the
