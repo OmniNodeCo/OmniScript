@@ -664,8 +664,13 @@ int update_main(int argc, char **argv) {
         version = pos[0];
     if (npos > 1)
         channel = pos[1];
-    if (npos > 2)
-        target = pos[2];
+    if (npos > 2) {
+        if (npos == 3 && strchr(pos[2], '/')) {
+            repo = pos[2];
+        } else {
+            target = pos[2];
+        }
+    }
     if (npos > 3)
         repo = pos[3];
     if (version && strcmp(version, "latest") != 0) {
