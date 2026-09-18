@@ -1,6 +1,7 @@
 # OmniScript: one binary, libc only.
 VERSION := $(shell cat VERSION 2>/dev/null || echo 0.0.0)
-CC ?= cc
+# Find a C compiler: cc, gcc, clang in that order
+CC ?= $(shell command -v cc 2>/dev/null || command -v gcc 2>/dev/null || command -v clang 2>/dev/null || echo cc)
 CFLAGS ?= -O2
 CFLAGS += -std=c11 -Wall -Wextra -DOMNI_VERSION=\"$(VERSION)\"
 PREFIX ?= /usr/local

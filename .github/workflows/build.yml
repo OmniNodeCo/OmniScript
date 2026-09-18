@@ -228,6 +228,8 @@ jobs:
           $env:HOME = $fakeHome; $env:USERPROFILE = $fakeHome
           $env:XDG_DATA_HOME = Join-Path $fakeHome "data"
           $env:LOCALAPPDATA = Join-Path $fakeHome "appdata"
+          # Ensure a C compiler is visible to make on Windows
+          foreach ($c in @('gcc','clang','cc')) { if (Get-Command $c -ErrorAction SilentlyContinue) { $env:CC = $c; Write-Host "using compiler $c"; break } }
           $bin = if ($IsWindows) { $prefix } else { Join-Path $prefix "bin" }
           $omni = if ($IsWindows) { Join-Path $bin "omni.cmd" } else { Join-Path $bin "omni" }
           $out = (& ./install.ps1 -Prefix $prefix *>&1 | Out-String); Write-Host $out

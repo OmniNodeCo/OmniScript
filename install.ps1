@@ -559,6 +559,11 @@ foreach ($candidate in @('make', 'gmake', 'mingw32-make')) {
 if (-not $makeName) {
     Stop-Die 'the beta channel builds OmniScript from source and needs make; install it (or a C toolchain) and re-run, or use -Channel release'
 }
+$ccName = $null
+foreach ($candidate in @('gcc','clang','cc','cl')) {
+    if (Get-Command $candidate -ErrorAction SilentlyContinue) { $ccName = $candidate; break }
+}
+if ($ccName) { $env:CC = $ccName; Write-Note "using compiler $ccName" }
 $versionFile = Join-Path $Source 'VERSION'
 if (Test-Path -LiteralPath $versionFile) {
     $OmniVersion = ((Get-Content -LiteralPath $versionFile -TotalCount 1) -join '').Trim()
