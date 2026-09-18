@@ -26,14 +26,18 @@ jobs:
           cat VERSION
           grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' VERSION
       - name: C builds clean with -Wall -Wextra
+        shell: bash
         run: |
           set -euo pipefail
           make clean
           make NO_GUI=1
           ./omni --version
+          ./omni -e 'cmd("echo lint ok")'
           make clean
           make
           ./omni --version
+          ./omni -e 'draw(window(10,10), save("lint.bmp"))'
+          test -f lint.bmp
       - name: Workflows parse
         run: |
           set -euo pipefail
@@ -54,6 +58,7 @@ jobs:
               print(f"yaml ok -- {path.name}: {', '.join(jobs)}")
           PY
       - name: Shell scripts parse
+        shell: bash
         run: |
           set -euo pipefail
           bash -n install.sh
@@ -85,18 +90,30 @@ jobs:
         os: ["ubuntu-latest", "macos-latest"]
     steps:
       - uses: actions/checkout@v7
+      - name: Install X11 dev on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y libx11-dev || true
       - name: Build omni
         shell: bash
         run: |
           set -euo pipefail
           if command -v make >/dev/null 2>&1; then MK=make; elif command -v mingw32-make >/dev/null 2>&1; then MK=mingw32-make; else MK=gmake; fi
           $MK
-          if [ -f ./omni.exe ]; then ./omni.exe --version; else ./omni --version; fi
+          if [ -f ./omni.exe ]; then BIN=./omni.exe; else BIN=./omni; fi
+          "$BIN" --version
+          "$BIN" -e 'cmd("echo build ok")'
       - name: Test suite (91 checks)
         shell: bash
         run: |
+          set -euo pipefail
           if [ -f ./omni.exe ]; then BIN=./omni.exe; else BIN=./omni; fi
-          sh tests/run.sh "$BIN"
+          echo "Running $BIN"
+          sh tests/run.sh "$BIN" 2>&1 | tee test-output.txt
+          echo "--- test-output.txt ---"
+          cat test-output.txt
       - name: Every example runs
         shell: bash
         run: |
@@ -104,7 +121,8 @@ jobs:
           if [ -f ./omni.exe ]; then BIN=./omni.exe; else BIN=./omni; fi
           for f in examples/*.omni; do
             echo "::group::$f"
-            "$BIN" "$f" < tests/example_input.txt || "$BIN" "$f"
+            # All examples get example_input.txt on stdin; those that don't need input ignore it
+            "$BIN" "$f" < tests/example_input.txt
             echo "::endgroup::"
           done
       - name: BMP is a real BMP
@@ -114,12 +132,11 @@ jobs:
           if [ -f ./omni.exe ]; then BIN=./omni.exe; else BIN=./omni; fi
           "$BIN" -e 'draw(window(48, 32, "ci"), rect(0, 0, 48, 32, "#1f6feb"), circle(24, 16, 10, white), text(4, 4, "ci", black, 10), save("ci-check.bmp"))'
           test -f ci-check.bmp
-          od -A n -c -N 2 ci-check.bmp | grep -q "B.*M"
-          # width at 18, height at 22 little-endian
+          ls -l ci-check.bmp
           python3 - <<'PY'
-          import struct
-          data=open("ci-check.bmp","rb").read()
-          assert data[:2]==b"BM"
+          import struct, pathlib
+          data=pathlib.Path("ci-check.bmp").read_bytes()
+          assert data[:2]==b"BM", data[:2]
           w=struct.unpack("<I", data[18:22])[0]
           h=struct.unpack("<I", data[22:26])[0]
           size=struct.unpack("<I", data[2:6])[0]
@@ -127,6 +144,13 @@ jobs:
           assert size==len(data), (size,len(data))
           print(f"BMP ok -- {w}x{h}, {len(data)} bytes")
           PY
+      - name: Upload test output on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-output-${{ matrix.os }}
+          path: test-output.txt
+          retention-days: 3
       - name: Upload example BMPs
         if: always()
         uses: actions/upload-artifact@v7
@@ -148,6 +172,12 @@ jobs:
         os: ["ubuntu-latest", "windows-latest"]
     steps:
       - uses: actions/checkout@v7
+      - name: Install X11 dev on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y libx11-dev || true
       - name: PowerShell scripts parse
         shell: pwsh
         run: |
@@ -160,6 +190,7 @@ jobs:
           }
       - name: install.sh then uninstall.sh
         if: runner.os != 'Windows'
+        shell: bash
         run: |
           set -euo pipefail
           root="$RUNNER_TEMP/installer-check"
@@ -167,13 +198,19 @@ jobs:
           mkdir -p "$root/home" "$root/prefix"
           export HOME="$root/home"
           export XDG_DATA_HOME="$root/home/data"
-          ./install.sh --prefix "$root/prefix"
+          echo "HOME=$HOME XDG_DATA_HOME=$XDG_DATA_HOME"
+          ./install.sh --prefix "$root/prefix" 2>&1 | tee "$root/install.log"
+          cat "$root/install.log"
           test -x "$root/prefix/bin/omni" || test -L "$root/prefix/bin/omni"
           test -f "$root/home/data/omniscript/install.txt"
+          cat "$root/home/data/omniscript/install.txt"
           "$root/prefix/bin/omni" --version
           "$root/prefix/bin/omni" -e 'cmd("echo installed by CI")'
-          ./install.sh --prefix "$root/prefix" | grep -q "already"
-          ./uninstall.sh --prefix "$root/prefix" --purge
+          ./install.sh --prefix "$root/prefix" 2>&1 | tee "$root/reinstall.log"
+          cat "$root/reinstall.log"
+          grep -q "already" "$root/reinstall.log"
+          ./uninstall.sh --prefix "$root/prefix" --purge 2>&1 | tee "$root/uninstall.log"
+          cat "$root/uninstall.log"
           test ! -e "$root/prefix/bin/omni"
           test ! -e "$root/home/data/omniscript"
           test -f src/main.c
@@ -182,7 +219,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          function Fail($what,$detail){ Write-Host "::error::$what -- $detail"; throw $what }
+          function Fail($what,$detail){ Write-Host "::error::$what"; Write-Host $detail; throw $what }
           $root = Join-Path $env:RUNNER_TEMP "installer-check-ps"
           Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
           $fakeHome = Join-Path $root "home"
@@ -215,6 +252,12 @@ jobs:
         os: ["ubuntu-latest", "windows-latest", "macos-latest"]
     steps:
       - uses: actions/checkout@v7
+      - name: Install X11 dev on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y libx11-dev || true
       - name: Build omni
         shell: bash
         run: |
@@ -230,18 +273,21 @@ jobs:
         run: |
           set -euo pipefail
           ver="$(cat VERSION)"
-          tag="$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | tr '[:upper:]' '[:lower:]')"
-          case "$tag" in
+          uname_s="$(uname -s)"
+          uname_m="$(uname -m)"
+          os_lc="$(echo "$uname_s" | tr '[:upper:]' '[:lower:]')"
+          arch_lc="$(echo "$uname_m" | tr '[:upper:]' '[:lower:]')"
+          case "$os_lc" in
             linux*) os=linux ;;
             darwin*|mac*) os=macos ;;
             mingw*|msys*|cygwin*) os=windows ;;
-            *) os="$tag" ;;
+            *) os="$os_lc" ;;
           esac
-          arch="$(uname -m | tr '[:upper:]' '[:lower:]')"
-          case "$arch" in
+          case "$arch_lc" in
             x86_64|amd64) arch=x86_64 ;;
             aarch64|arm64) arch=arm64 ;;
             i386|i686) arch=x86 ;;
+            *) arch="$arch_lc" ;;
           esac
           plat="${os}-${arch}"
           suffix=""; case "${{ matrix.os }}" in *windows*) suffix=".exe" ;; esac
@@ -249,11 +295,10 @@ jobs:
           if [ -f omni.exe ]; then bin=omni.exe; else bin=omni; fi
           name="omni-${plat}${suffix}"
           cp "$bin" "dist/$name"
-          # checksum per binary
           if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum "dist/$name" | cut -d' ' -f1 > "dist/$name.sha256"
+            sha256sum "dist/$name" | awk '{print $1}' > "dist/$name.sha256"
           else
-            shasum -a 256 "dist/$name" | cut -d' ' -f1 > "dist/$name.sha256"
+            shasum -a 256 "dist/$name" | awk '{print $1}' > "dist/$name.sha256"
           fi
           ls -l dist/
           cat "dist/$name.sha256"
