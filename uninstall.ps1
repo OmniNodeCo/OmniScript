@@ -1,12 +1,12 @@
 # Uninstall OmniScript on Windows (and anywhere else pwsh runs).
 #
-#   .\uninstall.ps1                 # take out the commands
+#   .\uninstall.ps1                 # take out the command
 #   .\uninstall.ps1 -DryRun         # show what would go
 #   .\uninstall.ps1 -Purge          # ...plus the REPL history, a cloned source
 #                                   #    tree, and the manifest itself
 #
 # This works from the manifest install.ps1 wrote, so it removes exactly what was
-# installed -- a downloaded executable as readily as a shim into a source tree.
+# installed -- a downloaded executable as readily as a link into a source tree.
 # It never deletes a source tree you cloned
 # yourself, and it will not remove a command it cannot prove it created: use
 # -Force for that, and read what it says first.
@@ -36,6 +36,11 @@ function Invoke-OrShow {
     param([scriptblock]$Block, [string]$Description)
     if ($DryRun) { Write-Note "[dry-run] $Description" } else { & $Block }
 }
+function Test-SourceTree {
+    param([string]$Dir)
+    return ($Dir -and (Test-Path -LiteralPath (Join-Path $Dir 'Makefile')) -and
+        (Test-Path -LiteralPath (Join-Path $Dir 'src/main.c')))
+}
 
 if ($Help) {
     @'
@@ -44,7 +49,7 @@ Usage: uninstall.ps1 [options]
   -Prefix DIR      install root that was used     [see install.ps1]
   -Purge           also remove the REPL history, a source tree the installer
                    cloned, and the manifest
-  -Force           remove commands even when they do not look like ours
+  -Force           remove the command even when it does not look like ours
   -DryRun          print what would be removed and remove nothing
   -Help            this text
 '@ | Write-Host
@@ -54,8 +59,8 @@ Usage: uninstall.ps1 [options]
 if (-not $Prefix) {
     if ($IsWin) {
         $local = $env:LOCALAPPDATA
-        if (-not $local) { $local = Join-Path $env:USERPROFILE 'AppData\Local' }
-        $Prefix = Join-Path $local 'Programs\OmniScript'
+        if (-not $local) { $local = Join-Path $env:USERPROFILE 'AppData\\Local' }
+        $Prefix = Join-Path $local 'Programs\\OmniScript'
         $DataDir = Join-Path $local 'OmniScript'
     } else {
         $Prefix = Join-Path $env:HOME '.local'
@@ -64,7 +69,7 @@ if (-not $Prefix) {
 } else {
     if ($IsWin) {
         $local = $env:LOCALAPPDATA
-        if (-not $local) { $local = Join-Path $env:USERPROFILE 'AppData\Local' }
+        if (-not $local) { $local = Join-Path $env:USERPROFILE 'AppData\\Local' }
         $DataDir = Join-Path $local 'OmniScript'
     } else {
         $DataDir = if ($env:XDG_DATA_HOME) { Join-Path $env:XDG_DATA_HOME 'omniscript' } else { Join-Path $env:HOME '.local/share/omniscript' }
@@ -73,8 +78,8 @@ if (-not $Prefix) {
 if ($IsWin) { $Bin = $Prefix } else { $Bin = Join-Path $Prefix 'bin' }
 $Manifest = Join-Path $DataDir 'install.txt'
 
-# The manifest is one key=value per line, with a repeated line for each command
-# and each editor extension -- the same file install.sh writes and reads with sed.
+# The manifest is one key=value per line, with a repeated line per installed
+# command -- the same file install.sh writes and reads with sed.
 $MVersion = ''; $MMode = ''; $MChannel = ''; $MSource = ''
 $MBinary = ''; $MCloned = $false
 $MHistory = Join-Path $(if ($IsWin) { $env:USERPROFILE } else { $env:HOME }) '.omniscript_history'
@@ -106,9 +111,10 @@ if (Test-Path -LiteralPath $Manifest) {
 }
 
 if ($MCommands.Count -eq 0) {
-    foreach ($name in @('omni', 'omniscript')) {
-        $MCommands += $(if ($IsWin) { Join-Path $Bin "$name.cmd" } else { Join-Path $Bin $name })
-    }
+    # No manifest, so guess: on Windows the command is either a .cmd shim from
+    # the beta channel or an omni.exe from the release channel.
+    $MCommands += $(if ($IsWin) { Join-Path $Bin 'omni.cmd' } else { Join-Path $Bin 'omni' })
+    if ($IsWin) { $MCommands += Join-Path $Bin 'omni.exe' }
 }
 
 $Removed = 0
@@ -127,21 +133,17 @@ function Test-Ours {
         if ($MSource -and $target.StartsWith($MSource)) { return $true }
         if (-not $MSource) {
             # No manifest roots to compare with: trust a link into an OmniScript tree.
-            if (Test-Path (Join-Path (Split-Path $target -Parent) 'omniscript/cli.py')) { return $true }
+            if (Test-SourceTree (Split-Path $target -Parent)) { return $true }
         }
         return $false
     }
     $head = (Get-Content -LiteralPath $Path -TotalCount 8 -ErrorAction SilentlyContinue) -join "`n"
     if ($MSource -and $head -match [regex]::Escape($MSource)) { return $true }
-    # A generated console script imports the entry point by name.
-    if ($head -match 'from omniscript\.cli import main' -or $head -match 'omniscript\.cli:main') {
-        return $true
-    }
-    # No manifest to compare with: a shim we wrote quotes the launcher it runs,
+    # No manifest to compare with: a shim we wrote quotes the binary it runs,
     # so see whether any path in it lives beside an OmniScript source tree.
     foreach ($match in [regex]::Matches($head, '"([^"]+)"')) {
         $dir = Split-Path $match.Groups[1].Value -Parent
-        if ($dir -and (Test-Path (Join-Path $dir 'omniscript/cli.py'))) { return $true }
+        if ($dir -and (Test-SourceTree $dir)) { return $true }
     }
     return $false
 }
@@ -159,14 +161,14 @@ function Remove-Item-IfOurs {
     $script:Removed += 1
 }
 
-# --------------------------------------------------------- commands
-Write-Info 'Removing the commands'
+# --------------------------------------------------------- command
+Write-Info 'Removing the command'
 foreach ($path in $MCommands) {
     Remove-Item-IfOurs -Path $path -What 'command'
 }
-foreach ($name in @('omni', 'omniscript')) {
-    $bak = Join-Path $Bin $(if ($IsWin) { "$name.cmd.bak" } else { "$name.bak" })
-    if (Test-Path $bak) { Write-Note "a backup of your previous $name is still at $bak" }
+foreach ($name in @('omni.cmd.bak', 'omni.exe.bak', 'omni.bak')) {
+    $bak = Join-Path $Bin $name
+    if (Test-Path $bak) { Write-Note "a backup of your previous command is still at $bak" }
 }
 
 # ---------------------------------------------------- a downloaded executable

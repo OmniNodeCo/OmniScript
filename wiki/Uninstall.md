@@ -1,33 +1,33 @@
 # Uninstall
 
-Takes out exactly what the installer put in — commands, downloaded executable,
-manifest — and nothing else. A source tree you cloned yourself is never
-deleted.
+Removes exactly what install.sh/install.ps1 put there, using the manifest `~/.local/share/omniscript/install.txt`.
 
 ## Linux and macOS
 
 ```bash
-./uninstall.sh                 # take out the commands
-./uninstall.sh --purge         # ...and the REPL history, a cloned source tree, the manifest
-./uninstall.sh --dry-run       # show what would go, remove nothing
-```
-
-No checkout handy? The release channel one-liner works without one:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/uninstall.sh | bash -s -- --purge
+./uninstall.sh
+./uninstall.sh --purge   # also history, cloned source, manifest
+./uninstall.sh --dry-run
 ```
 
 ## Windows
 
 ```powershell
+.\uninstall.ps1
 .\uninstall.ps1 -Purge
+.\uninstall.ps1 -DryRun
 ```
 
-## Safety rules
+The script never deletes a source tree you cloned yourself; only one it cloned under the data dir. A foreign `omni` (not ours) needs `--force` / `-Force`.
 
-- Only paths the manifest lists are removed. A command the installer cannot
-  prove it created is left alone (use `--force` / `-Force` to take it anyway —
-  read what it says first).
-- A `.bak` copy of anything the installer moved aside is left next to it.
-- `pip uninstall omniscript-lang` removes only the `pip install .` kind.
+Backups from `--force` installs stay as `omni.bak` / `omni.exe.bak` / `omni.cmd.bak`.
+
+After purge, to put release back:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/install.sh | bash
+```
+
+```powershell
+iwr -use1 https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/install.ps1 | iex
+```

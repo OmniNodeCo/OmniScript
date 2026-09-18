@@ -1,10 +1,9 @@
-# draw() paints a picture. On a machine with a screen it opens a window;
-# anywhere else -- a server, CI -- the same picture is written as a PNG.
-
-draw(window(480, 300, "OmniScript"),
-     rect(0, 0, 480, 52, "#161b22"),
-     text(16, 16, "OmniScript: draw, cmd, file, python", white, 16),
-     circle(120, 170, 60, blue),
-     circle(300, 170, 60, green),
-     line(0, 299, 480, 299, red, 2),
-     save("hello.png"))
+# Shapes, colors, and words. With no window around, this becomes a file.
+draw(
+    window(320, 200, "Sunny", "#87ceeb"),
+    circle(160, 90, 40, gold),
+    rect(0, 150, 320, 50, green),
+    line(0, 150, 320, 150, brown, 3),
+    text(90, 20, "A fine day", white, 21),
+    save("sunny.bmp")
+)

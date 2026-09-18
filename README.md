@@ -1,32 +1,44 @@
-# OmniScript
+# OmniScript 1.0.0 — native, no Python
 
 [![build](https://github.com/OmniNodeCo/OmniScript/actions/workflows/build.yml/badge.svg)](https://github.com/OmniNodeCo/OmniScript/actions/workflows/build.yml)
 
-A language with four commands for drawing things. Imports work like Python,
-`draw()` draws anything, and `draw_gui` puts buttons in a window:
+OmniScript is a tiny language for drawing and automating things. **This is the native rewrite: one C binary, libc only, no Python, no libraries.** Everything is custom:
 
-```
-import math                   # imports work like Python
-from math import sqrt
+- lexer, parser, evaluator in C with arena allocation
+- pixel canvas, shapes (rect, circle, line), 5×7 font drawn by hand, BMP writer with no zlib
+- hardware windows: X11 on Linux, Win32 GDI on Windows, headless fallback writes `drawing.bmp`
+- updater with its own SHA-256 and minimal JSON parser, `curl` for transport, checksum enforced
+- `cmd()` captures stdout and stderr separately via `poll()` + dual pipes, `file()` and `input()` native
 
-draw(window(640, 400, "Demo"),  # a picture: a window, or a real one on screen
-     rect(0, 0, 640, 60, "#161b22"),
-     text(20, 20, "Hello, OmniScript", white, 18),
-     circle(320, 240, 80, blue),
-     save("hello.png"))
+```omni
+draw(
+    window(640, 400, "Demo"),
+    rect(0, 0, 640, 60, "#161b22"),
+    text(20, 20, "Hello, native OmniScript", white, 18),
+    circle(320, 220, 80, blue),
+    save("hello.bmp")
+)
 
 draw_gui.window_size(640, 400, "Demo")
-draw_gui.button(pos=(20, 300), text="List files", action=cmd("ls -la"))
-draw_gui()                    # show the window
+draw_gui.button(20, 300, 140, 36, "List files", action=cmd("ls -la"))
+draw_gui()
 ```
 
-A program is a list of commands. Each one says what it did. There are no
-variables, no loops and nothing to define — a bare word is worth its own name,
-which is how `create`, `background` and `blue` reach a command without quotes.
+A program is a list of commands. Each says what it did. There are no variables or loops — a bare word is its own name, which is how `create`, `background`, `red`, `blue` reach a command without quotes.
 
-`cmd()`, `file()` and `python()` are still there for everything else: shell
-commands, files, and anything Python can do. See [the changelog](CHANGELOG.md)
-for what is new, and [the wiki](../../wiki) for the full guides.
+## Commands
+
+- `draw(...)` — elements: `window(w, h, title, bg)`, `window_size(...)`, `rect(x, y, w, h, color)`, `circle(x, y, r, color)`, `line(x1, y1, x2, y2, color, width)`, `text(x, y, msg, color, size)`, `button(x, y, w, h, label, action=...)`, `save(path)`. With a display it opens a real window; without one it writes a BMP.
+- `draw_gui.window_size(...)` — `window_size(800, 600)`, `window_size("800x600")`, `window_size((800, 600))`, or keywords `width=`, `height=`, `title=`, `background=` / `bg=` / `color=`.
+- `draw_gui.button(...)` — `button(pos=(20, 30), text="Go", action=cmd("echo hi"))`. `pos=(x,y)`, `size=(w,h)`, `action=` / `command=` / `on_click=` / `do=` is the command kept for click. Also positional: `button(20, 30, 120, 32, "Go", cmd("..."))`.
+- `draw_gui(...)` — shows the queued buttons plus its own elements. `save("gui.bmp")` writes a BMP instead.
+- `cmd(...)` — shell command. `cmd(background, "sleep 10")` detaches. Prints combined output, says exit code if non-zero, returns pid/code.
+- `file(...)` — `file(create, "a.txt", "hi")`, `file(edit, "a.txt", "old", "new")`, `file(delete, "a.txt")`. Creates parents, refuses overwrite on create.
+- `input(...)` — `input("Name: ")` or `input(prompt="Name: ")`. Prints `typed: ...` and returns the line.
+
+Keywords work everywhere: `rect(x=0, y=0, color=blue)`, `rect(pos=(0,0), size=(64,40))`, `line(from=(0,0), to=(9,9), thickness=3)`. Colors: `#rrggbb`, `#rgb`, or names: black, white, red, green, blue, yellow, orange, purple, pink, cyan, teal, navy, grey/gray, silver, gold, brown, lime, maroon, olive.
+
+Errors point at the line with a caret.
 
 ## Install
 
@@ -38,26 +50,21 @@ curl -fsSL https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/install.
 iwr -use1 https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/install.ps1 | iex
 ```
 
-That takes the file built for your machine from the newest release, checks its
-sha256 and puts `omni` and `omniscript` on your PATH. No Python needed. Two
-channels: **release** (the default, this page's releases) and **beta**
-(`-s beta`, the repository — `git pull` is then the upgrade, and it wants
-Python 3.10+). `--version` pins one release, `--dry-run` shows the plan and
-touches nothing, `uninstall.sh` takes the whole thing back out.
+That takes the binary built for your machine from the newest release, verifies its `.sha256`, and puts `omni` on PATH. Channels: **release** (default) and **beta** (`-s beta`, builds from source with `cc` and `make`). `--version` pins a release, `--dry-run` shows the plan.
 
-From a clone, there is nothing to build:
+From a clone:
 
 ```bash
 git clone https://github.com/OmniNodeCo/OmniScript
 cd OmniScript
-./omni                          # a REPL
-./omni hello.omni               # a file
-./omni -e 'cmd("echo hi")'      # one line
+make
+./omni --version
+./omni examples/03_drawing.omni
+./omni -e 'cmd("echo hi")'
+./omni   # REPL
 ```
 
-A virtual environment or a system-wide install is plain `pip install .`.
-
-To remove it again:
+To remove:
 
 ```bash
 ./uninstall.sh --purge
@@ -67,57 +74,35 @@ To remove it again:
 .\uninstall.ps1 -Purge
 ```
 
-## The four commands
-
-**`import ...`** works like Python: `import math`, `import os as o`,
-`from math import sqrt`. Whatever you import is waiting for you inside
-`python()`, and any import enables `python()`. (`import python` still works
-exactly as before.)
-
-**`draw(...)`** takes a list of elements — `window(w, h, title, background)`,
-`rect(x, y, w, h, color)`, `circle(x, y, r, color)`, `line(x1, y1, x2, y2, color,
-width)`, `text(x, y, "s", color, size)`, `button(x, y, w, h, "label", action)` —
-and `save("file.png")`. With a screen, it opens a real window and the buttons
-run their action when clicked. Without one — a server, CI — the same picture is
-written as a PNG, drawn here in pure Python: no libraries, nothing to install.
-
-Elements also take keywords: `rect(pos=(0, 0), size=(64, 40), color=blue)`,
-`text(pos=(4, 4), text="hi", size=10)`, `line(from=(0, 0), to=(9, 9))`.
-
-**`draw_gui.window_size(...)`** sets the GUI window's size: `window_size(800,
-600)`, `window_size("800x600")`, `window_size(width=800, height=600,
-title="Demo")`. It says the size back.
-
-**`draw_gui.button(...)`** adds a button: `button(pos=(20, 30), text="List
-files", action=cmd("ls"))`. `pos=` is `(x, y)`, `size=` is `(width, height)`,
-and `action=` is the command that runs when the button is clicked — kept for
-later, never run now. Positional arguments work too:
-`button(20, 30, 150, 36, "List files", cmd("ls"))`.
-
-**`draw_gui(...)`** shows the window: the queued buttons plus whatever elements
-it is given, at the `window_size`. Give it `save("gui.png")` and it writes a
-PNG instead — the headless-friendly way, and how the examples keep CI moving.
-
-Colours take `#rrggbb`, `#rgb`, or a name: `red`, `green`, `blue`, `white`,
-`black`, `yellow`, `orange`, `purple`, `pink`, `cyan`, `grey` and a few more.
-
-Beyond the four: **`cmd(...)`** runs a shell command (`cmd(background, ...)`
-without waiting), **`file(create | edit | delete, path, ...)`** writes, edits
-and removes files, and **`python(...)`** runs Python once anything is imported.
-
 ## Update
 
 ```bash
-omni update --check     # what is published, what you have
-omni update             # fetch it, check the sha256, swap it in, prove it runs
-omni update -c beta     # follow the repository instead
+omni update --check
+omni update
+omni update 1.0.0 stable /tmp
 ```
+
+Update needs `curl` and refuses to install without a checksum.
 
 ## How it is put together
 
-`omniscript/language.py` is the lexer, the parser and the interpreter.
-`omniscript/draw.py` is the pixels, the shapes, the 3x5 font and the PNG
-writer, plus the tkinter window. `omniscript/cli.py` is the command line and
-the REPL. `omniscript/update.py` is `omni update`.
+- `src/lex.c`, `src/parse.c` — tokenizer and parser, BOM accepted, `#` comments, `"""` triple strings
+- `src/eval.c` — evaluator, built-ins, color parser, GUI queue, error `longjmp`
+- `src/draw.c` — canvas, 5×7 font (96 glyphs hand-drawn), BMP writer (24-bit, bottom-up, padded)
+- `src/gui_x11.c`, `src/gui_win32.c`, `src/gui_stub.c` — native windows
+- `src/sha256.c` — FIPS 180-4 SHA-256
+- `src/update.c` — release discovery via GitHub API, asset `omni-<os>-<arch>[.exe]` + `.sha256`, verified install
+- `src/main.c` — CLI, REPL with paren/triple-string tracking, `omni ...` inside REPL via shell-like split
+- `src/util.c` — arena, output, numbers
 
-Tests: `python -m unittest discover -s tests`.
+Tests: `make test` or `sh tests/run.sh ./omni` — 91 checks, no Python.
+
+## Examples
+
+- `01_first_steps.omni` — cmd + file
+- `02_asking.omni` — input
+- `03_drawing.omni` — shapes to BMP
+- `04_buttons.omni` — buttons to BMP
+- `05_background.omni` — background cmd
+- `06_gui.omni` — interactive window built line by line
+- `07_files.omni` — file lifecycle

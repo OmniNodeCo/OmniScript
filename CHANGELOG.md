@@ -1,70 +1,36 @@
 # Changelog
 
-All notable changes to OmniScript, newest first. Versions are `MAJOR.MINOR.PATCH`;
-to install one in particular: `./install.sh --version 1.1.0`.
+All notable changes, newest first. This is the native rewrite, starting at 1.0.0.
 
-## [1.1.2] - 2026-09-17
+## [1.0.0] - 2026-09-18
 
-Typing shell commands at the REPL prompt (`omni update`, `omni test.omni`)
-failed with a parse error. The REPL now runs `omni ...` lines in the session --
-files, `-e`, `--version` and `update` -- and understands bare `update`, `help`
-and `exit`. The banner points at `help`.
-
-## [1.1.1] - 2026-09-17
-
-Scripts that Windows editors saved with a byte-order mark failed with a
-cryptic `cannot read` error instead of running. Script files are now decoded
-so the mark is silently accepted, with a backstop in the interpreter for pasted
-or piped programs. CRLF endings, empty files and `#!` first lines are covered
-by tests.
-
-## [1.1.0] - 2026-09-17
-
-The four initial drawing commands: imports, `draw()`, `draw_gui.button()` and
-`draw_gui.window_size()`.
+Fresh start: no Python in the product.
 
 ### Added
 
-- **Imports work like Python.** `import math`, `import os as o`,
-  `import os, sys`, `from math import sqrt`, `from math import floor as f` and
-  `from math import *` all work. Whatever is imported is already bound inside
-  `python()`, so `python("print(sqrt(16))")` just runs.
-- **`draw_gui.window_size(...)`** sets the GUI window's size. It takes
-  `window_size(800, 600)`, `window_size("800x600")`, `window_size((800, 600))`
-  or keywords (`width=`, `height=`, `title=`, `background=`), and says the size
-  back. `window_size(...)` also works as an element inside `draw(...)`.
-- **`draw_gui.button(...)`** adds a button to the GUI: `button(pos=(20, 30),
-  text="List files", action=cmd("ls"))`. `pos=` is `(x, y)`, `size=` is
-  `(width, height)`, `action=` (also `command=`, `on_click=`) is the command
-  that runs on click. Positional arguments work as before. The action is kept
-  for the click and never runs early.
-- **`draw_gui(...)`** shows the window: the queued buttons plus any elements it
-  is given, at the `window_size`. With `save("gui.png")` it writes a PNG
-  instead, so GUI scripts run headless too.
-- **Keyword arguments and pairs everywhere.** Elements take `name=` keywords
-  (`rect(x=0, y=0, color=blue)`), and `(20, 30)` in value position is a pair:
-  `pos=(x, y)`, `size=(w, h)`, `from=(x1, y1)`, `to=(x2, y2)`.
+- **Native binary, libc only.** One `omni` binary built with `cc` + `make`, no dependencies. `VERSION` file is the single source of truth.
+- **Custom lexer/parser/evaluator** in C: arena allocation per statement, BOM accepted, `#` comments, `"""` triple-quoted strings, `name=value` keywords, `(a, b)` tuples, duplicate-keyword and positional-after-keyword errors.
+- **Canvas and BMP writer** — `canvas_new`, `canvas_rect`, `canvas_circle`, `canvas_line`, `canvas_text`, `img_write_bmp` (24-bit BMP, no zlib). 5×7 pixel font hand-drawn for all 96 printable ASCII.
+- **Hardware windows** — X11 backend (`-DHAVE_X11`, `-lX11`) with color allocation and button hit-testing, Win32 GDI backend (`-lgdi32`) with `CreateSolidBrush`/`Ellipse`/`LineTo`, and stub fallback that writes `drawing.bmp` when no display is present.
+- **Built-ins:** `draw()`, `draw_gui.window_size()`, `draw_gui.button()`, `draw_gui()`, `cmd()`, `file(create|edit|delete)`, `input()`. Keyword aliases (`w`/`h`/`bg`/`colour`/`fill`/`r`/`pos`/`size`/`from`/`to`/`msg`/`text`/`label`/`action`/`command`/`on_click`/`do=`), pair parsing (`pos=(10,20)`, `size="800x600"`), window-size unpacking.
+- **cmd() with true stderr capture** — POSIX dual pipes + `poll()` to avoid deadlock, background mode via `fork`+`setsid` or Win32 `DETACHED_PROCESS`, stdout and stderr both said.
+- **file()** creates parents, refuses existing on create, counts occurrences on edit.
+- **input()** with `prompt=` / `text=` / `msg=` keywords, `typed: ...` echo, EOF handling.
+- **Updater with own crypto** — `src/sha256.c` FIPS 180-4, `src/update.c` minimal JSON (string unescape, `\uXXXX` → UTF-8), repo validation to block shell injection, asset `omni-<os>-<arch>[.exe]` + `omni-...sha256`, mandatory checksum verification, `exe_path` via `/proc/self/exe` / `_NSGetExecutablePath` / `GetModuleFileNameA`.
+- **REPL** runs `omni ...` lines in-session (files, `-e`, `--version`, `update`) and bare `update`, `help`, `exit`, with paren/triple-string continuation and shell-like quoting. `help` lists language.
+- **Installers** rewritten for native: release channel downloads `omni-<os>-<arch>` + `.sha256`, verifies, installs one `omni` binary; beta channel builds with `cc`+`make`. Both PowerShell and bash versions parse cleanly, manifest is key=value, `--force` keeps `.bak`.
+- **Tests** — `tests/run.sh` 91 checks, POSIX sh, validates CLI, cmd capture (stdout+stderr, large interleaved), file lifecycle, input, lexer errors, removals (`import`/`python` removed in 1.0.0), draw with keyword aliases and BMP header validation (`BM` + dimensions + size field), draw_gui queue, REPL, update argument validation, and all examples.
+- **Examples** — 7 native `.omni` files covering cmd, input, drawing, buttons, background, gui, files.
+- **CI and release** — workflows build C on Linux/macOS/Windows, run test suite, exercise installers, build per-platform binaries, create `SHA256SUMS.txt` + per-binary `.sha256`, publish GitHub release.
 
-### Changed
+### Removed
 
-- Any import now enables `python()`; the error when there is none still points
-  at `import python`.
-- Drawing errors (a bad colour, a bad number) now point at the line with a
-  caret instead of a bare traceback.
-- The installer hint runs `omni -e 'cmd("echo hello")'`, which works, instead
-  of a `print()` OmniScript never had.
+- Python package `omniscript/`, `pyproject.toml`, `tools/build_executable.py`, PyInstaller, zipapp, wheel, sdist, `python()` built-in, `import`/`from ... import` statements.
+- Old wiki pages that described Python behavior.
 
-### Examples and docs
+### Fixed
 
-- New examples: `examples/06_gui.omni` (window size, three buttons, a PNG) and
-  `examples/07_imports.omni` (every import form).
-- New `wiki/` pages: Home, Install, Uninstall, the four commands, draw_gui,
-  imports and this changelog, synced to the GitHub wiki on every release.
-
-## [1.0.0] - 2026-09-16
-
-The first release: `draw()`, `cmd()`, `file()` and `python()` (after
-`import python`), a PNG-or-window renderer with clickable buttons, `omni
-update` on release and beta channels, `install.sh`/`install.ps1` and
-`uninstall.sh`/`uninstall.ps1`, and the release pipeline that builds the
-executables, the zipapp, the wheel and the sdist.
+- Font glyphs `g` and `q` previously indistinguishable from `9`; now have distinct descenders.
+- `longjmp` clobber warnings in `run_source` fixed by using `ip->source` directly.
+- `full_path` truncation warning fixed with bounded copy.
+- `RGB` macro missing paren in Win32 stub fixed.

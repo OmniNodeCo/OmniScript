@@ -1,8 +1,6 @@
 # Install
 
-One line, no Python needed. The installer takes the file built for your machine
-out of the newest release, checks its sha256, and puts `omni` and `omniscript`
-on your PATH.
+One line, no dependencies. The installer takes the binary built for your machine from the newest release, checks its `.sha256`, and puts `omni` on PATH.
 
 ## Linux and macOS
 
@@ -18,30 +16,21 @@ iwr -use1 https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/install.p
 
 ## Channels and options
 
-Two channels:
-
-- **release** (the default) — the newest published release. One file, no
-  Python needed.
-- **beta** (`-s beta` / `-Channel beta`) — the repository itself. Needs
-  Python 3.10+; `git pull` is then the upgrade.
+- **release** (default) — newest published release, one binary, libc only
+- **beta** (`-s beta` / `-Channel beta`) — repository itself, built with `cc` and `make`; `git pull` then `make` is the upgrade
 
 ```bash
-./install.sh --version 1.1.0   # a particular release
-./install.sh --dry-run         # show the plan, touch nothing
-./install.sh --prefix ~/.local # where the commands go (default)
+./install.sh --version 1.0.0   # a particular release
+./install.sh --dry-run         # show plan, touch nothing
+./install.sh --prefix ~/.local # where command goes (default)
 ```
 
-Every install is recorded in `~/.local/share/omniscript/install.txt`, which is
-what [[Uninstall]] reads. Re-installing over the same place is a no-op, not an
-error — unless something that is not ours sits where a command would go, in
-which case the installer says so and stops (`--force` moves it to `.bak`).
+Every install is recorded in `~/.local/share/omniscript/install.txt`, which [[Uninstall]] reads. Re-installing over same place is no-op unless foreign file sits there (`--force` moves to `.bak`).
 
 ## Other ways in
 
 ```bash
-pip install omniscript-lang==1.1.0   # a venv or system-wide
-python3 omni-1.1.0-any.pyz           # the zipapp from the release
-git clone https://github.com/OmniNodeCo/OmniScript && cd OmniScript && ./omni
+git clone https://github.com/OmniNodeCo/OmniScript && cd OmniScript && make && ./omni --version
 ```
 
 ## Check it worked
@@ -49,13 +38,14 @@ git clone https://github.com/OmniNodeCo/OmniScript && cd OmniScript && ./omni
 ```bash
 omni --version
 omni -e 'cmd("echo hello")'
-omni -e 'draw(window(200, 120, "hi"), circle(100, 60, 40, blue))'
+omni -e 'draw(window(200, 120, "hi"), circle(100, 60, 40, blue), save("hi.bmp"))'
 ```
 
 ## Keep it current
 
 ```bash
-omni update --check     # what is published, what you have
-omni update             # fetch it, check the sha256, swap it in, prove it runs
-omni update -c beta     # follow the repository instead
+omni update --check
+omni update
 ```
+
+Update needs `curl` and refuses install without checksum.

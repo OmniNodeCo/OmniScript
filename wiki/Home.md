@@ -1,32 +1,24 @@
-# OmniScript wiki
+# OmniScript — native 1.0.0
 
-OmniScript is a language with four commands for drawing things. This wiki is
-the manual; the [README](../README.md) is the one-page version.
+OmniScript is a tiny language for drawing and automating things. This is the native rewrite: **one C binary, libc only, no Python**.
 
-## Start here
+- [[Install]] — one line, verified binary
+- [[How-to-use]] — write and run scripts
+- [[Changelog]] — what changed
+- [[Uninstall]] — remove it
 
-- [[Install]] — `omni` on your PATH in one line
-- [[Four-Commands]] — the four initial commands, with examples
-- [[Draw-GUI]] — windows, buttons and `pos=`
-- [[Imports]] — imports work like Python
-- [[Uninstall]] — taking it all back out
-- [[Changelog]] — what changed in each version
-
-## The four commands, in ten lines
-
-```python
-import math                   # imports work like Python
-from math import sqrt
-
-draw(window(640, 400, "Demo"),  # draw(): draws anything
-     rect(0, 0, 640, 60, "#161b22"),
-     text(20, 20, "Hello, OmniScript", white, 18),
-     save("hello.png"))
+```
+draw(
+    window(640, 400, "Demo"),
+    rect(0, 0, 640, 60, "#161b22"),
+    text(20, 20, "Hello, native", white, 18),
+    circle(320, 220, 80, blue),
+    save("hello.bmp")
+)
 
 draw_gui.window_size(640, 400, "Demo")
-draw_gui.button(pos=(20, 300), text="List files", action=cmd("ls -la"))
-draw_gui()                    # show the window
+draw_gui.button(20, 300, 140, 36, "List files", action=cmd("ls -la"))
+draw_gui()
 ```
 
-Beyond the four, `cmd()` runs shell commands, `file()` writes/edits/deletes
-files, and `python()` runs Python once anything is imported.
+Commands: `draw`, `draw_gui.window_size`, `draw_gui.button`, `draw_gui`, `cmd`, `file`, `input`. No variables, no loops — a bare word is its own name.

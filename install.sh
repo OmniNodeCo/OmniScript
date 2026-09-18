@@ -2,25 +2,23 @@
 #
 # Install OmniScript.
 #
-#   ./install.sh              the newest release: one file, and no Python needed
-#   ./install.sh -s beta      the repository instead (needs Python 3.10+)
+#   ./install.sh              the newest release: one file, no dependencies
+#   ./install.sh -s beta      build the repository instead (needs cc and make)
 #   ./install.sh --version 1.0.0
 #   ./install.sh --dry-run    show what would happen and change nothing
 #
 # What it does: asks GitHub what the newest release is, downloads the file built
-# for this machine, checks it against the SHA256SUMS.txt published beside it, and
-# puts `omni` and `omniscript` in ~/.local/bin. Then it runs what it installed,
-# and writes ~/.local/share/omniscript/install.txt so uninstall.sh can take the
-# whole thing back out.
+# for this machine, checks it against the .sha256 published beside it, and puts
+# `omni` in ~/.local/bin. Then it runs what it installed, and writes
+# ~/.local/share/omniscript/install.txt so uninstall.sh can take the whole
+# thing back out.
 #
-# With no release to be had -- no network, nothing published yet -- it says so and
-# installs from source instead: the tree beside this script, or a clone of main.
-# That needs Python 3.10 or newer and nothing else; OmniScript has no
-# dependencies.
+# With no release to be had -- no network, nothing published yet -- it says so
+# and installs from source instead: the tree beside this script, or a clone of
+# main. That needs a C compiler and make, and nothing else.
 
 set -euo pipefail
 
-MIN_PYTHON="3.10"
 REPO_SLUG="OmniNodeCo/OmniScript"
 API_URL="https://api.github.com"
 
@@ -36,20 +34,18 @@ Usage: install.sh [options]
 
   -s, --channel release|beta
                      release (the default): the newest published release, one
-                     file, no Python needed.
+                     file, no dependencies.
                      beta: the repository -- the source tree beside this script,
-                     or a clone of main. Needs Python 3.10 or newer.
+                     or a clone of main. Needs a C compiler and make.
   --version VERSION  a particular release, for example 1.0.0 or v1.0.0
   --prefix DIR       where to install                        [~/.local]
   --api-url URL      the GitHub API to ask              [https://api.github.com]
-  --force            replace an existing omni/omniscript, keeping a .bak copy
+  --force            replace an existing omni, keeping a .bak copy
   --dry-run, -n      print what would happen and change nothing
   -h, --help         this text
 
 Commands go into PREFIX/bin. Everything installed is recorded in
 ~/.local/share/omniscript/install.txt, which is what uninstall.sh reads.
-
-A virtual environment or a system-wide install is plain `pip install .`.
 USAGE
 }
 
@@ -99,7 +95,7 @@ MANIFEST="$DATA_DIR/install.txt"
 REPO_URL="https://github.com/$REPO_SLUG.git"
 HISTORY_FILE="$HOME/.omniscript_history"
 
-PYTHON="" PY_VERSION="" SOURCE_DIR="" CLONED=0
+SOURCE_DIR="" CLONED=0
 MODE="" COMMAND_KIND="" BINARY_PATH="" OMNI_VERSION="unknown"
 RELEASE_TAG="" INSTALLED_COMMANDS=""
 
@@ -115,8 +111,7 @@ platform_tag() {
     case "$arch" in
         x86_64|amd64)   arch=x86_64 ;;
         aarch64|arm64)  arch=arm64 ;;
-        armv7l|armv7)   arch=armv7 ;;
-        i386|i686)      arch=i686 ;;
+        i386|i686)      arch=x86 ;;
     esac
     printf '%s-%s\n' "$os" "$arch"
 }
@@ -128,19 +123,13 @@ is_windows_host() {
     esac
 }
 
-if is_windows_host; then COMMANDS="omni.exe omniscript.exe"; else COMMANDS="omni omniscript"; fi
+if is_windows_host; then COMMANDS="omni.exe"; else COMMANDS="omni"; fi
 MAIN_COMMAND="${COMMANDS%% *}"
-SECOND_COMMAND="${COMMANDS##* }"
 
 # ------------------------------------------------------------------ downloading
-python_for_fetch() {
-    if [ -n "$PYTHON" ]; then "$PYTHON" "$@"; else python3 "$@"; fi
-}
-
 have_fetch() {
     command -v curl >/dev/null 2>&1 && return 0
     command -v wget >/dev/null 2>&1 && return 0
-    command -v python3 >/dev/null 2>&1 && return 0
     return 1
 }
 
@@ -148,14 +137,8 @@ fetch_text() {
     url="$1"
     if command -v curl >/dev/null 2>&1; then
         curl -fsSL --retry 2 --max-time 60 "$url"
-    elif command -v wget >/dev/null 2>&1; then
-        wget -q -O - --timeout=60 --tries=2 "$url"
     else
-        python_for_fetch - "$url" <<'PY'
-import sys, urllib.request
-request = urllib.request.Request(sys.argv[1], headers={"User-Agent": "omniscript-install"})
-sys.stdout.write(urllib.request.urlopen(request, timeout=60).read().decode("utf-8", "replace"))
-PY
+        wget -q -O - --timeout=60 --tries=2 "$url"
     fi
 }
 
@@ -164,15 +147,8 @@ fetch_file() {
     dest="$2"
     if command -v curl >/dev/null 2>&1; then
         curl -fsSL --retry 2 --max-time 900 -o "$dest" "$url"
-    elif command -v wget >/dev/null 2>&1; then
-        wget -q -O "$dest" --timeout=900 --tries=2 "$url"
     else
-        python_for_fetch - "$url" "$dest" <<'PY'
-import shutil, sys, urllib.request
-request = urllib.request.Request(sys.argv[1], headers={"User-Agent": "omniscript-install"})
-with urllib.request.urlopen(request, timeout=900) as response, open(sys.argv[2], "wb") as fh:
-    shutil.copyfileobj(response, fh)
-PY
+        wget -q -O "$dest" --timeout=900 --tries=2 "$url"
     fi
 }
 
@@ -201,8 +177,7 @@ sha256_of() {
     elif command -v openssl >/dev/null 2>&1; then
         openssl dgst -sha256 -r "$1" 2>/dev/null | cut -d' ' -f1
     else
-        python_for_fetch -c 'import hashlib, sys
-print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' "$1"
+        die "no sha256sum, shasum or openssl to verify the download with"
     fi
 }
 
@@ -251,8 +226,7 @@ place_command() {
     INSTALLED_COMMANDS="$INSTALLED_COMMANDS $path"
 }
 
-# Refuse before touching anything, rather than halfway through with one command
-# installed and the next refused.
+# Refuse before touching anything, rather than halfway through.
 check_no_foreign_commands() {
     foreign=""
     for name in $COMMANDS; do
@@ -269,7 +243,7 @@ check_no_foreign_commands() {
 }
 
 # ============================================================ release channel
-REL_JSON="" REL_VERSION="" REL_ASSET_NAME="" REL_ASSET_URL="" REL_ASSET_KIND=""
+REL_JSON="" REL_VERSION="" REL_ASSET_NAME="" REL_ASSET_URL=""
 REL_DOWNLOAD=""
 # Set when the release channel was asked for something specific and did not get
 # it: a pinned version that is not there, or a download whose checksum does not
@@ -277,7 +251,7 @@ REL_DOWNLOAD=""
 REL_FATAL=""
 
 discover_release() {
-    have_fetch || { warn "no curl, wget or python to download with"; return 1; }
+    have_fetch || { warn "no curl or wget to download with"; return 1; }
     api="${API_URL%/}"
     if [ -n "$PINNED" ]; then
         case "$PINNED" in
@@ -309,21 +283,14 @@ pick_release_asset() {
     tag="$(platform_tag)"
     suffix=""
     is_windows_host && suffix=".exe"
-    # The executable for this machine, or the zipapp, which runs anywhere there
-    # is a Python.
-    for name in "omni-$REL_VERSION-$tag$suffix" "omni-$REL_VERSION-any.pyz"; do
-        url="$(asset_url "$REL_JSON" "$name")"
-        if [ -n "$url" ]; then
-            REL_ASSET_NAME="$name"
-            REL_ASSET_URL="$url"
-            case "$name" in
-                *.pyz) REL_ASSET_KIND="pyz" ;;
-                *)     REL_ASSET_KIND="binary" ;;
-            esac
-            note "this machine takes $name"
-            return 0
-        fi
-    done
+    name="omni-$tag$suffix"
+    url="$(asset_url "$REL_JSON" "$name")"
+    if [ -n "$url" ]; then
+        REL_ASSET_NAME="$name"
+        REL_ASSET_URL="$url"
+        note "this machine takes $name"
+        return 0
+    fi
     warn "nothing in $RELEASE_TAG is built for $tag"
     return 1
 }
@@ -341,17 +308,21 @@ download_release_asset() {
         return 1
     fi
     note "$(wc -c < "$REL_DOWNLOAD" | tr -d ' ') bytes"
-    sums_url="$(asset_url "$REL_JSON" SHA256SUMS.txt)"
+    sums_url="$(asset_url "$REL_JSON" "$REL_ASSET_NAME.sha256")"
     if [ -z "$sums_url" ]; then
-        warn "the release has no SHA256SUMS.txt, so this download is unchecked"
-        return 0
+        rm -f "$REL_DOWNLOAD"
+        warn "the release publishes no checksum for $REL_ASSET_NAME -- refusing it"
+        REL_FATAL="$RELEASE_TAG publishes no checksum for $REL_ASSET_NAME"
+        return 1
     fi
     sums="$(fetch_text "$sums_url" 2>/dev/null || true)"
-    want="$(printf '%s\n' "$sums" | grep -F "$REL_ASSET_NAME" | head -1 | cut -d' ' -f1 || true)"
+    want="$(printf '%s\n' "$sums" | head -1 | cut -d' ' -f1 | tr 'A-Z' 'a-z' || true)"
     got="$(sha256_of "$REL_DOWNLOAD" 2>/dev/null || true)"
     if [ -z "$want" ] || [ -z "$got" ]; then
-        warn "nothing to compare the download against, so it is unchecked"
-        return 0
+        rm -f "$REL_DOWNLOAD"
+        warn "the checksum could not be compared -- refusing the download"
+        REL_FATAL="could not verify $REL_ASSET_NAME"
+        return 1
     fi
     if [ "$got" != "$want" ]; then
         rm -f "$REL_DOWNLOAD"
@@ -367,34 +338,19 @@ download_release_asset() {
 install_release_binary() {
     check_no_foreign_commands
     ensure_bin_dir
-    if [ "$REL_ASSET_KIND" = pyz ] &&
-            ! command -v python3 >/dev/null 2>&1 && ! command -v python >/dev/null 2>&1; then
-        warn "$REL_ASSET_NAME needs a Python to run, and there is none on PATH"
-        return 1
-    fi
     target="$BIN_DIR/$MAIN_COMMAND"
-    second="$BIN_DIR/$SECOND_COMMAND"
     MODE="binary"
-    COMMAND_KIND="$REL_ASSET_KIND"
+    COMMAND_KIND="binary"
     BINARY_PATH="$target"
     if [ "$DRY_RUN" = 1 ]; then
         printf '    [dry-run] install %s as %s\n' "$REL_ASSET_NAME" "$target"
-        printf '    [dry-run] %s -> %s\n' "$second" "$target"
-        INSTALLED_COMMANDS="$target $second"
+        INSTALLED_COMMANDS="$target"
         return 0
     fi
     mv "$REL_DOWNLOAD" "$target"
     chmod 755 "$target"
     INSTALLED_COMMANDS="$target"
     note "installed $target"
-    rm -f "$second"
-    if is_windows_host; then
-        cp "$target" "$second"
-    else
-        ln -s "$target" "$second"
-    fi
-    INSTALLED_COMMANDS="$INSTALLED_COMMANDS $second"
-    note "$SECOND_COMMAND -> $MAIN_COMMAND"
 }
 
 install_release() {
@@ -406,16 +362,18 @@ install_release() {
 }
 
 # ============================================================== beta channel
+is_source_tree() {
+    [ -f "$1/Makefile" ] && [ -f "$1/src/main.c" ]
+}
+
 find_source() {
-    # Split in two on purpose: bash's parser trips over a redirection inside a
-    # nested command substitution when it is in a function body.
     script_dir="$(dirname "$0")"
     here="$(cd "$script_dir" 2>/dev/null && pwd -P || true)"
-    if [ -n "$here" ] && [ -f "$here/omniscript/cli.py" ]; then
+    if [ -n "$here" ] && is_source_tree "$here"; then
         SOURCE_DIR="$here"
-    elif [ -n "${OMNI_HOME:-}" ] && [ -f "$OMNI_HOME/omniscript/cli.py" ]; then
+    elif [ -n "${OMNI_HOME:-}" ] && is_source_tree "$OMNI_HOME"; then
         SOURCE_DIR="$OMNI_HOME"
-    elif [ -f "$DATA_DIR/src/omniscript/cli.py" ]; then
+    elif is_source_tree "$DATA_DIR/src"; then
         SOURCE_DIR="$DATA_DIR/src"
     else
         command -v git >/dev/null 2>&1 ||
@@ -429,43 +387,42 @@ find_source() {
     [ -d "$SOURCE_DIR" ] || die "$SOURCE_DIR does not exist"
     if [ "$DRY_RUN" != 1 ]; then
         SOURCE_DIR="$(cd "$SOURCE_DIR" && pwd -P)"
-        [ -f "$SOURCE_DIR/omniscript/cli.py" ] || die "$SOURCE_DIR is not an OmniScript source tree"
+        is_source_tree "$SOURCE_DIR" || die "$SOURCE_DIR is not an OmniScript source tree"
     fi
 }
 
-find_python() {
-    for candidate in python3 python; do
-        if command -v "$candidate" >/dev/null 2>&1; then
-            PYTHON="$(command -v "$candidate")"
-            break
-        fi
-    done
-    [ -n "$PYTHON" ] || die "no python on PATH; the beta channel needs Python $MIN_PYTHON or newer"
-    [ -x "$PYTHON" ] || die "$PYTHON is not executable"
-    if ! "$PYTHON" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null; then
-        found="$("$PYTHON" -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null || echo unknown)"
-        die "$PYTHON is Python $found; OmniScript needs $MIN_PYTHON or newer"
-    fi
-    PY_VERSION="$("$PYTHON" -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])')"
+find_tools() {
+    command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1 ||
+        command -v clang >/dev/null 2>&1 ||
+        die "no C compiler on PATH; the beta channel needs cc and make"
+    command -v make >/dev/null 2>&1 ||
+        die "no make on PATH; the beta channel needs cc and make"
+}
+
+build_source() {
+    info "Building in $SOURCE_DIR"
+    run make -C "$SOURCE_DIR"
 }
 
 install_from_source() {
     check_no_foreign_commands
-    [ -x "$SOURCE_DIR/omni" ] || run chmod +x "$SOURCE_DIR/omni"
+    binary="$SOURCE_DIR/omni"
+    is_windows_host && binary="$SOURCE_DIR/omni.exe"
+    [ -x "$binary" ] || die "the build did not produce $binary"
     MODE="symlink"
     COMMAND_KIND="symlink"
     for name in $COMMANDS; do
         if is_windows_host; then
-            place_command "$name" "$SOURCE_DIR/omni" copy
+            place_command "$name" "$binary" copy
         else
-            place_command "$name" "$SOURCE_DIR/omni" symlink
+            place_command "$name" "$binary" symlink
         fi
     done
 }
 
 # ------------------------------------------------------------------ manifest
 # One key=value per line, and one repeated line per command: plain text, so
-# writing it needs no Python and reading it needs no JSON parser.
+# writing it needs nothing and reading it needs no JSON parser.
 write_manifest() {
     if [ "$DRY_RUN" = 1 ]; then
         printf '    [dry-run] write %s\n' "$MANIFEST"
@@ -485,8 +442,6 @@ write_manifest() {
         printf 'installed_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || echo unknown)"
         printf 'mode=%s\n' "$MODE"
         printf 'package=omniscript-lang\n'
-        printf 'python=%s\n' "$PYTHON"
-        printf 'python_version=%s\n' "$PY_VERSION"
         printf 'release_tag=%s\n' "$RELEASE_TAG"
         printf 'repo=%s\n' "$REPO_SLUG"
         printf 'repo_url=%s\n' "$REPO_URL"
@@ -550,8 +505,8 @@ undo_release_install() {
 source_beside_us() {
     script_dir="$(dirname "$0")"
     here="$(cd "$script_dir" 2>/dev/null && pwd -P || true)"
-    [ -n "$here" ] && [ -f "$here/omniscript/cli.py" ] && return 0
-    [ -n "${OMNI_HOME:-}" ] && [ -f "$OMNI_HOME/omniscript/cli.py" ] && return 0
+    [ -n "$here" ] && is_source_tree "$here" && return 0
+    [ -n "${OMNI_HOME:-}" ] && is_source_tree "$OMNI_HOME" && return 0
     return 1
 }
 
@@ -570,7 +525,7 @@ if [ "$CHANNEL" = release ]; then
     if install_release; then
         INSTALLED=1
         info "OmniScript $OMNI_VERSION from $RELEASE_TAG ($REL_ASSET_NAME)"
-        note "commands into $BIN_DIR, no Python needed"
+        note "commands into $BIN_DIR, no dependencies"
     else
         [ -n "$REL_FATAL" ] && die "$REL_FATAL"
         warn "the release channel did not deliver; installing from $REPO_URL instead"
@@ -580,15 +535,18 @@ fi
 
 if [ "$INSTALLED" != 1 ]; then
     find_source
-    find_python
+    find_tools
     if [ -n "$PINNED" ]; then
         OMNI_VERSION="${PINNED#v}"
+    elif [ -f "$SOURCE_DIR/VERSION" ]; then
+        OMNI_VERSION="$(tr -d ' \t\n' < "$SOURCE_DIR/VERSION")"
     else
-        OMNI_VERSION="$("$PYTHON" -c "import sys; sys.path.insert(0, '$SOURCE_DIR'); import omniscript; print(omniscript.VERSION)" 2>/dev/null || echo unknown)"
+        OMNI_VERSION="unknown"
     fi
     info "OmniScript $OMNI_VERSION from $SOURCE_DIR"
-    note "python $PY_VERSION ($PYTHON), commands into $BIN_DIR"
+    note "built with cc and make, commands into $BIN_DIR"
     ensure_bin_dir
+    build_source
     install_from_source
 fi
 

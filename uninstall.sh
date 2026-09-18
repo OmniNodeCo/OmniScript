@@ -13,9 +13,7 @@
 # will not touch a command it cannot prove it created: use --force for that, and
 # read what it says first.
 #
-# The manifest is one key=value per line, so this needs nothing but a shell: a
-# machine that took the executable because it had no Python can still be cleaned
-# up exactly.
+# The manifest is one key=value per line, so this needs nothing but a shell.
 
 set -euo pipefail
 
@@ -38,7 +36,7 @@ Usage: uninstall.sh [options]
   -h, --help         this text
 
 Without a manifest this falls back to looking in the bin directory for `omni`
-and `omniscript` and removing only the ones that point at an OmniScript tree.
+and removing only one that points at an OmniScript tree.
 USAGE
 }
 
@@ -72,8 +70,8 @@ BIN_DIR="$PREFIX/bin"
 M_MODE="" M_SOURCE="" M_CLONED=0 M_VERSION="" M_BINARY="" M_CHANNEL=""
 M_COMMANDS="" M_HISTORY="$HOME/.omniscript_history"
 
-# One key=value per line, so reading it is sed: no Python, no JSON parser, and
-# nothing to escape. A repeated key is a list.
+# One key=value per line, so reading it is sed: no JSON parser, nothing to
+# escape. A repeated key is a list.
 mget() { sed -n "s/^$1=//p" "$MANIFEST" | head -1; }
 mall() { sed -n "s/^$1=//p" "$MANIFEST"; }
 
@@ -105,7 +103,8 @@ REMOVED=0 KEPT=0
 # A path is ours when the manifest lists it -- that record was written by
 # install.sh, so it is the strongest evidence there is, and the only evidence a
 # downloaded executable can ever offer. Failing that: a symlink into the source
-# tree we installed from, or a console script pip generated for us.
+# tree we installed from. A real file with no manifest to vouch for it needs
+# --force.
 belongs_to_us() {
     path="$1"
     if [ -n "$M_COMMANDS" ]; then
@@ -132,17 +131,11 @@ EOF
         fi
         # No manifest roots to compare against: trust a link whose target sits in
         # an OmniScript tree.
-        if [ -z "$M_SOURCE" ] && [ -f "$(dirname "$target")/omniscript/cli.py" ]; then
+        if [ -z "$M_SOURCE" ] && [ -f "$(dirname "$target")/Makefile" ] &&
+                [ -f "$(dirname "$target")/src/main.c" ]; then
             return 0
         fi
         return 1
-    fi
-    if [ -f "$path" ]; then
-        # Only a generated console script counts: it imports the CLI entry point
-        # by name. A file that merely mentions OmniScript -- a note, a wrapper
-        # someone wrote, a different tool -- is left strictly alone.
-        head -c 4096 "$path" 2>/dev/null |
-            grep -qE "from omniscript\.cli import main|omniscript\.cli:main" && return 0
     fi
     return 1
 }
@@ -172,15 +165,11 @@ if [ -n "$M_COMMANDS" ]; then
 $M_COMMANDS
 EOF
 else
-    for name in omni omniscript; do
-        remove_path "$BIN_DIR/$name" "command"
-    done
+    remove_path "$BIN_DIR/omni" "command"
 fi
-for name in omni omniscript; do
-    if [ -e "$BIN_DIR/$name.bak" ]; then
-        note "a backup of your previous $name is still at $BIN_DIR/$name.bak"
-    fi
-done
+if [ -e "$BIN_DIR/omni.bak" ]; then
+    note "a backup of your previous omni is still at $BIN_DIR/omni.bak"
+fi
 
 # ---------------------------------------------------- a downloaded executable
 # Normally the commands list already covered it; this catches a binary that was

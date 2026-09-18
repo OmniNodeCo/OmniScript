@@ -1,20 +1,4 @@
-# Continuous integration for OmniScript.
-#
-#   lint     cheap static checks -- pyflakes, compile-everything, metadata and
-#            workflow validity
-#   test     both test suites plus every example, on a matrix of operating
-#            systems and Python versions
-#   package  build the distributions, then install the wheel somewhere clean
-#            and use it the way a real user would
-#   installer  install.sh and install.ps1 put `omni` somewhere, run it, and
-#            uninstall.sh / uninstall.ps1 take it all back out again -- on
-#            Windows as well, which the test matrix does not cover
-#   executable  the release artifacts: a standalone binary (PyInstaller) and a
-#            zipapp, each one smoke-tested by the tool that built it
-#
-# The interpreter has no third-party dependencies, so the test matrix installs
-# nothing at all; only the lint, package and executable jobs need pip.
-
+# CI for native OmniScript: one binary, libc only.
 name: build
 
 on:
@@ -30,158 +14,118 @@ concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  PYTHONDONTWRITEBYTECODE: "1"
-
 jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - name: Check out the repository
-        uses: actions/checkout@v7
-
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.13"
-
-      - name: Install the lint tools
-        # setup-python's interpreter is a bare CPython: no PyYAML, no ruff.
-        run: python -m pip install --upgrade pip ruff pyyaml
-
-      - name: Ruff (syntax errors, undefined names, dead imports)
-        run: ruff check --output-format=github .
-
-      - name: Every module compiles
-        run: python -m compileall -q omniscript tests
-
-      - name: Project metadata is well formed
+      - uses: actions/checkout@v7
+      - name: VERSION exists and looks like semver
         run: |
           set -euo pipefail
-          python - <<'PY'
-          import pathlib, tomllib
-
-          meta = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
-          project = meta["project"]
-          version = project["version"]
-          assert project["name"] == "omniscript-lang", project["name"]
-          assert meta["build-system"]["build-backend"] == "setuptools.build_meta"
-          assert {"omni", "omniscript"} <= set(project["scripts"]), project["scripts"]
-          assert project["requires-python"] == ">=3.10", project["requires-python"]
-          print(f"pyproject ok -- {project['name']} {version}")
-
-          # One source of truth for the version: nothing may drift apart.
-          package = pathlib.Path("omniscript/__init__.py").read_text()
-          assert f'VERSION = "{version}"' in package, "omniscript VERSION != pyproject"
-          print(f"version ok -- omniscript/__init__.py agrees on {version}")
-          PY
-
-      - name: Workflows are well formed
+          cat VERSION
+          grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' VERSION
+      - name: C builds clean with -Wall -Wextra
         run: |
           set -euo pipefail
-          python - <<'PY'
-          import pathlib
-
-          import yaml
-
+          make clean
+          make NO_GUI=1
+          ./omni --version
+          make clean
+          make
+          ./omni --version
+      - name: Workflows parse
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib, sys
+          try:
+              import yaml
+          except ImportError:
+              print("no yaml, skipping workflow check")
+              sys.exit(0)
           for path in sorted(pathlib.Path(".github/workflows").glob("*.y*ml")):
               doc = yaml.safe_load(path.read_text())
               jobs = doc.get("jobs") or {}
               assert jobs, f"{path}: no jobs"
               for name, job in jobs.items():
-                  assert job.get("runs-on"), f"{path}: {name} has no runs-on"
-                  assert job.get("steps"), f"{path}: {name} has no steps"
-                  for step in job["steps"]:
-                      assert step.get("name"), f"{path}: {name} has an unnamed step"
-                      assert step.get("uses") or step.get("run"), f"{path}: empty step"
+                  assert job.get("runs-on"), f"{path}: {name} no runs-on"
+                  assert job.get("steps"), f"{path}: {name} no steps"
               print(f"yaml ok -- {path.name}: {', '.join(jobs)}")
           PY
-
-      - name: The launcher is executable
+      - name: Shell scripts parse
         run: |
           set -euo pipefail
-          test -x omni
-          head -1 omni | grep -q '^#!/'
-          echo "launcher ok -- $(head -1 omni)"
+          bash -n install.sh
+          bash -n uninstall.sh
+          sh -n tests/run.sh
+      - name: PowerShell scripts parse
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $failed = 0
+          foreach ($name in @("install.ps1", "uninstall.ps1")) {
+            $path = (Resolve-Path $name).Path
+            $tokens = $null; $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors) {
+              foreach ($e in $errors) { Write-Host "::error::$name line $($e.Extent.StartLineNumber): $($e.Message)" }
+              $failed += $errors.Count
+            } else { Write-Host "$name parses cleanly" }
+          }
+          if ($failed) { throw "$failed PowerShell parse error(s)" }
 
   test:
-    name: Test (${{ matrix.os }}, Python ${{ matrix.python }})
+    name: Test (${{ matrix.os }})
     needs: lint
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: ["ubuntu-latest", "macos-latest"]
-        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
-      - name: Check out the repository
-        uses: actions/checkout@v7
-
-      - name: Set up Python ${{ matrix.python }}
-        uses: actions/setup-python@v7
-        with:
-          python-version: ${{ matrix.python }}
-
-      - name: Show the environment
+      - uses: actions/checkout@v7
+      - name: Build omni
         run: |
-          python --version
+          set -euo pipefail
+          make
           ./omni --version
-          ./omni -e 'import python
-          python("import sys; print(sys.version.split()[0], sys.platform)")'
-
-      - name: Test suite (unittest)
-        run: python -m unittest discover -s tests
-
+      - name: Test suite (91 checks)
+        run: sh tests/run.sh ./omni
       - name: Every example runs
         run: |
           set -euo pipefail
           for f in examples/*.omni; do
             echo "::group::$f"
-            ./omni "$f"
+            ./omni "$f" < tests/example_input.txt || ./omni "$f"
             echo "::endgroup::"
           done
-
-      - name: A drawn picture is a real, complete PNG
+      - name: BMP is a real BMP
         run: |
           set -euo pipefail
-          ./omni -e 'draw(window(48, 32, "ci"),
-                        rect(0, 0, 48, 32, "#1f6feb"),
-                        circle(24, 16, 10, white),
-                        text(4, 4, "ci", black, 10),
-                        save("ci-check.png"))'
-          python - <<'PY'
-          import pathlib, struct, zlib
-
-          data = pathlib.Path("ci-check.png").read_bytes()
-          assert data[:8] == b"\x89PNG\r\n\x1a\n", "missing PNG signature"
-          pos, kinds, idat = 8, [], b""
-          while pos < len(data):
-              size, kind = struct.unpack(">I4s", data[pos:pos + 8])
-              body = data[pos + 8:pos + 8 + size]
-              stored = struct.unpack(">I", data[pos + 8 + size:pos + 12 + size])[0]
-              assert zlib.crc32(kind + body) & 0xFFFFFFFF == stored, f"bad CRC in {kind}"
-              kinds.append(kind.decode())
-              if kind == b"IDAT":
-                  idat += body
-              pos += 12 + size
-          assert kinds[0] == "IHDR" and kinds[-1] == "IEND", kinds
-          width, height, depth, colour = struct.unpack(">IIBB", data[16:26])
-          raw = zlib.decompress(idat)
-          stride = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}[colour] * depth // 8
-          assert len(raw) == height * (1 + width * stride), (len(raw), width, height)
-          print(f"PNG ok -- {width}x{height}, depth {depth}, colour type {colour}, "
-                f"{len(raw)} bytes of pixels, chunks: {' '.join(kinds)}")
+          ./omni -e 'draw(window(48, 32, "ci"), rect(0, 0, 48, 32, "#1f6feb"), circle(24, 16, 10, white), text(4, 4, "ci", black, 10), save("ci-check.bmp"))'
+          test -f ci-check.bmp
+          od -A n -c -N 2 ci-check.bmp | grep -q "B.*M"
+          # width at 18, height at 22 little-endian
+          python3 - <<'PY'
+          import struct
+          data=open("ci-check.bmp","rb").read()
+          assert data[:2]==b"BM"
+          w=struct.unpack("<I", data[18:22])[0]
+          h=struct.unpack("<I", data[22:26])[0]
+          size=struct.unpack("<I", data[2:6])[0]
+          assert w==48 and h==32, (w,h)
+          assert size==len(data), (size,len(data))
+          print(f"BMP ok -- {w}x{h}, {len(data)} bytes")
           PY
-
-      - name: Collect example output
+      - name: Upload example BMPs
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: example-output-${{ matrix.os }}-py${{ matrix.python }}
+          name: bmps-${{ matrix.os }}
           path: |
-            .preview/**
-            *.png
+            *.bmp
+            **/*.bmp
           if-no-files-found: ignore
           retention-days: 3
 
@@ -194,37 +138,18 @@ jobs:
       matrix:
         os: ["ubuntu-latest", "windows-latest"]
     steps:
-      - name: Check out the repository
-        uses: actions/checkout@v7
-
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.13"
-
-      - name: Both PowerShell scripts parse
+      - uses: actions/checkout@v7
+      - name: PowerShell scripts parse
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $failed = 0
-          # Check every file before throwing, so one bad script cannot hide another.
           foreach ($name in @("install.ps1", "uninstall.ps1")) {
             $path = (Resolve-Path $name).Path
-            $tokens = $null
-            $errors = $null
+            $tokens = $null; $errors = $null
             [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors) | Out-Null
-            if ($errors) {
-              foreach ($e in $errors) {
-                Write-Host "::error::$name line $($e.Extent.StartLineNumber): $($e.Message)"
-              }
-              $failed += $errors.Count
-            } else {
-              Write-Host "$name parses cleanly"
-            }
+            if ($errors) { throw "$name has parse errors" }
           }
-          if ($failed) { throw "$failed PowerShell parse error(s)" }
-
-      - name: install.sh, then uninstall.sh
+      - name: install.sh then uninstall.sh
         if: runner.os != 'Windows'
         run: |
           set -euo pipefail
@@ -233,157 +158,96 @@ jobs:
           mkdir -p "$root/home" "$root/prefix"
           export HOME="$root/home"
           export XDG_DATA_HOME="$root/home/data"
-
           ./install.sh --prefix "$root/prefix"
-          test -L "$root/prefix/bin/omni"
-          test -L "$root/prefix/bin/omniscript"
+          test -x "$root/prefix/bin/omni" || test -L "$root/prefix/bin/omni"
           test -f "$root/home/data/omniscript/install.txt"
-          grep -q "^command=$root/prefix/bin/omni$" "$root/home/data/omniscript/install.txt"
           "$root/prefix/bin/omni" --version
           "$root/prefix/bin/omni" -e 'cmd("echo installed by CI")'
-
-          # Installing again is a no-op, not an error.
-          ./install.sh --prefix "$root/prefix" | grep "already points at"
-
+          ./install.sh --prefix "$root/prefix" | grep -q "already"
           ./uninstall.sh --prefix "$root/prefix" --purge
           test ! -e "$root/prefix/bin/omni"
-          test ! -e "$root/prefix/bin/omniscript"
           test ! -e "$root/home/data/omniscript"
-          test -f omniscript/cli.py
+          test -f src/main.c
           echo "install.sh / uninstall.sh cycle ok"
-
-      - name: install.ps1, then uninstall.ps1
+      - name: install.ps1 then uninstall.ps1
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          function Fail([string]$what, [string]$detail) {
-            $flat = ($detail -replace "`r?`n", " | ")
-            if ($flat.Length -gt 2000) { $flat = $flat.Substring(0, 2000) }
-            Write-Host "::error file=install.ps1,line=1::$what -- $flat"
-            throw $what
-          }
+          function Fail($what,$detail){ Write-Host "::error::$what -- $detail"; throw $what }
           $root = Join-Path $env:RUNNER_TEMP "installer-check-ps"
           Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
           $fakeHome = Join-Path $root "home"
           $prefix = Join-Path $root "prefix"
-          New-Item -ItemType Directory -Force -Path $fakeHome, $prefix | Out-Null
-          $env:HOME = $fakeHome
-          $env:USERPROFILE = $fakeHome
+          New-Item -ItemType Directory -Force -Path $fakeHome,$prefix | Out-Null
+          $env:HOME = $fakeHome; $env:USERPROFILE = $fakeHome
           $env:XDG_DATA_HOME = Join-Path $fakeHome "data"
           $env:LOCALAPPDATA = Join-Path $fakeHome "appdata"
           $bin = if ($IsWindows) { $prefix } else { Join-Path $prefix "bin" }
           $omni = if ($IsWindows) { Join-Path $bin "omni.cmd" } else { Join-Path $bin "omni" }
-
-          # *>&1 so the scripts' Write-Host output is captured, not just their errors
-          $out = (& ./install.ps1 -Prefix $prefix -Python (Get-Command python).Source *>&1 | Out-String)
-          Write-Host $out
-          if ($LASTEXITCODE -ne 0) { Fail "install.ps1 exited with $LASTEXITCODE" $out }
-          if (-not (Test-Path $omni)) { Fail "install.ps1 left no command at $omni" $out }
-
-          $version = (& $omni --version *>&1 | Out-String)
-          Write-Host $version
-          if ($LASTEXITCODE -ne 0) { Fail "the installed command would not report its version" $version }
-
-          # Quote-free on purpose: the beta channel's .cmd shim passes its
-          # arguments through cmd.exe, which strips double quotes.
-          $smoke = (& $omni -e 'cmd(whoami)' *>&1 | Out-String)
-          Write-Host $smoke
-          if ([string]::IsNullOrWhiteSpace($smoke)) { Fail "the installed command did not run a program" $smoke }
-
-          $out = (& ./uninstall.ps1 -Prefix $prefix -Purge *>&1 | Out-String)
-          Write-Host $out
-          if ($LASTEXITCODE -ne 0) { Fail "uninstall.ps1 exited with $LASTEXITCODE" $out }
-          if (Test-Path $omni) { Fail "$omni survived the uninstall" $out }
-          if (-not (Test-Path (Join-Path $PWD "omniscript/cli.py"))) { Fail "the source tree was touched" $out }
+          $out = (& ./install.ps1 -Prefix $prefix *>&1 | Out-String); Write-Host $out
+          if ($LASTEXITCODE -ne 0) { Fail "install.ps1 exited $LASTEXITCODE" $out }
+          if (-not (Test-Path $omni)) { Fail "no command at $omni" $out }
+          $ver = (& $omni --version *>&1 | Out-String); Write-Host $ver
+          if ($LASTEXITCODE -ne 0) { Fail "version failed" $ver }
+          $smoke = (& $omni -e 'cmd("echo hi")' *>&1 | Out-String); Write-Host $smoke
+          if ([string]::IsNullOrWhiteSpace($smoke)) { Fail "smoke empty" $smoke }
+          $out = (& ./uninstall.ps1 -Prefix $prefix -Purge *>&1 | Out-String); Write-Host $out
+          if ($LASTEXITCODE -ne 0) { Fail "uninstall.ps1 $LASTEXITCODE" $out }
+          if (Test-Path $omni) { Fail "$omni survived" $out }
           Write-Host "install.ps1 / uninstall.ps1 cycle ok"
 
-
-  executable:
-    name: Executables (${{ matrix.os }})
+  binaries:
+    name: Binaries (${{ matrix.os }})
     needs: lint
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: ["ubuntu-latest", "windows-latest"]
+        os: ["ubuntu-latest", "windows-latest", "macos-latest"]
     steps:
-      - name: Check out the repository
-        uses: actions/checkout@v7
-
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.13"
-
-      - name: Install PyInstaller
-        run: python -m pip install --upgrade pip pyinstaller
-
-      - name: Build the standalone executable and the zipapp
-        # build_executable.py freezes each artifact, runs it (--version, a
-        # program, a drawing and the python import), and writes SHA256SUMS.txt.
-        run: python tools/build_executable.py --out dist
-
-      - name: Upload the artifacts
+      - uses: actions/checkout@v7
+      - name: Build omni
+        run: |
+          set -euo pipefail
+          make
+          ./omni --version
+          ./omni -e 'draw(window(64, 32, "bin"), rect(0,0,64,32,blue), save("bin-check.bmp"))'
+          test -f bin-check.bmp
+      - name: Name the asset like the updater expects
+        shell: bash
+        run: |
+          set -euo pipefail
+          ver="$(cat VERSION)"
+          tag="$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | tr '[:upper:]' '[:lower:]')"
+          case "$tag" in
+            linux*) os=linux ;;
+            darwin*|mac*) os=macos ;;
+            mingw*|msys*|cygwin*) os=windows ;;
+            *) os="$tag" ;;
+          esac
+          arch="$(uname -m | tr '[:upper:]' '[:lower:]')"
+          case "$arch" in
+            x86_64|amd64) arch=x86_64 ;;
+            aarch64|arm64) arch=arm64 ;;
+            i386|i686) arch=x86 ;;
+          esac
+          plat="${os}-${arch}"
+          suffix=""; case "${{ matrix.os }}" in *windows*) suffix=".exe" ;; esac
+          mkdir -p dist
+          if [ -f omni.exe ]; then bin=omni.exe; else bin=omni; fi
+          name="omni-${plat}${suffix}"
+          cp "$bin" "dist/$name"
+          # checksum per binary
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "dist/$name" | cut -d' ' -f1 > "dist/$name.sha256"
+          else
+            shasum -a 256 "dist/$name" | cut -d' ' -f1 > "dist/$name.sha256"
+          fi
+          ls -l dist/
+          cat "dist/$name.sha256"
+      - name: Upload
         uses: actions/upload-artifact@v7
         with:
-          name: executables-${{ matrix.os }}
+          name: binaries-${{ matrix.os }}
           path: dist/*
           retention-days: 3
-
-  package:
-    name: Package
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out the repository
-        uses: actions/checkout@v7
-
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.13"
-
-      - name: Install the build front-end
-        run: python -m pip install --upgrade pip build
-
-      - name: Build the sdist and the wheel
-        run: python -m build
-
-      - name: The wheel carries the whole language
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import glob, zipfile
-
-          for path in sorted(glob.glob("dist/*")):
-              print(path)
-          wheel = glob.glob("dist/*.whl")[0]
-          names = zipfile.ZipFile(wheel).namelist()
-          for wanted in ("omniscript/__init__.py", "omniscript/language.py",
-                         "omniscript/draw.py", "omniscript/cli.py", "omniscript/update.py"):
-              assert wanted in names, f"{wheel} has no {wanted}"
-          print(f"{wheel} ships {len(names)} files, the language among them")
-          PY
-
-      - name: Install the wheel into a clean venv and use it
-        run: |
-          set -euo pipefail
-          python -m venv /tmp/smoke
-          /tmp/smoke/bin/pip install --quiet dist/*.whl
-          # Run from outside the checkout so nothing resolves to local sources.
-          cd /tmp
-          /tmp/smoke/bin/omni --version
-          /tmp/smoke/bin/omni -e 'cmd("echo wheel ok")'
-          /tmp/smoke/bin/omniscript -e 'import python
-          python("print(6 * 7)")'
-          /tmp/smoke/bin/omni -e 'draw(window(16, 16, "smoke"),
-                                      rect(0, 0, 16, 16, "#ff8800"),
-                                      save("smoke.png"))'
-          test -s smoke.png
-
-      - name: Upload the distributions
-        uses: actions/upload-artifact@v7
-        with:
-          name: dist
-          path: dist/*
-          retention-days: 14

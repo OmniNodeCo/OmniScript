@@ -1,28 +1,28 @@
 # Install OmniScript on Windows (and, if you like, anywhere pwsh runs).
 #
-#   .\install.ps1                    # from this checkout: shims into %LOCALAPPDATA%\Programs\OmniScript
-#   .\install.ps1 -Channel release   # the published release: one file, no Python needed
+#   .\install.ps1                    # from this checkout: a shim into %LOCALAPPDATA%\Programs\OmniScript
+#   .\install.ps1 -Channel release   # the published release: one file, no dependencies
 #   .\install.ps1 -Prefix C:\Tools   # put it somewhere of your own
 #
 # Two channels, the same two `omni update` follows:
 #
 #   release   what the project published: a standalone executable for this
-#             machine, or the .pyz. The default when this script arrives with no
-#             source tree beside it, and the only channel that needs no Python.
-#   beta      the repository itself: this checkout, or a clone of main, with the
-#             commands pointing at it so `git pull` is an upgrade. The default
-#             when the script is run from a source tree.
+#             machine. The default when this script arrives with no source tree
+#             beside it.
+#   beta      the repository itself: this checkout, or a clone of main, built
+#             with a C compiler and make, with the command pointing at it so
+#             `git pull` plus `make` is an upgrade. The default when the script
+#             is run from a source tree.
 #
 # If the release channel cannot deliver -- nothing published yet, no file built
 # for this machine, no network -- the script says so and installs from the
 # repository instead.
 #
-# Windows needs a shim rather than a symlink: creating symlinks wants
-# administrator rights or Developer Mode, while a two-line .cmd file in a
-# directory on PATH works for everybody. Under pwsh on Linux or macOS this
-# script makes real symlinks instead, exactly like install.sh does. A release
-# executable needs no shim at all -- omni.exe runs itself, and only the second
-# command gets one.
+# Windows needs a shim rather than a symlink for beta installs: creating
+# symlinks wants administrator rights or Developer Mode, while a two-line .cmd
+# file in a directory on PATH works for everybody. Under pwsh on Linux or macOS
+# this script makes real symlinks instead, exactly like install.sh does. A
+# release executable needs no shim at all -- omni.exe runs itself.
 #
 # Everything created here is written to a manifest so uninstall.ps1 can remove
 # it -- and only it.
@@ -35,7 +35,6 @@ param(
     [string]$Version = '',
     [string]$Prefix = '',
     [string]$ApiUrl = '',
-    [string]$Python = '',
     [switch]$Force,
     [switch]$DryRun,
     [switch]$Help
@@ -47,8 +46,7 @@ $ProgressPreference = 'SilentlyContinue'
 $Repo = 'OmniNodeCo/OmniScript'
 $RepoUrl = "https://github.com/$Repo.git"
 $ApiUrl = if ($ApiUrl) { $ApiUrl } elseif ($env:OMNISCRIPT_API_URL) { $env:OMNISCRIPT_API_URL } else { 'https://api.github.com' }
-$MinPython = '3.10'
-$Commands = @('omni', 'omniscript')
+$Commands = @('omni')
 
 $IsWin = [System.Environment]::OSVersion.Platform -eq 'Win32NT'
 
@@ -59,7 +57,6 @@ $ReleaseResult = 1
 $RelTag = ''
 $RelVersion = ''
 $RelAssetName = ''
-$RelKind = ''
 $RelDownload = ''
 $RelFatal = ''
 $BinaryPath = ''
@@ -82,13 +79,12 @@ if ($Help) {
 Usage: install.ps1 [options]
 
   -Channel release|beta    release (the default): the newest published release,
-                           one file, no Python needed. beta: the repository --
+                           one file, no dependencies. beta: the repository --
                            the source tree beside this script, or a clone of
-                           main. Needs Python 3.10 or newer.
+                           main. Needs a C compiler and make.
   -Version VERSION         a particular release, for example 1.0.0 or v1.0.0
   -Prefix DIR              install root                [see below]
   -ApiUrl URL              the GitHub API to ask       [https://api.github.com]
-  -Python PATH             the interpreter to use for the beta channel
   -Force                   replace commands this script did not create
   -DryRun                  print what would happen and change nothing
   -Help                    this text
@@ -101,8 +97,6 @@ Everything installed is recorded in install.txt under the state directory, which
 is what uninstall.ps1 reads:
   Windows    %LOCALAPPDATA%\OmniScript
   elsewhere  ${XDG_DATA_HOME:-~/.local/share}/omniscript
-
-A virtual environment or a system-wide install is plain `pip install .`.
 '@ | Write-Host
     exit 0
 }
@@ -149,8 +143,7 @@ function Get-PlatformTag {
         'x86_64' { $arch = 'x86_64'; break }
         'arm64' { $arch = 'arm64'; break }
         'aarch64' { $arch = 'arm64'; break }
-        'armv7l' { $arch = 'armv7'; break }
-        'x86' { $arch = 'i686'; break }
+        'x86' { $arch = 'x86'; break }
         default { $arch = $arch.ToLowerInvariant() }
     }
     return "$os-$arch"
@@ -219,17 +212,21 @@ function Test-Recorded {
     return $false
 }
 
+function Test-SourceTree {
+    param([string]$Dir)
+    return ((Test-Path (Join-Path $Dir 'Makefile')) -and (Test-Path (Join-Path $Dir 'src/main.c')))
+}
+
 function New-Shim {
-    param([string]$Path, [string]$Target, [string]$Interpreter)
+    param([string]$Path, [string]$Target)
     if ($IsWin) {
-        # A .cmd shim: no privileges needed, and it survives the source moving
-        # only as far as its own text says.
+        # A .cmd shim: no privileges needed.
         # A .cmd shim hands %* through cmd.exe's own parsing, which strips
         # double quotes; programs with quoted one-liners are what the release
         # channel's omni.exe is for. Files and quote-free arguments pass fine.
         $lines = @(
             '@echo off',
-            ('"{0}" "{1}" %*' -f $Interpreter, $Target)
+            ('"{0}" %*' -f $Target)
         )
         Set-Content -Path $Path -Value $lines -Encoding ASCII
     } else {
@@ -276,16 +273,8 @@ function Install-FromRelease {
 
     $suffix = ''
     if ($IsWin) { $suffix = '.exe' }
-    # The executable for this machine, or the zipapp, which runs anywhere there
-    # is a Python.
-    $wanted = @("omni-$RelVersion-$platform$suffix", "omni-$RelVersion-any.pyz")
-    $kinds = @('binary', 'pyz')
-    $asset = $null
-    $kind = ''
-    for ($i = 0; $i -lt $wanted.Count; $i++) {
-        $found = @($release.assets) | Where-Object { "$($_.name)" -eq $wanted[$i] } | Select-Object -First 1
-        if ($found) { $asset = $found; $kind = $kinds[$i]; break }
-    }
+    $wanted = "omni-$platform$suffix"
+    $asset = @($release.assets) | Where-Object { "$($_.name)" -eq $wanted } | Select-Object -First 1
     if (-not $asset) {
         Write-Warn "nothing in $RelTag is built for $platform"
         return
@@ -293,8 +282,7 @@ function Install-FromRelease {
     $downloadUrl = "$($asset.browser_download_url)"
     if (-not $downloadUrl) { $downloadUrl = "$($asset.url)" }
     $script:RelAssetName = "$($asset.name)"
-    $script:RelKind = $kind
-    Write-Note "this machine takes $RelAssetName ($kind)"
+    Write-Note "this machine takes $RelAssetName"
 
     $tempDir = if ($env:TEMP) { $env:TEMP } else { [System.IO.Path]::GetTempPath() }
     $script:RelDownload = Join-Path $tempDir ("omniscript-download-{0}" -f [System.Diagnostics.Process]::GetCurrentProcess().Id)
@@ -310,64 +298,53 @@ function Install-FromRelease {
         }
         $size = (Get-Item -LiteralPath $RelDownload).Length
         Write-Note "$size bytes"
-    $sumsAsset = @($release.assets) | Where-Object { "$($_.name)".ToUpperInvariant() -eq 'SHA256SUMS.TXT' } | Select-Object -First 1
-        $expected = ''
-        if ($sumsAsset) {
-            try {
-                foreach ($line in ((Read-Url "$($sumsAsset.browser_download_url)") -split "`n")) {
-                    if ($line -match [regex]::Escape($RelAssetName)) {
-                        $expected = ($line.Trim() -split '\s+')[0].ToLowerInvariant()
-                        break
-                    }
-                }
-            } catch { Write-Warn 'the checksums could not be downloaded' }
-        }
-        if (-not $expected) {
-            Write-Warn 'the release has no checksum for this file, so it is unchecked'
-        } else {
-            $actual = Get-Sha256 $RelDownload
-            if ($actual -ne $expected) {
-                Remove-Item -Force -LiteralPath $RelDownload -ErrorAction SilentlyContinue
-                Write-Warn "checksum mismatch for $RelAssetName"
-                Write-Warn "  the release says $expected"
-                Write-Warn "  the download is  $actual"
-                $script:RelFatal = "$RelAssetName does not match the checksum the release published"
-                return
-            }
-            Write-Note 'sha256 verified'
-        }
-    }
-
-    if ($kind -eq 'pyz' -and -not $Python) {
-        $probe = Get-Command python -ErrorAction SilentlyContinue
-        $probe3 = Get-Command python3 -ErrorAction SilentlyContinue
-        if (-not $probe -and -not $probe3) {
-            Write-Warn "$RelAssetName needs a Python to run, and there is none on PATH"
+        $hashName = "$RelAssetName.sha256"
+        $sumsAsset = @($release.assets) | Where-Object { "$($_.name)" -eq $hashName } | Select-Object -First 1
+        if (-not $sumsAsset) {
+            Remove-Item -Force -LiteralPath $RelDownload -ErrorAction SilentlyContinue
+            Write-Warn "the release publishes no checksum for $RelAssetName -- refusing it"
+            $script:RelFatal = "$RelTag publishes no checksum for $RelAssetName"
             return
         }
+        $expected = ''
+        try {
+            $body = ConvertTo-Text (Read-Url "$($sumsAsset.browser_download_url)")
+            $expected = (($body -split "\s+")[0]).ToLowerInvariant()
+        } catch { }
+        if (-not $expected) {
+            Remove-Item -Force -LiteralPath $RelDownload -ErrorAction SilentlyContinue
+            Write-Warn 'the checksum could not be compared -- refusing the download'
+            $script:RelFatal = "could not verify $RelAssetName"
+            return
+        }
+        $actual = Get-Sha256 $RelDownload
+        if ($actual -ne $expected) {
+            Remove-Item -Force -LiteralPath $RelDownload -ErrorAction SilentlyContinue
+            Write-Warn "checksum mismatch for $RelAssetName"
+            Write-Warn "  the release says $expected"
+            Write-Warn "  the download is  $actual"
+            $script:RelFatal = "$RelAssetName does not match the checksum the release published"
+            return
+        }
+        Write-Note 'sha256 verified'
     }
 
-    if ($IsWin) { $name = if ($kind -eq 'pyz') { 'omni.pyz' } else { 'omni.exe' } } else { $name = 'omni' }
+    if ($IsWin) { $name = 'omni.exe' } else { $name = 'omni' }
     $target = Join-Path $Bin $name
-    $second = Join-Path $Bin 'omniscript.cmd'
 
-    foreach ($path in @($target, $second)) {
-        if ((Test-Path -LiteralPath $path) -and -not $Force -and -not (Test-Recorded $path)) {
-            Stop-Die "$path already exists and was not created by this script.
+    if ((Test-Path -LiteralPath $target) -and -not $Force -and -not (Test-Recorded $target)) {
+        Stop-Die "$target already exists and was not created by this script.
        Re-run with -Force to move it aside (a .bak copy is kept next to it)."
-        }
     }
     Invoke-OrShow { New-Item -ItemType Directory -Force -Path $Bin | Out-Null } "mkdir $Bin"
 
     if ($DryRun) {
         Write-Note "[dry-run] install $RelAssetName as $target"
-        Write-Note "[dry-run] $second runs $name"
         $script:BinaryPath = $target
         $script:Mode = 'binary'
         $script:CommandKind = 'binary'
         $script:OmniVersion = $RelVersion
         $InstalledCommands.Add($target)
-        $InstalledCommands.Add($second)
         $script:ReleaseResult = 0
         return
     }
@@ -380,36 +357,14 @@ function Install-FromRelease {
     $script:OmniVersion = $RelVersion
     $InstalledCommands.Add($target)
     Write-Note "installed $target"
-
-    if ($IsWin) {
-        if ($kind -eq 'pyz') {
-            $runner = if ($Python) { $Python } else { (Get-Command python).Source }
-            New-Shim -Path (Join-Path $Bin 'omni.cmd') -Target $target -Interpreter $runner
-            New-Shim -Path $second -Target $target -Interpreter $runner
-            $InstalledCommands.Add((Join-Path $Bin 'omni.cmd'))
-            $InstalledCommands.Add($second)
-            Write-Note "omni.cmd and omniscript.cmd run $name"
-        } else {
-            # omni.exe answers to `omni` on its own; only the second name needs a shim.
-            $lines = @('@echo off', ('"%~dp0{0}" %*' -f $name))
-            Set-Content -Path $second -Value $lines -Encoding ASCII
-            $InstalledCommands.Add($second)
-            Write-Note "omniscript.cmd runs $name"
-        }
-    } else {
-        if (Test-Path (Join-Path $Bin 'omniscript')) { Remove-Item -Force (Join-Path $Bin 'omniscript') }
-        New-Item -ItemType SymbolicLink -Path (Join-Path $Bin 'omniscript') -Target $target | Out-Null
-        $InstalledCommands.Add((Join-Path $Bin 'omniscript'))
-        Write-Note 'omniscript -> omni'
-    }
     $script:ReleaseResult = 0
 }
 
 # ------------------------------------------------------- the shared tail
-# One key=value per line, and one repeated line per command or extension: the
-# same file install.sh writes, so a shell can read it with sed and this can read
-# it with -split. WriteAllLines because Set-Content -Encoding UTF8 leaves a BOM
-# on PowerShell 5.1, and a BOM becomes part of the first key.
+# One key=value per line, and one repeated line per command: the same file
+# install.sh writes, so a shell can read it with sed and this can read it with
+# -split. WriteAllLines because Set-Content -Encoding UTF8 leaves a BOM on
+# PowerShell 5.1, and a BOM becomes part of the first key.
 function Write-Manifest {
     if ($DryRun) {
         Write-Note "[dry-run] write $Manifest"
@@ -429,8 +384,6 @@ function Write-Manifest {
         "installed_at=$((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'))",
         "mode=$Mode",
         "package=omniscript-lang",
-        "python=$Python",
-        "python_version=$PyVersion",
         "release_tag=$RelTag",
         "repo=$Repo",
         "repo_url=$RepoUrl",
@@ -446,7 +399,7 @@ function Write-Manifest {
 function Test-Install {
     if ($DryRun) { return }
     Write-Info 'Checking the install'
-    if ($IsWin) { $probePath = Join-Path $Bin $(if ($Mode -eq 'binary' -and $RelKind -ne 'pyz') { 'omni.exe' } else { 'omni.cmd' }) }
+    if ($IsWin) { $probePath = Join-Path $Bin $(if ($Mode -eq 'binary') { 'omni.exe' } else { 'omni.cmd' }) }
     else { $probePath = Join-Path $Bin 'omni' }
     if (-not (Test-Path -LiteralPath $probePath)) {
         if ($InstalledCommands.Count -gt 0) { $probePath = $InstalledCommands[0] } else { Stop-Die "$probePath is missing after the install" }
@@ -521,7 +474,6 @@ $Cloned = $false
 $InstalledCommands = New-Object System.Collections.Generic.List[string]
 $CommandKind = if ($IsWin) { 'shim' } else { 'symlink' }
 $OmniVersion = 'unknown'
-$PyVersion = ''
 
 # ======================================================================= main
 # Which channel? An explicit one wins. Otherwise a source tree beside the script
@@ -529,8 +481,8 @@ $PyVersion = ''
 $here = $PSScriptRoot
 $besideUs = $false
 if ($Source) { $besideUs = $true }
-elseif ($here -and (Test-Path (Join-Path $here 'omniscript/cli.py'))) { $besideUs = $true }
-elseif ($env:OMNI_HOME -and (Test-Path (Join-Path $env:OMNI_HOME 'omniscript/cli.py'))) { $besideUs = $true }
+elseif ($here -and (Test-SourceTree $here)) { $besideUs = $true }
+elseif ($env:OMNI_HOME -and (Test-SourceTree $env:OMNI_HOME)) { $besideUs = $true }
 
 if (-not $Channel) {
     if ($besideUs) {
@@ -549,7 +501,7 @@ if ($Channel -eq 'release') {
     switch ($ReleaseResult) {
         0 {
             Write-Info "OmniScript $OmniVersion from $RelTag ($RelAssetName)"
-            Write-Note "commands into $Bin, no Python needed"
+            Write-Note "command into $Bin"
             Write-Manifest
             try {
                 Test-Install
@@ -570,19 +522,19 @@ if ($Channel -eq 'release') {
 }
 
 # ------------------------------------------------------- find the source
-if (-not $Source -and $here -and (Test-Path (Join-Path $here 'omniscript/cli.py'))) {
+if (-not $Source -and $here -and (Test-SourceTree $here)) {
     $Source = $here
 }
-if (-not $Source -and $env:OMNI_HOME -and (Test-Path (Join-Path $env:OMNI_HOME 'omniscript/cli.py'))) {
+if (-not $Source -and $env:OMNI_HOME -and (Test-SourceTree $env:OMNI_HOME)) {
     $Source = $env:OMNI_HOME
 }
-if (-not $Source -and (Test-Path (Join-Path $DataDir 'src/omniscript/cli.py'))) {
+if (-not $Source -and (Test-SourceTree (Join-Path $DataDir 'src'))) {
     $Source = Join-Path $DataDir 'src'
 }
 
-if (-not $Source -or -not (Test-Path (Join-Path $Source 'omniscript/cli.py'))) {
+if (-not $Source -or -not (Test-SourceTree $Source)) {
     $Source = Join-Path $DataDir 'src'
-    if (Test-Path (Join-Path $Source 'omniscript/cli.py')) {
+    if (Test-SourceTree $Source) {
         Write-Info "Using the source already in $Source"
     } else {
         if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
@@ -594,36 +546,50 @@ if (-not $Source -or -not (Test-Path (Join-Path $Source 'omniscript/cli.py'))) {
         $Cloned = $true
     }
 }
-$Source = (Resolve-Path $Source).Path
-if (-not (Test-Path (Join-Path $Source 'omniscript/cli.py'))) {
+if (-not $DryRun) { $Source = (Resolve-Path $Source).Path }
+if (-not (Test-SourceTree $Source)) {
     Stop-Die "$Source is not an OmniScript source tree"
 }
 
-# --------------------------------------------------------- find python
-if (-not $Python) {
-    foreach ($candidate in @('python3', 'python', 'py')) {
-        $found = Get-Command $candidate -ErrorAction SilentlyContinue
-        if ($found) { $Python = $found.Source; break }
-    }
+# --------------------------------------------------------- build it
+$makeName = ''
+foreach ($candidate in @('make', 'gmake', 'mingw32-make')) {
+    if (Get-Command $candidate -ErrorAction SilentlyContinue) { $makeName = $candidate; break }
 }
-if (-not $Python) { Stop-Die "no python on PATH; install Python $MinPython or newer, or pass -Python PATH" }
-if (-not (Test-Path $Python)) { Stop-Die "$Python does not exist" }
-
-& $Python -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)'
-if ($LASTEXITCODE -ne 0) {
-    $found = & $Python -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])'
-    Stop-Die "$Python is Python $found; OmniScript needs $MinPython or newer (try -Python PATH)"
+if (-not $makeName) {
+    Stop-Die 'the beta channel builds OmniScript from source and needs make; install it (or a C toolchain) and re-run, or use -Channel release'
 }
-$PyVersion = (& $Python -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])').Trim()
-$OmniVersion = (& $Python -c "import sys; sys.path.insert(0, r'$Source'); import omniscript; print(omniscript.VERSION)" 2>$null).Trim()
-if ($LASTEXITCODE -ne 0 -or -not $OmniVersion) { $OmniVersion = 'unknown' }
+$versionFile = Join-Path $Source 'VERSION'
+if (Test-Path -LiteralPath $versionFile) {
+    $OmniVersion = ((Get-Content -LiteralPath $versionFile -TotalCount 1) -join '').Trim()
+}
+if (-not $OmniVersion) { $OmniVersion = 'unknown' }
 Write-Info "OmniScript $OmniVersion from $Source"
-Write-Note "python $PyVersion ($Python), commands into $Bin"
+Write-Note "built with $makeName, command into $Bin"
+
+if ($IsWin) { $binaryName = 'omni.exe' } else { $binaryName = 'omni' }
+$expectedBinary = Join-Path $Source $binaryName
+
+Invoke-OrShow {
+    $buildLog = & $makeName -C $Source 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        $tail = ($buildLog | Select-Object -Last 25) -join "`n"
+        Stop-Die "the build failed:`n$tail"
+    }
+} "$makeName -C $Source"
+
+$binary = ''
+foreach ($candidate in @($expectedBinary, (Join-Path $Source 'omni'), (Join-Path $Source 'omni.exe'))) {
+    if ((Test-Path -LiteralPath $candidate)) { $binary = $candidate; break }
+}
+if (-not $binary -and -not $DryRun) { Stop-Die "the build finished but left no binary in $Source" }
+if ($DryRun) { $binary = $expectedBinary }
+$script:BinaryPath = $binary
 
 Invoke-OrShow { New-Item -ItemType Directory -Force -Path $Bin | Out-Null } "mkdir $Bin"
 
 function Add-Command {
-    param([string]$Name, [string]$Target, [string]$Interpreter)
+    param([string]$Name, [string]$Target)
     $path = Join-Path $Bin $Name
     if ($IsWin) { $path = "$path.cmd" }
     if (Test-Path $path) {
@@ -649,7 +615,7 @@ function Add-Command {
         Invoke-OrShow { Move-Item -Force -Path $path -Destination "$path.bak" } "move $path to $path.bak"
         Write-Note "moved the old $Name to $path.bak"
     }
-    Invoke-OrShow { New-Shim -Path $path -Target $Target -Interpreter $Interpreter } "$Name -> $Target"
+    Invoke-OrShow { New-CommandLink -Path $path -Target $Target } "$Name -> $Target"
     Write-Note "$Name -> $Target"
     $InstalledCommands.Add($path)
 }
@@ -668,10 +634,21 @@ function Test-NoForeignCommands {
     }
 }
 
+# A beta command follows the source it was built from: a symlink on systems
+# that have them, a small .cmd shim on Windows.
+function New-CommandLink {
+    param([string]$Path, [string]$Target)
+    if ($IsWin) {
+        New-Shim -Path $Path -Target $Target
+    } else {
+        if (Test-Path -LiteralPath $Path) { Remove-Item -Force -LiteralPath $Path }
+        New-Item -ItemType SymbolicLink -Path $Path -Target $Target | Out-Null
+    }
+}
+
 Test-NoForeignCommands
 $Mode = 'symlink'
-$launcher = Join-Path $Source 'omni'
-foreach ($name in $Commands) { Add-Command -Name $name -Target $launcher -Interpreter $Python }
+foreach ($name in $Commands) { Add-Command -Name $name -Target $binary }
 # ------------------------------------------------------- manifest and checks
 Write-Manifest
 try {

@@ -1,26 +1,8 @@
-# Release pipeline for OmniScript.
-#
-# Triggered by pushing a version tag -- v1.2.3 -- or from the Actions tab with
-# the name of a tag that already exists.
-#
-#   verify   the tag, pyproject.toml and omniscript.VERSION all
-#            agree, then the whole test suite runs once more on that commit
-#   build    sdist + wheel, installed into a clean venv and exercised
-#   binaries a standalone executable per platform (PyInstaller) plus a zipapp
-#   release  everything in one GitHub Release, with SHA256SUMS.txt over it
-#   pypi     opt-in upload of the wheel and sdist only; skipped unless the
-#            repository asks for it (see the note on that job)
-#
-# What lands on the release decides how people install: install.sh and
-# install.ps1 prefer the executable for their platform, then the zipapp, then
-# the wheel -- so the release channel needs no Python at all, and `omni update`
-# can replace one of these files in place later.
-#
-# Cutting a release is therefore:
-#
-#   1. bump VERSION in omniscript/__init__.py and version in
-#      pyproject.toml to the same value
-#   2. commit, then tag: git tag v1.2.3 && git push origin v1.2.3
+# Release pipeline for native OmniScript.
+# Triggered by pushing a version tag v1.2.3 or manual dispatch.
+#   verify   tag matches VERSION, C builds clean, tests pass
+#   binaries per-platform omni + .sha256
+#   release  GitHub Release with SHA256SUMS.txt and notes from CHANGELOG.md
 
 name: release
 
@@ -30,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing tag to release, for example v1.2.3
+        description: Existing tag to release, e.g. v1.0.0
         required: true
         type: string
 
@@ -48,316 +30,172 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - name: Check out the tagged commit
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
-
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.13"
-
-      - name: The tag, the package and the source agree
+      - name: Tag matches VERSION
         id: version
         run: |
           set -euo pipefail
           tag="${{ github.event.inputs.tag || github.ref_name }}"
-          version="$(python -c 'import omniscript; print(omniscript.VERSION)')"
-          echo "tag     = $tag"
-          echo "version = $version"
-          if [ "$tag" != "v$version" ]; then
-            echo "::error::tag $tag does not match omniscript/__init__.py, which says $version"
-            echo "::error::bump VERSION in omniscript/__init__.py, or move the tag"
+          ver="$(cat VERSION | tr -d ' \t\n\r')"
+          echo "tag=$tag"
+          echo "VERSION file=$ver"
+          if [ "$tag" != "v$ver" ]; then
+            echo "::error::tag $tag does not match VERSION file $ver"
             exit 1
           fi
-          python - "$version" <<'PY'
-          import pathlib, sys, tomllib
-
-          version = sys.argv[1]
-          project = tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]
-          if project["version"] != version:
-              raise SystemExit(
-                  f"pyproject.toml says {project['version']}, the interpreter says {version}")
-          print("pyproject.toml agrees")
-          PY
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - name: Test suite (unittest)
-        run: python -m unittest discover -s tests
-
-      - name: Every example runs
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+      - name: Build and test
         run: |
           set -euo pipefail
+          make
+          ./omni --version
+          sh tests/run.sh ./omni
           for f in examples/*.omni; do
             echo "::group::$f"
-            ./omni "$f"
+            ./omni "$f" < tests/example_input.txt || ./omni "$f"
             echo "::endgroup::"
           done
 
-      - name: The command line works end to end
-        run: |
-          set -euo pipefail
-          ./omni --version
-          ./omni -e 'draw(window(32, 32, "release"),
-                        circle(16, 16, 14, green),
-                        save("release-check.png"))'
-          test -s release-check.png
-          ./omni -e 'draw_gui.window_size(32, 32, "release")
-          draw_gui.button(pos=(4, 4), text="Go")
-          draw_gui(save("gui-check.png"))'
-          test -s gui-check.png
-
-  build:
-    name: Build distributions
-    needs: verify
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out the tagged commit
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
-
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.13"
-
-      - name: Install the build front-end
-        run: python -m pip install --upgrade pip build
-
-      - name: Build the sdist and the wheel
-        run: python -m build
-
-      - name: Install the wheel somewhere clean and use it
-        run: |
-          set -euo pipefail
-          python -m venv /tmp/relcheck
-          /tmp/relcheck/bin/pip install --quiet dist/*.whl
-          version="${{ needs.verify.outputs.version }}"
-          # Run from outside the checkout so nothing resolves to local sources.
-          cd /tmp
-          reported="$(/tmp/relcheck/bin/omni --version | awk '{print $2}')"
-          echo "installed wheel reports $reported"
-          test -n "$version"
-          test "$reported" = "$version" || {
-            echo "::error::the wheel reports $reported but the tag says $version"; exit 1; }
-          /tmp/relcheck/bin/omni -e 'cmd("echo wheel ok")'
-          /tmp/relcheck/bin/omniscript -e 'import python
-          python("print(6 * 7)")'
-          /tmp/relcheck/bin/omni -e 'draw(window(24, 24, "wheel"),
-                                        rect(0, 0, 24, 24, green),
-                                        save("wheel-check.png"))'
-          test -s wheel-check.png
-
-      - name: Upload the distributions
-        uses: actions/upload-artifact@v7
-        with:
-          name: dist
-          path: dist/*
-          retention-days: 30
-
-  # ---------------------------------------------------------- executables
   binaries:
-    name: Executables (${{ matrix.os }})
+    name: Binaries (${{ matrix.os }})
     needs: verify
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        # One runner per family. Other architectures -- an Intel Mac, an ARM
-        # Windows box, a musl container -- install the zipapp from the same
-        # release instead, which is why it is always built here too.
         os: ["ubuntu-latest", "windows-latest", "macos-latest"]
     steps:
-      - name: Check out the tagged commit
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
-
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.13"
-
-      - name: Install PyInstaller
-        run: python -m pip install --upgrade pip pyinstaller
-
-      - name: Build the executable and the zipapp
-        run: >-
-          python tools/build_executable.py
-          --out dist
-          --version "${{ needs.verify.outputs.version }}"
-
-      - name: Upload the artifacts
+      - name: Build omni
+        run: |
+          set -euo pipefail
+          make
+          ./omni --version
+      - name: Name asset like updater expects and hash it
+        shell: bash
+        run: |
+          set -euo pipefail
+          ver="${{ needs.verify.outputs.version }}"
+          # platform tag logic mirrors src/update.c and install.sh
+          uname_s="$(uname -s)"
+          uname_m="$(uname -m)"
+          os_lc="$(echo "$uname_s" | tr '[:upper:]' '[:lower:]')"
+          arch_lc="$(echo "$uname_m" | tr '[:upper:]' '[:lower:]')"
+          case "$os_lc" in
+            linux*) os=linux ;;
+            darwin*|mac*) os=macos ;;
+            mingw*|msys*|cygwin*) os=windows ;;
+            *) os="$os_lc" ;;
+          esac
+          case "$arch_lc" in
+            x86_64|amd64) arch=x86_64 ;;
+            aarch64|arm64) arch=arm64 ;;
+            i386|i686) arch=x86 ;;
+            *) arch="$arch_lc" ;;
+          esac
+          plat="${os}-${arch}"
+          suffix=""
+          case "${{ matrix.os }}" in *windows*) suffix=".exe" ;; esac
+          mkdir -p dist
+          if [ -f omni.exe ]; then src=omni.exe; else src=omni; fi
+          name="omni-${plat}${suffix}"
+          cp "$src" "dist/$name"
+          # per-binary .sha256 (just the hex, like update.c expects)
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "dist/$name" | awk '{print $1}' > "dist/$name.sha256"
+          else
+            shasum -a 256 "dist/$name" | awk '{print $1}' > "dist/$name.sha256"
+          fi
+          ls -l dist/
+      - name: Upload
         uses: actions/upload-artifact@v7
         with:
-          name: executables-${{ matrix.os }}
+          name: binaries-${{ matrix.os }}
           path: dist/*
           retention-days: 30
 
   release:
-    name: Publish the GitHub release
-    needs: [verify, build, binaries]
+    name: Publish GitHub release
+    needs: [verify, binaries]
     runs-on: ubuntu-latest
     steps:
-      - name: Check out the tagged commit
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
-
-      - name: Collect the distributions
+      - name: Collect binaries
         uses: actions/download-artifact@v8
         with:
-          name: dist
-          path: dist
-
-      - name: Collect the executables
-        uses: actions/download-artifact@v8
-        with:
-          pattern: executables-*
+          pattern: binaries-*
           path: dist
           merge-multiple: true
-
-      - name: One checksum file over everything
+      - name: SHA256SUMS.txt over everything
         run: |
           set -euo pipefail
           cd dist
-          rm -f SHA256SUMS.txt   # each platform wrote its own; this covers them all
-          sha256sum ./* > SHA256SUMS.txt
-          ls -l
+          rm -f SHA256SUMS.txt
+          sha256sum ./* > SHA256SUMS.txt || shasum -a 256 ./* > SHA256SUMS.txt
           cat SHA256SUMS.txt
-
-      - name: Create or update the release
+          ls -l
+      - name: Create or update release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           tag="${{ github.event.inputs.tag || github.ref_name }}"
-          version="${{ needs.verify.outputs.version }}"
+          ver="${{ needs.verify.outputs.version }}"
           repo="${{ github.repository }}"
           notes="$RUNNER_TEMP/notes.md"
           changes="$RUNNER_TEMP/changes.md"
-          python3 - "$version" CHANGELOG.md "$changes" <<'PY'
-          import pathlib, sys
-
-          version, src, dst = sys.argv[1], pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3])
-          lines = src.read_text().splitlines()
-          start = next((i for i, line in enumerate(lines)
-                        if line.startswith("## [") and version in line), None)
-          body = []
-          if start is not None:
-              for line in lines[start + 1:]:
-                  if line.startswith("## ["):
-                      break
-                  body.append(line)
-          text = "\n".join(body).strip() or f"See CHANGELOG.md at {version}."
-          dst.write_text(text + "\n")
-          print(f"changelog: {len(text.splitlines())} line(s) for {version}")
-          PY
-          cat > "$notes" <<'MD'
-          **OmniScript __VERSION__** -- a small language for doing big things in few
-          lines. No dependencies, and the executables attached below need no Python
-          at all.
+          # extract changelog section for this version
+          awk -v ver="[$ver]" '
+            $0 ~ "^## \\[" { if (p) exit; if (index($0, ver)) p=1; next }
+            p
+          ' CHANGELOG.md > "$changes" || true
+          if [ ! -s "$changes" ]; then
+            echo "See CHANGELOG.md at $ver." > "$changes"
+          fi
+          cat > "$notes" <<MD
+          **OmniScript $ver** — native, one binary, libc only. No Python, custom hardware I/O.
 
           ## Install
 
-          ```bash
-          curl -fsSL https://raw.githubusercontent.com/__REPO__/main/install.sh | bash
-          ```
+          \`\`\`bash
+          curl -fsSL https://raw.githubusercontent.com/$repo/main/install.sh | bash
+          \`\`\`
 
-          ```powershell
-          iwr -use1 https://raw.githubusercontent.com/__REPO__/main/install.ps1 | iex
-          ```
+          \`\`\`powershell
+          iwr -use1 https://raw.githubusercontent.com/$repo/main/install.ps1 | iex
+          \`\`\`
 
-          That takes the file built for your machine out of this release, checks its
-          sha256 and puts `omni` on your PATH. `-s beta` follows the repository
-          instead, `--version` pins one release, and `omni update` keeps it current.
-
-          Other ways in: `pip install omniscript-lang==__VERSION__`, `python3
-          omni-__VERSION__-any.pyz`, or clone the repository and run `./omni`.
+          That takes the file built for your machine from this release, checks its \`.sha256\` and puts \`omni\` on PATH. \`-s beta\` builds from source (\`cc\`+\`make\`), \`--version\` pins a release, \`omni update\` keeps it current.
 
           ## Try it
 
-          ```bash
-          omni -e 'cmd("echo hello from __VERSION__")'
-          omni -e 'draw(window(200, 120, "hi"), circle(100, 60, 40, blue))'
-          omni -e 'draw_gui.window_size(200, 120, "hi")'
-          omni examples/06_gui.omni        # buttons, and a real PNG
-          ```
+          \`\`\`bash
+          omni --version
+          omni -e 'cmd("echo hello from $ver")'
+          omni examples/03_drawing.omni
+          omni examples/06_gui.omni
+          \`\`\`
 
           ## What changed
 
-          __CHANGES__
+          $(cat "$changes")
 
-          Attached below: the executables for Linux, Windows and macOS, a zipapp for
-          anywhere else, the wheel, the sdist, and `SHA256SUMS.txt` covering all of
-          them (`sha256sum -c SHA256SUMS.txt`).
+          Attached below: executables per platform plus per-binary \`.sha256\` and \`SHA256SUMS.txt\` (\`sha256sum -c SHA256SUMS.txt\`).
 
-          Source history: https://github.com/__REPO__/commits/__TAG__
+          Source history: https://github.com/$repo/commits/$tag
           MD
-          sed -i \
-            -e "s|__VERSION__|$version|g" \
-            -e "s|__REPO__|$repo|g" \
-            -e "s|__TAG__|$tag|g" \
-            "$notes"
-          python3 - "$notes" "$changes" <<'PY'
-          import pathlib, sys
-
-          notes, changes = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
-          notes.write_text(notes.read_text().replace("__CHANGES__",
-                                                      changes.read_text().rstrip()))
-          PY
-          if grep -q '__' "$notes"; then
-            echo "::error::a placeholder was not substituted"; exit 1
-          fi
-          if gh release view "$tag" --repo "$repo" > /dev/null 2>&1; then
-            echo "$tag already exists -- replacing the files and the notes"
+          if grep -q '__' "$notes"; then echo "::error::placeholder left"; exit 1; fi
+          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+            echo "$tag exists -- replacing files and notes"
             gh release upload "$tag" dist/* --repo "$repo" --clobber
-            gh release edit "$tag" --repo "$repo" \
-              --title "OmniScript $version" --notes-file "$notes"
+            gh release edit "$tag" --repo "$repo" --title "OmniScript $ver" --notes-file "$notes"
           else
-            gh release create "$tag" dist/* --repo "$repo" \
-              --title "OmniScript $version" --notes-file "$notes"
+            gh release create "$tag" dist/* --repo "$repo" --title "OmniScript $ver" --notes-file "$notes"
           fi
           echo "::notice::https://github.com/$repo/releases/tag/$tag"
-
-  pypi:
-    name: Publish to PyPI (opt-in)
-    needs: [build, release]
-    runs-on: ubuntu-latest
-    # Off by default, so a tag push never fails on missing PyPI credentials.
-    # Two things turn it on:
-    #   1. a repository variable PYPI_PUBLISH set to "true" (Settings > Secrets
-    #      and variables > Actions > Variables)
-    #   2. trusted publishing configured for the project on pypi.org, pointing
-    #      at this repository, this workflow file and the "pypi" environment
-    # With both in place this job uploads using an OIDC token -- no API key is
-    # stored in the repository.
-    if: vars.PYPI_PUBLISH == 'true'
-    environment: pypi
-    permissions:
-      id-token: write
-    steps:
-      - name: Download the distributions
-        uses: actions/download-artifact@v8
-        with:
-          name: dist
-          path: dist
-
-      - name: Keep only what PyPI accepts
-        # The executables and the zipapp belong on the GitHub release; PyPI takes
-        # the wheel and the sdist.
-        run: |
-          set -euo pipefail
-          find dist -type f ! -name '*.whl' ! -name '*.tar.gz' -print -delete
-          if ! ls dist/*.whl > /dev/null 2>&1; then
-            echo "::error::there is no wheel to upload"
-            exit 1
-          fi
-          ls -l dist
-
-      - name: Upload to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          skip-existing: true

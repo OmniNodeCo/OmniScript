@@ -1,11 +1,12 @@
-__pycache__/
-*.py[cod]
-*.egg-info/
-build/
-dist/
-.preview/
+# build outputs
+omni
+omni.exe
+*.o
+*.bmp
 *.png
-*.log
-.DS_Store
-.ruff_cache/
+dist/
+# python leftovers (should not exist in native)
+__pycache__/
+*.pyc
 .venv/
+.ruff_cache/

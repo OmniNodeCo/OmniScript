@@ -1,0 +1,2 @@
+# Ask the person running the script.
+input("What is your name? ")
