@@ -250,7 +250,9 @@ jobs:
           Write-Host "--- shim content ---"; Get-Content $omni | Out-String | Write-Host
           $ver = (& $omni --version *>&1 | Out-String); Write-Host "version out: $ver"
           if ($LASTEXITCODE -ne 0) { Fail "version failed rc=$LASTEXITCODE" $ver }
-          $smoke = (& $omni -e 'cmd("echo hi")' *>&1 | Out-String); Write-Host "smoke out: $smoke"
+          $testArg = if ($IsWindows) { 'cmd(whoami)' } else { 'cmd("echo hi")' }
+          Write-Host "test arg: $testArg"
+          $smoke = (& $omni -e $testArg *>&1 | Out-String); Write-Host "smoke out: $smoke"
           if ([string]::IsNullOrWhiteSpace($smoke)) { Fail "smoke empty" $smoke }
           $out = (& ./uninstall.ps1 -Prefix $prefix -Purge *>&1 | Out-String); Write-Host $out
           if ($LASTEXITCODE -ne 0) { Fail "uninstall.ps1 $LASTEXITCODE" $out }
@@ -262,8 +264,9 @@ jobs:
         with:
           name: installer-logs-${{ matrix.os }}
           path: |
-            ${{ runner.temp }}/installer-check-ps/**/*
-          if-no-files-found: ignore
+            ${{ runner.temp }}/installer-check-ps/
+            ${{ runner.temp }}/installer-check/
+          if-no-files-found: warn
           retention-days: 3
 
   binaries:
