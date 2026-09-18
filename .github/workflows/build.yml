@@ -86,24 +86,33 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Build omni
+        shell: bash
         run: |
           set -euo pipefail
-          make
-          ./omni --version
+          if command -v make >/dev/null 2>&1; then MK=make; elif command -v mingw32-make >/dev/null 2>&1; then MK=mingw32-make; else MK=gmake; fi
+          $MK
+          if [ -f ./omni.exe ]; then ./omni.exe --version; else ./omni --version; fi
       - name: Test suite (91 checks)
-        run: sh tests/run.sh ./omni
+        shell: bash
+        run: |
+          if [ -f ./omni.exe ]; then BIN=./omni.exe; else BIN=./omni; fi
+          sh tests/run.sh "$BIN"
       - name: Every example runs
+        shell: bash
         run: |
           set -euo pipefail
+          if [ -f ./omni.exe ]; then BIN=./omni.exe; else BIN=./omni; fi
           for f in examples/*.omni; do
             echo "::group::$f"
-            ./omni "$f" < tests/example_input.txt || ./omni "$f"
+            "$BIN" "$f" < tests/example_input.txt || "$BIN" "$f"
             echo "::endgroup::"
           done
       - name: BMP is a real BMP
+        shell: bash
         run: |
           set -euo pipefail
-          ./omni -e 'draw(window(48, 32, "ci"), rect(0, 0, 48, 32, "#1f6feb"), circle(24, 16, 10, white), text(4, 4, "ci", black, 10), save("ci-check.bmp"))'
+          if [ -f ./omni.exe ]; then BIN=./omni.exe; else BIN=./omni; fi
+          "$BIN" -e 'draw(window(48, 32, "ci"), rect(0, 0, 48, 32, "#1f6feb"), circle(24, 16, 10, white), text(4, 4, "ci", black, 10), save("ci-check.bmp"))'
           test -f ci-check.bmp
           od -A n -c -N 2 ci-check.bmp | grep -q "B.*M"
           # width at 18, height at 22 little-endian
@@ -207,11 +216,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Build omni
+        shell: bash
         run: |
           set -euo pipefail
-          make
-          ./omni --version
-          ./omni -e 'draw(window(64, 32, "bin"), rect(0,0,64,32,blue), save("bin-check.bmp"))'
+          if command -v make >/dev/null 2>&1; then MK=make; elif command -v mingw32-make >/dev/null 2>&1; then MK=mingw32-make; else MK=gmake; fi
+          $MK
+          if [ -f ./omni.exe ]; then BIN=./omni.exe; else BIN=./omni; fi
+          "$BIN" --version
+          "$BIN" -e 'draw(window(64, 32, "bin"), rect(0,0,64,32,blue), save("bin-check.bmp"))'
           test -f bin-check.bmp
       - name: Name the asset like the updater expects
         shell: bash

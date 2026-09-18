@@ -47,14 +47,16 @@ jobs:
           fi
           echo "version=$ver" >> "$GITHUB_OUTPUT"
       - name: Build and test
+        shell: bash
         run: |
           set -euo pipefail
           make
-          ./omni --version
-          sh tests/run.sh ./omni
+          if [ -f ./omni.exe ]; then BIN=./omni.exe; else BIN=./omni; fi
+          "$BIN" --version
+          sh tests/run.sh "$BIN"
           for f in examples/*.omni; do
             echo "::group::$f"
-            ./omni "$f" < tests/example_input.txt || ./omni "$f"
+            "$BIN" "$f" < tests/example_input.txt || "$BIN" "$f"
             echo "::endgroup::"
           done
 
@@ -71,10 +73,12 @@ jobs:
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
       - name: Build omni
+        shell: bash
         run: |
           set -euo pipefail
-          make
-          ./omni --version
+          if command -v make >/dev/null 2>&1; then MK=make; elif command -v mingw32-make >/dev/null 2>&1; then MK=mingw32-make; else MK=gmake; fi
+          $MK
+          if [ -f ./omni.exe ]; then ./omni.exe --version; else ./omni --version; fi
       - name: Name asset like updater expects and hash it
         shell: bash
         run: |
