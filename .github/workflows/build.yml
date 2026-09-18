@@ -228,21 +228,43 @@ jobs:
           $env:HOME = $fakeHome; $env:USERPROFILE = $fakeHome
           $env:XDG_DATA_HOME = Join-Path $fakeHome "data"
           $env:LOCALAPPDATA = Join-Path $fakeHome "appdata"
-          # Ensure a C compiler is visible to make on Windows
-          foreach ($c in @('gcc','clang','cc')) { if (Get-Command $c -ErrorAction SilentlyContinue) { $env:CC = $c; Write-Host "using compiler $c"; break } }
+          foreach ($c in @('gcc','clang','cc','cl')) { if (Get-Command $c -ErrorAction SilentlyContinue) { $env:CC = $c; Write-Host "using compiler $c at $((Get-Command $c).Source)"; break } }
+          Get-Command make -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "make at $($_.Source)" }
+          Get-Command mingw32-make -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "mingw32-make at $($_.Source)" }
           $bin = if ($IsWindows) { $prefix } else { Join-Path $prefix "bin" }
           $omni = if ($IsWindows) { Join-Path $bin "omni.cmd" } else { Join-Path $bin "omni" }
+          $omniBin = if ($IsWindows) { Join-Path $bin "omni.exe" } else { Join-Path $bin "omni" }
+          # If no binary exists in prefix yet, try direct build first to surface errors
+          Write-Host "--- direct make in checkout ---"
+          if (Get-Command make -ErrorAction SilentlyContinue) { $mk='make' } elseif (Get-Command mingw32-make -ErrorAction SilentlyContinue) { $mk='mingw32-make' } else { $mk='gmake' }
+          & $mk -C $PWD 2>&1 | Out-String | ForEach-Object { Write-Host $_ }
+          if (Test-Path ./omni.exe) { Write-Host "./omni.exe exists" } ; if (Test-Path ./omni) { Write-Host "./omni exists" }
+          Write-Host "--- install.ps1 ---"
           $out = (& ./install.ps1 -Prefix $prefix *>&1 | Out-String); Write-Host $out
           if ($LASTEXITCODE -ne 0) { Fail "install.ps1 exited $LASTEXITCODE" $out }
-          if (-not (Test-Path $omni)) { Fail "no command at $omni" $out }
-          $ver = (& $omni --version *>&1 | Out-String); Write-Host $ver
-          if ($LASTEXITCODE -ne 0) { Fail "version failed" $ver }
-          $smoke = (& $omni -e 'cmd("echo hi")' *>&1 | Out-String); Write-Host $smoke
+          if (-not (Test-Path $omni)) {
+            Write-Host "--- ls $bin ---"; Get-ChildItem $bin -Force | Out-String | Write-Host
+            if (Test-Path $omniBin) { Write-Host "binary $omniBin exists" } else { Write-Host "binary $omniBin missing" }
+            Fail "no command at $omni" $out
+          }
+          Write-Host "--- shim content ---"; Get-Content $omni | Out-String | Write-Host
+          $ver = (& $omni --version *>&1 | Out-String); Write-Host "version out: $ver"
+          if ($LASTEXITCODE -ne 0) { Fail "version failed rc=$LASTEXITCODE" $ver }
+          $smoke = (& $omni -e 'cmd("echo hi")' *>&1 | Out-String); Write-Host "smoke out: $smoke"
           if ([string]::IsNullOrWhiteSpace($smoke)) { Fail "smoke empty" $smoke }
           $out = (& ./uninstall.ps1 -Prefix $prefix -Purge *>&1 | Out-String); Write-Host $out
           if ($LASTEXITCODE -ne 0) { Fail "uninstall.ps1 $LASTEXITCODE" $out }
           if (Test-Path $omni) { Fail "$omni survived" $out }
           Write-Host "install.ps1 / uninstall.ps1 cycle ok"
+      - name: Upload installer logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: installer-logs-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/installer-check-ps/**/*
+          if-no-files-found: ignore
+          retention-days: 3
 
   binaries:
     name: Binaries (${{ matrix.os }})
