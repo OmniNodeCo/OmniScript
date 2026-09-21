@@ -1,67 +1,63 @@
 # Install
 
-One line, no dependencies. The installer takes the binary built for your machine from the newest release, checks its `.sha256`, puts `omni` on PATH **and installs it as an app**.
+Proper native installers, no curl pipe.
 
-## Linux and macOS
+## Windows — EXE (Inno Setup)
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/install.sh | bash
+Build:
+
+```bat
+installer\windows\build.bat
 ```
 
-This creates:
-- `~/.local/bin/omni` (binary)
-- `~/.local/share/applications/omniscript.desktop` (app launcher, shows in GNOME/KDE)
-- `~/.local/share/icons/hicolor/64x64/apps/omniscript.png` (icon, generated via omni)
-- macOS: `~/Applications/OmniScript.app` bundle (Launchpad/Spotlight)
-
-## Windows
+Or PowerShell:
 
 ```powershell
-iwr -use1 https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/install.ps1 | iex
+installer\windows\build.ps1
 ```
 
-This creates:
-- `%LOCALAPPDATA%\Programs\OmniScript\omni.exe` (binary, on PATH if configured)
-- Start Menu `OmniScript` folder with `OmniScript.lnk`, `REPL.lnk`, `Uninstall.lnk`
-- Desktop `OmniScript.lnk` (if Desktop exists)
-- Icon `%LOCALAPPDATA%\OmniScript\icon.bmp` (generated via omni)
+Requires Inno Setup 6 (https://jrsoftware.org/isinfo.php).  
+Output: `dist/OmniScript-2.0.0-Windows-x86_64-Setup.exe`
 
-## Channels and options
+Run the EXE — installs to Program Files, adds to PATH (optional), Start Menu shortcuts, uninstaller.
 
-- **release** (default) — newest published release, one binary, libc only, plus app entries
-- **beta** (`-s beta` / `-Channel beta`) — repository itself, built with `cc` (no make required); `git pull` then rebuild is the upgrade, `make` still works as fallback
+## macOS — DMG
 
 ```bash
-./install.sh --version 1.0.1   # a particular release
-./install.sh --dry-run         # show plan, touch nothing
-./install.sh --prefix ~/.local # where command goes (default)
+./installer/macos/build-dmg.sh
 ```
 
-Every install is recorded in `~/.local/share/omniscript/install.txt`, which [[Uninstall]] reads. Re-installing over same place is no-op unless foreign file sits there (`--force` moves to `.bak`).
+Output: `dist/OmniScript-2.0.0-macOS.dmg`
 
-## Other ways in
+Open DMG, drag `OmniScript.app` to Applications. Contains `omni` binary + examples.
+
+## Linux — DEB
 
 ```bash
-git clone https://github.com/OmniNodeCo/OmniScript && cd OmniScript
-cc -O2 -std=c11 -o omni src/*.c -lX11   # no make needed
-# or
-make && ./omni --version                # classic make still works
+./installer/linux/build-deb.sh
+sudo dpkg -i dist/omniscript_2.0.0_amd64.deb
+```
+
+Or tarball:
+
+```bash
+tar -xzf dist/omniscript-2.0.0-linux-amd64.tar.gz
+sudo cp usr/bin/omni /usr/local/bin/
+```
+
+## All
+
+```bash
+./installer/build-all.sh
+make dist
+```
+
+Creates `dist/` with all packages + `SHA256SUMS.txt`.
+
+## Dev build
+
+```bash
+make
 ./omni --version
+sudo make install
 ```
-
-## Check it worked
-
-```bash
-omni --version
-omni -e 'cmd("echo hello")'
-omni -e 'draw(window(200, 120, "hi"), circle(100, 60, 40, blue), save("hi.bmp"))'
-```
-
-## Keep it current
-
-```bash
-omni update --check
-omni update
-```
-
-Update needs `curl` and refuses install without checksum.

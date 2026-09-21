@@ -1,33 +1,35 @@
 # Uninstall
 
-Removes exactly what install.sh/install.ps1 put there, using the manifest `~/.local/share/omniscript/install.txt`.
-
-## Linux and macOS
-
-```bash
-./uninstall.sh
-./uninstall.sh --purge   # also history, cloned source, manifest
-./uninstall.sh --dry-run
-```
-
 ## Windows
 
-```powershell
-.\uninstall.ps1
-.\uninstall.ps1 -Purge
-.\uninstall.ps1 -DryRun
+Use Add/Remove Programs → OmniScript, or run uninstaller from Start Menu.
+
+Or manually:
+
+```bat
+rmdir /s /q "%ProgramFiles%\OmniScript"
 ```
 
-The script never deletes a source tree you cloned yourself; only one it cloned under the data dir. A foreign `omni` (not ours) needs `--force` / `-Force`.
-
-Backups from `--force` installs stay as `omni.bak` / `omni.exe.bak` / `omni.cmd.bak`.
-
-After purge, to put release back:
+## macOS
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/install.sh | bash
+rm -rf /Applications/OmniScript.app
+rm -rf ~/Applications/OmniScript.app
 ```
 
-```powershell
-iwr -use1 https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/install.ps1 | iex
+If installed via DMG drag, just delete the app.
+
+## Linux DEB
+
+```bash
+sudo apt remove omniscript
+sudo dpkg -r omniscript
 ```
+
+## Make install
+
+```bash
+sudo rm /usr/local/bin/omni
+```
+
+Or `make clean` in source dir.

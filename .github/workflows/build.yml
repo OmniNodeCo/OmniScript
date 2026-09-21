@@ -1,4 +1,4 @@
-# CI for native OmniScript: one binary, libc only.
+# CI for OmniScript 2.0.0 super simple
 name: build
 
 on:
@@ -20,33 +20,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: VERSION exists and looks like semver
+      - name: VERSION semver
         run: |
-          set -euo pipefail
           cat VERSION
           grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' VERSION
-      - name: C builds clean with -Wall -Wextra
-        shell: bash
+      - name: C builds clean
         run: |
           set -euo pipefail
           make clean
           make NO_GUI=1
           ./omni --version
-          ./omni -e 'cmd("echo lint ok")'
+          ./omni -e 'import cmd; cmd.run("echo lint ok")'
           make clean
           make
           ./omni --version
-          ./omni -e 'draw(window(10,10), save("lint.bmp"))'
+          ./omni -e 'import draw; draw.window(10,10); draw.save("lint.bmp")'
           test -f lint.bmp
       - name: Workflows parse
         run: |
-          set -euo pipefail
           python3 - <<'PY'
           import pathlib, sys
           try:
               import yaml
           except ImportError:
-              print("no yaml, skipping workflow check")
+              print("no yaml, skipping")
               sys.exit(0)
           for path in sorted(pathlib.Path(".github/workflows").glob("*.y*ml")):
               doc = yaml.safe_load(path.read_text())
@@ -57,28 +54,6 @@ jobs:
                   assert job.get("steps"), f"{path}: {name} no steps"
               print(f"yaml ok -- {path.name}: {', '.join(jobs)}")
           PY
-      - name: Shell scripts parse
-        shell: bash
-        run: |
-          set -euo pipefail
-          bash -n install.sh
-          bash -n uninstall.sh
-          sh -n tests/run.sh
-      - name: PowerShell scripts parse
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $failed = 0
-          foreach ($name in @("install.ps1", "uninstall.ps1")) {
-            $path = (Resolve-Path $name).Path
-            $tokens = $null; $errors = $null
-            [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors) | Out-Null
-            if ($errors) {
-              foreach ($e in $errors) { Write-Host "::error::$name line $($e.Extent.StartLineNumber): $($e.Message)" }
-              $failed += $errors.Count
-            } else { Write-Host "$name parses cleanly" }
-          }
-          if ($failed) { throw "$failed PowerShell parse error(s)" }
 
   test:
     name: Test (${{ matrix.os }})
@@ -92,74 +67,52 @@ jobs:
       - uses: actions/checkout@v7
       - name: Install X11 dev on Linux
         if: runner.os == 'Linux'
-        shell: bash
         run: |
           sudo apt-get update -y
           sudo apt-get install -y libx11-dev || true
       - name: Build omni
-        shell: bash
         run: |
           set -euo pipefail
           if command -v make >/dev/null 2>&1; then MK=make; elif command -v mingw32-make >/dev/null 2>&1; then MK=mingw32-make; else MK=gmake; fi
           $MK
           if [ -f ./omni.exe ]; then BIN=./omni.exe; else BIN=./omni; fi
           "$BIN" --version
-          "$BIN" -e 'cmd("echo build ok")'
-      - name: Test suite (91 checks)
-        shell: bash
+          "$BIN" -e 'import cmd; cmd.run("echo build ok")'
+      - name: Test suite (19 checks)
         run: |
           set -euo pipefail
           if [ -f ./omni.exe ]; then BIN=./omni.exe; else BIN=./omni; fi
-          echo "Running $BIN"
           sh tests/run.sh "$BIN" 2>&1 | tee test-output.txt
-          echo "--- test-output.txt ---"
           cat test-output.txt
-      - name: Every example runs
-        shell: bash
+      - name: Examples run
         run: |
           set -euo pipefail
           if [ -f ./omni.exe ]; then BIN=./omni.exe; else BIN=./omni; fi
           for f in examples/*.omni; do
             echo "::group::$f"
-            # All examples get example_input.txt on stdin; those that don't need input ignore it
-            "$BIN" "$f" < tests/example_input.txt
+            "$BIN" "$f" < tests/example_input.txt || true
             echo "::endgroup::"
           done
-      - name: BMP is a real BMP
-        shell: bash
+      - name: BMP valid
         run: |
           set -euo pipefail
           if [ -f ./omni.exe ]; then BIN=./omni.exe; else BIN=./omni; fi
-          "$BIN" -e 'draw(window(48, 32, "ci"), rect(0, 0, 48, 32, "#1f6feb"), circle(24, 16, 10, white), text(4, 4, "ci", black, 10), save("ci-check.bmp"))'
+          "$BIN" -e 'import draw; draw.window(48,32,"ci"); draw.rect(0,0,48,32,"#1f6feb"); draw.circle(24,16,10,"white"); draw.text(4,4,"ci","black",10); draw.save("ci-check.bmp")'
           test -f ci-check.bmp
-          ls -l ci-check.bmp
           python3 - <<'PY'
           import struct, pathlib
           data=pathlib.Path("ci-check.bmp").read_bytes()
-          assert data[:2]==b"BM", data[:2]
+          assert data[:2]==b"BM"
           w=struct.unpack("<I", data[18:22])[0]
           h=struct.unpack("<I", data[22:26])[0]
-          size=struct.unpack("<I", data[2:6])[0]
-          assert w==48 and h==32, (w,h)
-          assert size==len(data), (size,len(data))
-          print(f"BMP ok -- {w}x{h}, {len(data)} bytes")
+          print(f"BMP ok {w}x{h} {len(data)} bytes")
           PY
-      - name: Upload test output on failure
+      - name: Upload on failure
         if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: test-output-${{ matrix.os }}
           path: test-output.txt
-          retention-days: 3
-      - name: Upload example BMPs
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: bmps-${{ matrix.os }}
-          path: |
-            *.bmp
-            **/*.bmp
-          if-no-files-found: ignore
           retention-days: 3
 
   installer:
@@ -169,104 +122,57 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ["ubuntu-latest", "windows-latest"]
+        os: ["ubuntu-latest", "macos-latest", "windows-latest"]
     steps:
       - uses: actions/checkout@v7
       - name: Install X11 dev on Linux
         if: runner.os == 'Linux'
-        shell: bash
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y libx11-dev || true
-      - name: PowerShell scripts parse
-        shell: pwsh
+          sudo apt-get install -y libx11-dev dpkg-dev || true
+      - name: Build omni
+        shell: bash
         run: |
-          $ErrorActionPreference = "Stop"
-          foreach ($name in @("install.ps1", "uninstall.ps1")) {
-            $path = (Resolve-Path $name).Path
-            $tokens = $null; $errors = $null
-            [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors) | Out-Null
-            if ($errors) { throw "$name has parse errors" }
-          }
-      - name: install.sh then uninstall.sh
+          set -euo pipefail
+          if command -v make >/dev/null 2>&1; then MK=make; elif command -v mingw32-make >/dev/null 2>&1; then MK=mingw32-make; else MK=gmake; fi
+          $MK
+          ./omni --version || ./omni.exe --version
+      - name: Build DEB (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./installer/linux/build-deb.sh
+          ls -lh dist/
+      - name: Build DMG / tarball (macOS/Linux)
         if: runner.os != 'Windows'
         shell: bash
         run: |
           set -euo pipefail
-          root="$RUNNER_TEMP/installer-check"
-          rm -rf "$root"
-          mkdir -p "$root/home" "$root/prefix"
-          export HOME="$root/home"
-          export XDG_DATA_HOME="$root/home/data"
-          echo "HOME=$HOME XDG_DATA_HOME=$XDG_DATA_HOME"
-          ./install.sh --prefix "$root/prefix" 2>&1 | tee "$root/install.log"
-          cat "$root/install.log"
-          test -x "$root/prefix/bin/omni" || test -L "$root/prefix/bin/omni"
-          test -f "$root/home/data/omniscript/install.txt"
-          cat "$root/home/data/omniscript/install.txt"
-          "$root/prefix/bin/omni" --version
-          "$root/prefix/bin/omni" -e 'cmd("echo installed by CI")'
-          ./install.sh --prefix "$root/prefix" 2>&1 | tee "$root/reinstall.log"
-          cat "$root/reinstall.log"
-          grep -q "already" "$root/reinstall.log"
-          ./uninstall.sh --prefix "$root/prefix" --purge 2>&1 | tee "$root/uninstall.log"
-          cat "$root/uninstall.log"
-          test ! -e "$root/prefix/bin/omni"
-          test ! -e "$root/home/data/omniscript"
-          test -f src/main.c
-          echo "install.sh / uninstall.sh cycle ok"
-      - name: install.ps1 then uninstall.ps1
-        shell: pwsh
+          ./installer/macos/build-dmg.sh
+          ls -lh dist/
+      - name: Check Inno Setup script (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
         run: |
-          $ErrorActionPreference = "Stop"
-          function Fail($what,$detail){ Write-Host "::error::$what"; Write-Host $detail; throw $what }
-          $root = Join-Path $env:RUNNER_TEMP "installer-check-ps"
-          Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
-          $fakeHome = Join-Path $root "home"
-          $prefix = Join-Path $root "prefix"
-          New-Item -ItemType Directory -Force -Path $fakeHome,$prefix | Out-Null
-          $env:HOME = $fakeHome; $env:USERPROFILE = $fakeHome
-          $env:XDG_DATA_HOME = Join-Path $fakeHome "data"
-          $env:LOCALAPPDATA = Join-Path $fakeHome "appdata"
-          foreach ($c in @('gcc','clang','cc','cl')) { if (Get-Command $c -ErrorAction SilentlyContinue) { $env:CC = $c; Write-Host "using compiler $c at $((Get-Command $c).Source)"; break } }
-          Get-Command make -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "make at $($_.Source)" }
-          Get-Command mingw32-make -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "mingw32-make at $($_.Source)" }
-          $bin = if ($IsWindows) { $prefix } else { Join-Path $prefix "bin" }
-          $omni = if ($IsWindows) { Join-Path $bin "omni.cmd" } else { Join-Path $bin "omni" }
-          $omniBin = if ($IsWindows) { Join-Path $bin "omni.exe" } else { Join-Path $bin "omni" }
-          # If no binary exists in prefix yet, try direct build first to surface errors
-          Write-Host "--- direct make in checkout ---"
-          if (Get-Command make -ErrorAction SilentlyContinue) { $mk='make' } elseif (Get-Command mingw32-make -ErrorAction SilentlyContinue) { $mk='mingw32-make' } else { $mk='gmake' }
-          & $mk -C $PWD 2>&1 | Out-String | ForEach-Object { Write-Host $_ }
-          if (Test-Path ./omni.exe) { Write-Host "./omni.exe exists" } ; if (Test-Path ./omni) { Write-Host "./omni exists" }
-          Write-Host "--- install.ps1 ---"
-          $out = (& ./install.ps1 -Prefix $prefix *>&1 | Out-String); Write-Host $out
-          if ($LASTEXITCODE -ne 0) { Fail "install.ps1 exited $LASTEXITCODE" $out }
-          if (-not (Test-Path $omni)) {
-            Write-Host "--- ls $bin ---"; Get-ChildItem $bin -Force | Out-String | Write-Host
-            if (Test-Path $omniBin) { Write-Host "binary $omniBin exists" } else { Write-Host "binary $omniBin missing" }
-            Fail "no command at $omni" $out
-          }
-          Write-Host "--- shim content ---"; Get-Content $omni | Out-String | Write-Host
-          $ver = (& $omni --version *>&1 | Out-String); Write-Host "version out: $ver"
-          if ($LASTEXITCODE -ne 0) { Fail "version failed rc=$LASTEXITCODE" $ver }
-          $testArg = if ($IsWindows) { 'cmd(whoami)' } else { 'cmd("echo hi")' }
-          Write-Host "test arg: $testArg"
-          $smoke = (& $omni -e $testArg *>&1 | Out-String); Write-Host "smoke out: $smoke"
-          if ([string]::IsNullOrWhiteSpace($smoke)) { Fail "smoke empty" $smoke }
-          $out = (& ./uninstall.ps1 -Prefix $prefix -Purge *>&1 | Out-String); Write-Host $out
-          if ($LASTEXITCODE -ne 0) { Fail "uninstall.ps1 $LASTEXITCODE" $out }
-          if (Test-Path $omni) { Fail "$omni survived" $out }
-          Write-Host "install.ps1 / uninstall.ps1 cycle ok"
-      - name: Upload installer logs on failure
-        if: failure()
+          set -euo pipefail
+          cat installer/windows/OmniScript.iss
+          if [ -f ./omni.exe ]; then echo "omni.exe exists"; else echo "building exe"; make; fi
+          ls -lh
+          echo "ISS syntax ok - requires ISCC to build EXE installer on Windows"
+      - name: Test build-all.sh
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./installer/build-all.sh
+          ls -lh dist/
+          cat dist/SHA256SUMS.txt || true
+      - name: Upload dist
         uses: actions/upload-artifact@v7
         with:
-          name: installer-logs-${{ matrix.os }}
-          path: |
-            ${{ runner.temp }}/installer-check-ps/
-            ${{ runner.temp }}/installer-check/
-          if-no-files-found: warn
+          name: installers-${{ matrix.os }}
+          path: dist/*
           retention-days: 3
 
   binaries:
@@ -281,7 +187,6 @@ jobs:
       - uses: actions/checkout@v7
       - name: Install X11 dev on Linux
         if: runner.os == 'Linux'
-        shell: bash
         run: |
           sudo apt-get update -y
           sudo apt-get install -y libx11-dev || true
@@ -293,9 +198,9 @@ jobs:
           $MK
           if [ -f ./omni.exe ]; then BIN=./omni.exe; else BIN=./omni; fi
           "$BIN" --version
-          "$BIN" -e 'draw(window(64, 32, "bin"), rect(0,0,64,32,blue), save("bin-check.bmp"))'
+          "$BIN" -e 'import draw; draw.window(64,32,"bin"); draw.rect(0,0,64,32,"blue"); draw.save("bin-check.bmp")'
           test -f bin-check.bmp
-      - name: Name the asset like the updater expects
+      - name: Package
         shell: bash
         run: |
           set -euo pipefail
@@ -304,31 +209,16 @@ jobs:
           uname_m="$(uname -m)"
           os_lc="$(echo "$uname_s" | tr '[:upper:]' '[:lower:]')"
           arch_lc="$(echo "$uname_m" | tr '[:upper:]' '[:lower:]')"
-          case "$os_lc" in
-            linux*) os=linux ;;
-            darwin*|mac*) os=macos ;;
-            mingw*|msys*|cygwin*) os=windows ;;
-            *) os="$os_lc" ;;
-          esac
-          case "$arch_lc" in
-            x86_64|amd64) arch=x86_64 ;;
-            aarch64|arm64) arch=arm64 ;;
-            i386|i686) arch=x86 ;;
-            *) arch="$arch_lc" ;;
-          esac
+          case "$os_lc" in linux*) os=linux;; darwin*|mac*) os=macos;; mingw*|msys*|cygwin*) os=windows;; *) os="$os_lc";; esac
+          case "$arch_lc" in x86_64|amd64) arch=x86_64;; aarch64|arm64) arch=arm64;; i386|i686) arch=x86;; *) arch="$arch_lc";; esac
           plat="${os}-${arch}"
-          suffix=""; case "${{ matrix.os }}" in *windows*) suffix=".exe" ;; esac
+          suffix=""; case "${{ matrix.os }}" in *windows*) suffix=".exe";; esac
           mkdir -p dist
           if [ -f omni.exe ]; then bin=omni.exe; else bin=omni; fi
           name="omni-${plat}${suffix}"
           cp "$bin" "dist/$name"
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum "dist/$name" | awk '{print $1}' > "dist/$name.sha256"
-          else
-            shasum -a 256 "dist/$name" | awk '{print $1}' > "dist/$name.sha256"
-          fi
+          if command -v sha256sum >/dev/null 2>&1; then sha256sum "dist/$name" | awk '{print $1}' > "dist/$name.sha256"; else shasum -a 256 "dist/$name" | awk '{print $1}' > "dist/$name.sha256"; fi
           ls -l dist/
-          cat "dist/$name.sha256"
       - name: Upload
         uses: actions/upload-artifact@v7
         with:

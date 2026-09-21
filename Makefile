@@ -37,6 +37,7 @@ $(BIN): $(OBJ)
 
 clean:
 	rm -f $(OBJ) $(BIN)
+	rm -rf dist
 
 test: $(BIN)
 	@echo "no old tests, running simple smoke"
@@ -49,4 +50,20 @@ install: $(BIN)
 	install -d $(DESTDIR)$(PREFIX)/bin
 	install -m 755 $(BIN) $(DESTDIR)$(PREFIX)/bin/omni$(EXE)
 
-.PHONY: all clean test install
+# Installers
+dmg: $(BIN)
+	./installer/macos/build-dmg.sh
+
+deb: $(BIN)
+	./installer/linux/build-deb.sh
+
+exe:
+	@echo "To build Windows EXE installer, on Windows run:"
+	@echo "  installer\\windows\\build.bat"
+	@echo "Or: powershell -ExecutionPolicy Bypass -File installer\\windows\\build.ps1"
+	@echo "Requires Inno Setup 6: https://jrsoftware.org/isinfo.php"
+
+dist: $(BIN)
+	./installer/build-all.sh
+
+.PHONY: all clean test install dmg deb exe dist

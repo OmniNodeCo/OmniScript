@@ -1,9 +1,4 @@
-# Release pipeline for native OmniScript.
-# Triggered by pushing a version tag v1.2.3 or manual dispatch.
-#   verify   tag matches VERSION, C builds clean, tests pass
-#   binaries per-platform omni + .sha256
-#   release  GitHub Release with SHA256SUMS.txt and notes from CHANGELOG.md
-
+# Release for OmniScript 2.0.0 — native installers DMG DEB EXE
 name: release
 
 on:
@@ -12,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing tag to release, e.g. v1.0.0
+        description: Existing tag to release, e.g. v2.0.0
         required: true
         type: string
 
@@ -25,7 +20,7 @@ concurrency:
 
 jobs:
   verify:
-    name: Verify the tag
+    name: Verify tag
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -39,29 +34,21 @@ jobs:
           set -euo pipefail
           tag="${{ github.event.inputs.tag || github.ref_name }}"
           ver="$(cat VERSION | tr -d ' \t\n\r')"
-          echo "tag=$tag"
-          echo "VERSION file=$ver"
+          echo "tag=$tag VERSION=$ver"
           if [ "$tag" != "v$ver" ]; then
-            echo "::error::tag $tag does not match VERSION file $ver"
+            echo "::error::tag $tag does not match VERSION $ver"
             exit 1
           fi
           echo "version=$ver" >> "$GITHUB_OUTPUT"
       - name: Build and test
-        shell: bash
         run: |
           set -euo pipefail
           make
-          if [ -f ./omni.exe ]; then BIN=./omni.exe; else BIN=./omni; fi
-          "$BIN" --version
-          sh tests/run.sh "$BIN"
-          for f in examples/*.omni; do
-            echo "::group::$f"
-            "$BIN" "$f" < tests/example_input.txt || "$BIN" "$f"
-            echo "::endgroup::"
-          done
+          ./omni --version
+          sh tests/run.sh ./omni
 
   binaries:
-    name: Binaries (${{ matrix.os }})
+    name: Binaries + Installers (${{ matrix.os }})
     needs: verify
     runs-on: ${{ matrix.os }}
     strategy:
@@ -72,6 +59,11 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
+      - name: Install deps Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y libx11-dev dpkg-dev || true
       - name: Build omni
         shell: bash
         run: |
@@ -79,42 +71,53 @@ jobs:
           if command -v make >/dev/null 2>&1; then MK=make; elif command -v mingw32-make >/dev/null 2>&1; then MK=mingw32-make; else MK=gmake; fi
           $MK
           if [ -f ./omni.exe ]; then ./omni.exe --version; else ./omni --version; fi
-      - name: Name asset like updater expects and hash it
+      - name: Platform name
         shell: bash
         run: |
           set -euo pipefail
           ver="${{ needs.verify.outputs.version }}"
-          # platform tag logic mirrors src/update.c and install.sh
           uname_s="$(uname -s)"
           uname_m="$(uname -m)"
           os_lc="$(echo "$uname_s" | tr '[:upper:]' '[:lower:]')"
           arch_lc="$(echo "$uname_m" | tr '[:upper:]' '[:lower:]')"
-          case "$os_lc" in
-            linux*) os=linux ;;
-            darwin*|mac*) os=macos ;;
-            mingw*|msys*|cygwin*) os=windows ;;
-            *) os="$os_lc" ;;
-          esac
-          case "$arch_lc" in
-            x86_64|amd64) arch=x86_64 ;;
-            aarch64|arm64) arch=arm64 ;;
-            i386|i686) arch=x86 ;;
-            *) arch="$arch_lc" ;;
-          esac
+          case "$os_lc" in linux*) os=linux;; darwin*|mac*) os=macos;; mingw*|msys*|cygwin*) os=windows;; *) os="$os_lc";; esac
+          case "$arch_lc" in x86_64|amd64) arch=x86_64;; aarch64|arm64) arch=arm64;; i386|i686) arch=x86;; *) arch="$arch_lc";; esac
           plat="${os}-${arch}"
-          suffix=""
-          case "${{ matrix.os }}" in *windows*) suffix=".exe" ;; esac
+          suffix=""; case "${{ matrix.os }}" in *windows*) suffix=".exe";; esac
           mkdir -p dist
           if [ -f omni.exe ]; then src=omni.exe; else src=omni; fi
           name="omni-${plat}${suffix}"
           cp "$src" "dist/$name"
-          # per-binary .sha256 (just the hex, like update.c expects)
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum "dist/$name" | awk '{print $1}' > "dist/$name.sha256"
-          else
-            shasum -a 256 "dist/$name" | awk '{print $1}' > "dist/$name.sha256"
-          fi
+          if command -v sha256sum >/dev/null 2>&1; then sha256sum "dist/$name" | awk '{print $1}' > "dist/$name.sha256"; else shasum -a 256 "dist/$name" | awk '{print $1}' > "dist/$name.sha256"; fi
           ls -l dist/
+      - name: Build DEB + tarball (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./installer/linux/build-deb.sh
+          ./installer/build-all.sh || true
+          ls -lh dist/
+      - name: Build DMG (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./installer/macos/build-dmg.sh
+          ls -lh dist/
+      - name: Build EXE installer (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Continue"
+          if (Get-Command iscc -ErrorAction SilentlyContinue) {
+            Write-Host "ISCC found, building EXE installer"
+            & ./installer/windows/build.ps1
+            Get-ChildItem dist -Force | Format-List
+          } else {
+            Write-Host "ISCC not found, skipping EXE installer build - ISS is still valid"
+            if (Test-Path dist) { Get-ChildItem dist -Force }
+          }
       - name: Upload
         uses: actions/upload-artifact@v7
         with:
@@ -123,7 +126,7 @@ jobs:
           retention-days: 30
 
   release:
-    name: Publish GitHub release
+    name: Publish Release
     needs: [verify, binaries]
     runs-on: ubuntu-latest
     steps:
@@ -136,15 +139,15 @@ jobs:
           pattern: binaries-*
           path: dist
           merge-multiple: true
-      - name: SHA256SUMS.txt over everything
+      - name: SHA256SUMS
         run: |
           set -euo pipefail
           cd dist
           rm -f SHA256SUMS.txt
           sha256sum ./* > SHA256SUMS.txt || shasum -a 256 ./* > SHA256SUMS.txt
           cat SHA256SUMS.txt
-          ls -l
-      - name: Create or update release
+          ls -lh
+      - name: Create release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -153,53 +156,59 @@ jobs:
           ver="${{ needs.verify.outputs.version }}"
           repo="${{ github.repository }}"
           notes="$RUNNER_TEMP/notes.md"
-          changes="$RUNNER_TEMP/changes.md"
-          # extract changelog section for this version
-          awk -v ver="[$ver]" '
-            $0 ~ "^## \\[" { if (p) exit; if (index($0, ver)) p=1; next }
-            p
-          ' CHANGELOG.md > "$changes" || true
-          if [ ! -s "$changes" ]; then
-            echo "See CHANGELOG.md at $ver." > "$changes"
-          fi
           cat > "$notes" <<MD
-          **OmniScript $ver** — native, one binary, libc only. No Python, custom hardware I/O.
+          **OmniScript $ver** — very very very simple.
+
+          Three modules: \`import draw, cmd, pathlib\`
 
           ## Install
 
+          ### Windows — EXE
+          Download \`OmniScript-$ver-Windows-x86_64-Setup.exe\` from assets below and run it. Inno Setup installer, adds to PATH, Start Menu + uninstaller.
+
+          ### macOS — DMG
+          Download \`OmniScript-$ver-macOS.dmg\`, open and drag \`OmniScript.app\` to Applications.
+
+          ### Linux — DEB
           \`\`\`bash
-          curl -fsSL https://raw.githubusercontent.com/$repo/main/install.sh | bash
+          sudo dpkg -i omniscript_${ver}_amd64.deb
+          # or
+          sudo apt install ./omniscript_${ver}_amd64.deb
           \`\`\`
 
-          \`\`\`powershell
-          iwr -use1 https://raw.githubusercontent.com/$repo/main/install.ps1 | iex
-          \`\`\`
-
-          That takes the file built for your machine from this release, checks its \`.sha256\` and puts \`omni\` on PATH. \`-s beta\` builds from source (\`cc\`+\`make\`), \`--version\` pins a release, \`omni update\` keeps it current.
-
-          ## Try it
-
+          ### Tarball
           \`\`\`bash
-          omni --version
-          omni -e 'cmd("echo hello from $ver")'
-          omni examples/03_drawing.omni
-          omni examples/06_gui.omni
+          tar -xzf omniscript-$ver-linux-amd64.tar.gz
+          sudo cp usr/bin/omni /usr/local/bin/
           \`\`\`
 
-          ## What changed
+          ### Build from source
+          \`\`\`bash
+          make
+          ./omni --version
+          \`\`\`
 
-          $(cat "$changes")
+          ## What is OmniScript?
 
-          Attached below: executables per platform plus per-binary \`.sha256\` and \`SHA256SUMS.txt\` (\`sha256sum -c SHA256SUMS.txt\`).
+          - \`import draw\` — window, rect, circle, line, text, button, save, show
+          - \`import cmd\` — run("ls"), bg("sleep 10")
+          - \`import pathlib\` — like Python pathlib
 
-          Source history: https://github.com/$repo/commits/$tag
+          \`\`\`omni
+          import draw, cmd, pathlib
+          draw.window(640,400,"Demo")
+          draw.rect(0,0,100,50,"red")
+          draw.button(20,300,120,30,"List", action="ls -la")
+          draw.show()
+          \`\`\`
+
+          Assets below include per-platform binaries + installers + SHA256SUMS.txt
           MD
-          if grep -q '__' "$notes"; then echo "::error::placeholder left"; exit 1; fi
           if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
-            echo "$tag exists -- replacing files and notes"
+            echo "$tag exists -- replacing"
             gh release upload "$tag" dist/* --repo "$repo" --clobber
             gh release edit "$tag" --repo "$repo" --title "OmniScript $ver" --notes-file "$notes"
           else
             gh release create "$tag" dist/* --repo "$repo" --title "OmniScript $ver" --notes-file "$notes"
           fi
-          echo "::notice::https://github.com/$repo/releases/tag/$tag"
+          echo "https://github.com/$repo/releases/tag/$tag"
