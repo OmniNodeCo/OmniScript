@@ -10,7 +10,7 @@ import pathlib
 
 Three modules, Python-like imports.
 
-## Install
+## Install — native installers (EXE, DMG, DEB, RPM)
 
 No more `curl | bash`. Proper native installers in `installer/`:
 
@@ -33,13 +33,18 @@ Output: `dist/OmniScript-1.0.0-Windows-x86_64-Setup.exe` — installs to Program
 ```
 Creates `dist/OmniScript-1.0.0-macOS.dmg` with `OmniScript.app`. Drag to Applications.
 
-### Linux — DEB + tarball
+### Linux — DEB + RPM + tarball
 
 ```bash
 ./installer/linux/build-deb.sh
 sudo dpkg -i dist/omniscript_1.0.0_amd64.deb
 # or
 sudo apt install ./dist/omniscript_1.0.0_amd64.deb
+
+./installer/linux/build-rpm.sh
+sudo rpm -i dist/omniscript-1.0.0-1.x86_64.rpm
+# or
+sudo dnf install ./dist/omniscript-1.0.0-1.x86_64.rpm
 ```
 
 Also builds `dist/omniscript-1.0.0-linux-amd64.tar.gz`.
@@ -52,7 +57,7 @@ Also builds `dist/omniscript-1.0.0-linux-amd64.tar.gz`.
 make dist
 ```
 
-Creates `dist/` with tarball, DEB, DMG (or tar.gz fallback) and `SHA256SUMS.txt`.
+Creates `dist/` with tarball, DEB, RPM, DMG (or tar.gz fallback) and `SHA256SUMS.txt`.
 
 ### Quick build (dev)
 
@@ -187,10 +192,11 @@ omni> draw.show()
 
 ```
 src/omni.h, lex.c, parse.c, eval.c, draw.c, gui_*.c, util.c, main.c
-installer/windows/OmniScript.iss   # Inno Setup
+installer/windows/OmniScript.iss   # Inno Setup EXE
 installer/macos/build-dmg.sh       # DMG
 installer/linux/build-deb.sh       # DEB
-installer/build-all.sh             # all
+installer/linux/build-rpm.sh       # RPM
+installer/build-all.sh             # all EXE DMG DEB RPM
 ```
 
 MIT

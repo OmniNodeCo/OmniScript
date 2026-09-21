@@ -57,6 +57,9 @@ dmg: $(BIN)
 deb: $(BIN)
 	./installer/linux/build-deb.sh
 
+rpm: $(BIN)
+	./installer/linux/build-rpm.sh
+
 exe:
 	@echo "To build Windows EXE installer, on Windows run:"
 	@echo "  installer\\windows\\build.bat"
@@ -66,4 +69,4 @@ exe:
 dist: $(BIN)
 	./installer/build-all.sh
 
-.PHONY: all clean test install dmg deb exe dist
+.PHONY: all clean test install dmg deb rpm exe dist

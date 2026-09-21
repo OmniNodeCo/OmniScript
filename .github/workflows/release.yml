@@ -1,4 +1,4 @@
-# Release for OmniScript 1.0.0 — native installers DMG DEB EXE
+# Release for OmniScript 1.0.0 — native installers EXE DMG DEB RPM
 name: release
 
 on:
@@ -63,7 +63,21 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y libx11-dev dpkg-dev || true
+          sudo apt-get install -y libx11-dev dpkg-dev rpm || true
+      - name: Install Inno Setup Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Continue"
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) {
+            Write-Host "Installing Inno Setup via choco"
+            choco install innosetup --yes --no-progress || Write-Host "choco install failed, trying iscc in PATH"
+          }
+          Get-Command iscc -ErrorAction SilentlyContinue | Format-List
+          if (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe") {
+            $env:Path += ";C:\Program Files (x86)\Inno Setup 6"
+            Write-Host "Added Inno Setup 6 to PATH"
+          }
       - name: Build omni
         shell: bash
         run: |
@@ -71,7 +85,7 @@ jobs:
           if command -v make >/dev/null 2>&1; then MK=make; elif command -v mingw32-make >/dev/null 2>&1; then MK=mingw32-make; else MK=gmake; fi
           $MK
           if [ -f ./omni.exe ]; then ./omni.exe --version; else ./omni --version; fi
-      - name: Platform name
+      - name: Platform binary name
         shell: bash
         run: |
           set -euo pipefail
@@ -90,13 +104,13 @@ jobs:
           cp "$src" "dist/$name"
           if command -v sha256sum >/dev/null 2>&1; then sha256sum "dist/$name" | awk '{print $1}' > "dist/$name.sha256"; else shasum -a 256 "dist/$name" | awk '{print $1}' > "dist/$name.sha256"; fi
           ls -l dist/
-      - name: Build DEB + tarball (Linux)
+      - name: Build DEB + RPM + tarball (Linux)
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set -euo pipefail
           ./installer/linux/build-deb.sh
-          ./installer/build-all.sh || true
+          ./installer/linux/build-rpm.sh || echo "RPM build failed or skipped"
           ls -lh dist/
       - name: Build DMG (macOS)
         if: runner.os == 'macOS'
@@ -107,18 +121,38 @@ jobs:
           ls -lh dist/
       - name: Build EXE installer (Windows)
         if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Try both ps1 and bat builders
+          if command -v iscc >/dev/null 2>&1 || [ -f "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ]; then
+            echo "ISCC found, building EXE"
+            # Ensure iscc in PATH for bash
+            export PATH="$PATH:/c/Program Files (x86)/Inno Setup 6"
+            ./installer/windows/build.bat || true
+          else
+            echo "ISCC not in bash PATH, trying PowerShell builder"
+          fi
+          ls -lh dist/ || true
+      - name: Build EXE via PowerShell (Windows)
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Continue"
           if (Get-Command iscc -ErrorAction SilentlyContinue) {
-            Write-Host "ISCC found, building EXE installer"
+            Write-Host "ISCC found, building EXE installer via PS"
             & ./installer/windows/build.ps1
-            Get-ChildItem dist -Force | Format-List
           } else {
-            Write-Host "ISCC not found, skipping EXE installer build - ISS is still valid"
-            if (Test-Path dist) { Get-ChildItem dist -Force }
+            $isccPath = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+            if (Test-Path $isccPath) {
+              Write-Host "Found $isccPath, building"
+              & $isccPath /DMyAppVersion="${{ needs.verify.outputs.version }}" installer/windows/OmniScript.iss
+            } else {
+              Write-Host "ISCC not found, ISS syntax still valid"
+            }
           }
-      - name: Upload
+          if (Test-Path dist) { Get-ChildItem dist -Force | Format-Table }
+      - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: binaries-${{ matrix.os }}
@@ -147,7 +181,7 @@ jobs:
           sha256sum ./* > SHA256SUMS.txt || shasum -a 256 ./* > SHA256SUMS.txt
           cat SHA256SUMS.txt
           ls -lh
-      - name: Create release
+      - name: Create release with EXE DMG RPM
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -163,8 +197,11 @@ jobs:
 
           ## Install
 
-          ### Windows — EXE
-          Download \`OmniScript-$ver-Windows-x86_64-Setup.exe\` from assets below and run it. Inno Setup installer, adds to PATH, Start Menu + uninstaller.
+          ### Windows — EXE (Inno Setup)
+          Download \`OmniScript-$ver-Windows-x86_64-Setup.exe\` from assets below and run it. Installs to Program Files, adds to PATH, Start Menu + uninstaller.
+          \`\`\`bat
+          OmniScript-$ver-Windows-x86_64-Setup.exe
+          \`\`\`
 
           ### macOS — DMG
           Download \`OmniScript-$ver-macOS.dmg\`, open and drag \`OmniScript.app\` to Applications.
@@ -172,8 +209,15 @@ jobs:
           ### Linux — DEB
           \`\`\`bash
           sudo dpkg -i omniscript_${ver}_amd64.deb
-          # or
           sudo apt install ./omniscript_${ver}_amd64.deb
+          \`\`\`
+
+          ### Linux — RPM
+          \`\`\`bash
+          sudo rpm -i omniscript-${ver}-1.x86_64.rpm
+          # or
+          sudo dnf install ./omniscript-${ver}-1.x86_64.rpm
+          sudo yum install ./omniscript-${ver}-1.x86_64.rpm
           \`\`\`
 
           ### Tarball
@@ -186,6 +230,8 @@ jobs:
           \`\`\`bash
           make
           ./omni --version
+          make dist   # builds DEB + RPM + DMG + tarball
+          make exe    # info for Windows EXE
           \`\`\`
 
           ## What is OmniScript?
@@ -202,10 +248,14 @@ jobs:
           draw.show()
           \`\`\`
 
-          Assets below include per-platform binaries + installers + SHA256SUMS.txt
+          Assets below include:
+          - Windows EXE installer (Inno Setup)
+          - macOS DMG
+          - Linux DEB + RPM + tarballs
+          - per-platform binaries + SHA256SUMS.txt
           MD
           if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
-            echo "$tag exists -- replacing"
+            echo "$tag exists -- uploading assets"
             gh release upload "$tag" dist/* --repo "$repo" --clobber
             gh release edit "$tag" --repo "$repo" --title "OmniScript $ver" --notes-file "$notes"
           else

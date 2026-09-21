@@ -1,6 +1,6 @@
-# Install
+# Install — native installers EXE DMG DEB RPM
 
-Proper native installers, no curl pipe.
+No more curl pipe. Proper native installers.
 
 ## Windows — EXE (Inno Setup)
 
@@ -38,6 +38,15 @@ Open DMG, drag `OmniScript.app` to Applications. Contains `omni` binary + exampl
 sudo dpkg -i dist/omniscript_1.0.0_amd64.deb
 ```
 
+## Linux — RPM
+
+```bash
+./installer/linux/build-rpm.sh
+sudo rpm -i dist/omniscript-1.0.0-1.x86_64.rpm
+# or
+sudo dnf install ./dist/omniscript-1.0.0-1.x86_64.rpm
+```
+
 Or tarball:
 
 ```bash
@@ -52,7 +61,7 @@ sudo cp usr/bin/omni /usr/local/bin/
 make dist
 ```
 
-Creates `dist/` with all packages + `SHA256SUMS.txt`.
+Creates `dist/` with EXE (on Windows), DMG, DEB, RPM, tarballs + `SHA256SUMS.txt`.
 
 ## Dev build
 

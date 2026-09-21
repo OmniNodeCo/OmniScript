@@ -28,6 +28,14 @@ else
   echo "    Skipping Linux DEB — script not found"
 fi
 
+# 2b. Linux RPM
+echo ""
+if [ -f "$ROOT/installer/linux/build-rpm.sh" ]; then
+  bash "$ROOT/installer/linux/build-rpm.sh" || echo "    RPM build skipped/failed"
+else
+  echo "    Skipping Linux RPM"
+fi
+
 # 3. macOS DMG (will create tar.gz fallback on Linux)
 echo ""
 if [ -f "$ROOT/installer/macos/build-dmg.sh" ]; then

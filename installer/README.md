@@ -1,4 +1,4 @@
-# OmniScript Installers
+# OmniScript Installers — EXE DMG DEB RPM
 
 No more `install.sh` curl-pipe. Now proper native installers.
 
@@ -47,9 +47,9 @@ App bundle contains `omni` binary, README, examples.
 
 On macOS, open DMG and drag to Applications.
 
-## Linux — DEB + tarball
+## Linux — DEB + RPM + tarball
 
-**Script:** `installer/linux/build-deb.sh`
+**DEB Script:** `installer/linux/build-deb.sh`
 
 ```bash
 ./installer/linux/build-deb.sh
@@ -64,18 +64,38 @@ DEB installs:
 - `/usr/share/doc/omniscript/`
 - `/usr/share/applications/omniscript.desktop`
 
-Install DEB:
+**RPM Script:** `installer/linux/build-rpm.sh`
+
+```bash
+./installer/linux/build-rpm.sh
+```
+
+Output:
+- `dist/omniscript-1.0.0-1.x86_64.rpm`
+
+RPM installs same files. Requires `rpmbuild`:
+```bash
+sudo apt-get install rpm   # Debian/Ubuntu
+sudo dnf install rpm-build # Fedora
+```
+
+Install:
 
 ```bash
 sudo dpkg -i dist/omniscript_1.0.0_amd64.deb
 # or
 sudo apt install ./dist/omniscript_1.0.0_amd64.deb
+
+sudo rpm -i dist/omniscript-1.0.0-1.x86_64.rpm
+# or
+sudo dnf install ./dist/omniscript-1.0.0-1.x86_64.rpm
 ```
 
 Uninstall:
 
 ```bash
 sudo apt remove omniscript
+sudo rpm -e omniscript
 ```
 
 Tarball install:
@@ -91,7 +111,7 @@ sudo cp /tmp/usr/bin/omni /usr/local/bin/
 ./installer/build-all.sh
 ```
 
-Builds generic tarball + DEB + DMG fallback + SHA256SUMS.txt in `dist/`.
+Builds generic tarball + DEB + RPM + DMG fallback + SHA256SUMS.txt in `dist/`.
 
 ## Makefile targets
 
@@ -101,6 +121,7 @@ make install      # install to /usr/local/bin (or PREFIX)
 make clean
 make dmg          # macOS DMG (calls installer/macos/build-dmg.sh)
 make deb          # Linux DEB
+make rpm          # Linux RPM
 make exe          # info about Windows EXE
-make dist         # all installers
+make dist         # all installers EXE DMG DEB RPM
 ```
