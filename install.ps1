@@ -686,17 +686,36 @@ function Install-App {
 
     Write-Info "Installing OmniScript as an app"
 
-    # Determine binary for icon generation and shortcuts
-    $appBin = $BinPath
-    if (-not $appBin) { $appBin = $binary }
-    if (-not $appBin) { $appBin = Join-Path $SrcRoot $(if ($IsWin) { 'omni.exe' } else { 'omni' }) }
+    # Determine binary for icon generation and shortcuts — prioritize real binary file
+    $appBin = $null
+    if ($script:BinaryPath -and (Test-Path -LiteralPath $script:BinaryPath -PathType Leaf)) { $appBin = $script:BinaryPath }
+    elseif ($script:binary -and (Test-Path -LiteralPath $script:binary -PathType Leaf)) { $appBin = $script:binary }
+    elseif ($binary -and (Test-Path -LiteralPath $binary -PathType Leaf)) { $appBin = $binary }
+    elseif ($BinPath -and (Test-Path -LiteralPath $BinPath -PathType Leaf)) { $appBin = $BinPath }
+    elseif ($BinPath) {
+        $candExe = Join-Path $BinPath $(if ($IsWin) { 'omni.exe' } else { 'omni' })
+        $candSh = Join-Path $BinPath $(if ($IsWin) { 'omni.cmd' } else { 'omni' })
+        if (Test-Path -LiteralPath $candExe -PathType Leaf) { $appBin = $candExe }
+        elseif (Test-Path -LiteralPath $candSh -PathType Leaf) { $appBin = $candSh }
+        else { $appBin = $BinPath }
+    }
+    if (-not $appBin -and $SrcRoot) { $appBin = Join-Path $SrcRoot $(if ($IsWin) { 'omni.exe' } else { 'omni' }) }
+    # If appBin is still a directory, try to find omni inside it or inside SrcRoot
+    if ($appBin -and (Test-Path -LiteralPath $appBin -PathType Container)) {
+        $maybe = Join-Path $appBin $(if ($IsWin) { 'omni.exe' } else { 'omni' })
+        if (Test-Path -LiteralPath $maybe -PathType Leaf) { $appBin = $maybe }
+        elseif ($SrcRoot) {
+            $maybe2 = Join-Path $SrcRoot $(if ($IsWin) { 'omni.exe' } else { 'omni' })
+            if (Test-Path -LiteralPath $maybe2 -PathType Leaf) { $appBin = $maybe2 }
+        }
+    }
 
     # --- icon generation ---
     try {
         if (-not $DryRun) {
             New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
             $iconBmp = Join-Path $DataDir 'icon.bmp'
-            if (Test-Path -LiteralPath $appBin) {
+            if ($appBin -and (Test-Path -LiteralPath $appBin -PathType Leaf)) {
                 # Generate 64x64 icon using omni itself
                 & $appBin -e "draw(window(64, 64, `"OmniScript`"), rect(0, 0, 64, 64, `"#0d1117`"), circle(32, 32, 20, `"#1f6feb`"), text(8, 20, `"Om`", white, 14), save(`"$iconBmp`"))" 2>&1 | Out-Null
                 if (Test-Path -LiteralPath $iconBmp) {
@@ -724,15 +743,37 @@ function Install-App {
                 # WScript.Shell for .lnk
                 $shell = New-Object -ComObject WScript.Shell
 
-                # Main app shortcut - points to omni.exe (or shim)
+                # Main app shortcut - points to omni.exe (or shim) -- robust binary resolution
                 $lnkPath = Join-Path $StartMenuDir 'OmniScript.lnk'
                 $shortcut = $shell.CreateShortcut($lnkPath)
                 $targetForLnk = $appBin
+                # Ensure target is a file, not a directory -- search known locations
+                if (-not $targetForLnk -or -not (Test-Path -LiteralPath $targetForLnk -PathType Leaf)) {
+                    $candidates = @(
+                        (Join-Path $BinPath 'omni.exe'),
+                        (Join-Path $BinPath 'omni'),
+                        $script:BinaryPath,
+                        $script:binary,
+                        $binary,
+                        $(if ($SrcRoot) { Join-Path $SrcRoot 'omni.exe' }),
+                        $(if ($SrcRoot) { Join-Path $SrcRoot 'omni' })
+                    )
+                    foreach ($cand in $candidates) {
+                        if ($cand -and (Test-Path -LiteralPath $cand -PathType Leaf)) { $targetForLnk = $cand; break }
+                    }
+                }
+                if (-not $targetForLnk -or -not (Test-Path -LiteralPath $targetForLnk -PathType Leaf)) {
+                    Write-Warn "could not find omni binary for Start Menu shortcut, skipping app shortcuts"
+                    return
+                }
                 # If appBin is a .cmd shim, point to the real exe behind it
                 if ($targetForLnk -like '*.cmd') {
                     $shimContent = Get-Content -LiteralPath $targetForLnk -TotalCount 5 -ErrorAction SilentlyContinue | Out-String
                     $m = [regex]::Match($shimContent, '"([^"]+)"')
-                    if ($m.Success) { $targetForLnk = $m.Groups[1].Value }
+                    if ($m.Success) {
+                        $real = $m.Groups[1].Value
+                        if ($real -and (Test-Path -LiteralPath $real -PathType Leaf)) { $targetForLnk = $real }
+                    }
                 }
                 $shortcut.TargetPath = $targetForLnk
                 $shortcut.WorkingDirectory = Split-Path $targetForLnk -Parent
