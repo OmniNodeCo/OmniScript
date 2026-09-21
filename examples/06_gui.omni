@@ -1,5 +1,15 @@
-# A clickable window, built line by line across statements.
-draw_gui.window_size(340, 180, "Greeter")
-draw_gui.button(20, 30, 140, 36, "Greet", action=cmd("echo Hello there"))
-draw_gui.button(180, 30, 140, 36, "Files", action=cmd("echo listing"))
-draw_gui()
+import draw
+import cmd
+
+draw.window(500, 300, "GUI Demo", "#0d1117")
+draw.rect(0, 0, 500, 50, "#161b22")
+draw.text(20, 15, "Super simple GUI", "white", 18)
+
+draw.button(20, 80, 140, 40, "List files", action="ls -la")
+draw.button(180, 80, 140, 40, "Date", action="date")
+draw.button(340, 80, 140, 40, "Whoami", action="whoami")
+
+draw.button(20, 140, 460, 40, "Create file", action="echo hello > /tmp/gui_test.txt && echo created")
+draw.button(20, 200, 460, 40, "Read file", action="cat /tmp/gui_test.txt || echo no file yet")
+
+draw.show()

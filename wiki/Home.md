@@ -1,24 +1,25 @@
-# OmniScript — native 1.0.0
+# OmniScript 2.0.0 — super simple
 
-OmniScript is a tiny language for drawing and automating things. This is the native rewrite: **one C binary, libc only, no Python**.
+Three modules:
 
-- [[Install]] — one line, verified binary
-- [[How-to-use]] — write and run scripts
-- [[Changelog]] — what changed
-- [[Uninstall]] — remove it
+- `draw` — window, rect, circle, line, text, button, save, show
+- `cmd` — run, bg (background)
+- `pathlib` — read, write, exists, mkdir, list, Path object
+
+Imports like Python:
 
 ```
-draw(
-    window(640, 400, "Demo"),
-    rect(0, 0, 640, 60, "#161b22"),
-    text(20, 20, "Hello, native", white, 18),
-    circle(320, 220, 80, blue),
-    save("hello.bmp")
-)
-
-draw_gui.window_size(640, 400, "Demo")
-draw_gui.button(20, 300, 140, 36, "List files", action=cmd("ls -la"))
-draw_gui()
+import draw
+from draw import window, rect
+import draw as d
+from draw import *
 ```
 
-Commands: `draw`, `draw_gui.window_size`, `draw_gui.button`, `draw_gui`, `cmd`, `file`, `input`. No variables, no loops — a bare word is its own name.
+See [[How-to-use]].
+
+Build:
+
+```
+make
+./omni examples/01_hello.omni
+```

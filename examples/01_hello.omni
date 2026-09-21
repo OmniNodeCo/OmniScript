@@ -1,0 +1,14 @@
+import draw
+import cmd
+import pathlib
+
+draw.window(640, 400, "Hello")
+draw.rect(0, 0, 640, 60, "#161b22")
+draw.text(20, 20, "Hello, simple OmniScript", "white", 18)
+draw.circle(320, 220, 80, "blue")
+draw.save("hello.bmp")
+
+cmd.run("echo Hello from cmd")
+
+pathlib.write("hello.txt", "Omni was here")
+print(pathlib.read("hello.txt"))

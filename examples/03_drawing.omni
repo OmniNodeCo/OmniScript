@@ -1,9 +1,0 @@
-# Shapes, colors, and words. With no window around, this becomes a file.
-draw(
-    window(320, 200, "Sunny", "#87ceeb"),
-    circle(160, 90, 40, gold),
-    rect(0, 150, 320, 50, green),
-    line(0, 150, 320, 150, brown, 3),
-    text(90, 20, "A fine day", white, 21),
-    save("sunny.bmp")
-)

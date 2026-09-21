@@ -1,403 +1,300 @@
-/* The parser: tokens to trees. */
 #include "omni.h"
-
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 typedef struct {
     Token *toks;
-    const char *src, *name;
     int idx;
     Arena *a;
+    const char *src, *name;
     char *err;
     int *eline, *ecol;
 } Parser;
 
-static Token *peek(Parser *p) {
-    return &p->toks[p->idx];
-}
-
-static Token *take(Parser *p) {
-    return &p->toks[p->idx++];
-}
-
-static int failed(Parser *p) {
-    return p->err[0] != '\0';
-}
-
-static Node *fail(Parser *p, const char *msg, Token *t) {
-    if (!failed(p)) {
-        snprintf(p->err, 512, "%s", msg);
-        *p->eline = t->line;
-        *p->ecol = t->col;
-    }
+static Token *peek(Parser *p){ return &p->toks[p->idx]; }
+static Token *peek2(Parser *p){ return &p->toks[p->idx+1]; }
+static Token *take(Parser *p){ return &p->toks[p->idx++]; }
+static int failed(Parser *p){ return p->err[0]!='\0'; }
+static Node *fail(Parser *p, const char *msg, Token *t){
+    if(!failed(p)){ snprintf(p->err,512,"%s",msg); *p->eline=t->line; *p->ecol=t->col; }
     return NULL;
 }
-
-static Token *expect(Parser *p, TokKind kind, const char *what) {
-    Token *t = peek(p);
-    if (t->kind != kind) {
-        char msg[256];
-        if (t->kind == T_END)
-            snprintf(msg, sizeof(msg), "expected %s, found the end", what);
-        else
-            snprintf(msg, sizeof(msg), "expected %s, found '%s'", what, t->text);
-        fail(p, msg, t);
-        return NULL;
-    }
-    return take(p);
+static Node *new_node(Parser *p, NodeKind kind, int line, int col){
+    Node *n=arena_alloc(p->a,sizeof(Node)); memset(n,0,sizeof(Node)); n->kind=kind; n->line=line; n->col=col; return n;
+}
+static void node_add_arg(Parser *p, Node *n, Node *arg){
+    int cap=0,i; Node **na;
+    cap=4; while(cap<=n->nargs) cap*=2;
+    na=arena_alloc(p->a,sizeof(Node*)*(size_t)cap);
+    for(i=0;i<n->nargs;i++) na[i]=n->args[i];
+    n->args=na; n->args[n->nargs++]=arg;
+}
+static void node_add_kwarg(Parser *p, Node *n, Node *kw){
+    int cap=0,i; Node **na;
+    cap=4; while(cap<=n->nkwargs) cap*=2;
+    na=arena_alloc(p->a,sizeof(Node*)*(size_t)cap);
+    for(i=0;i<n->nkwargs;i++) na[i]=n->kwargs[i];
+    n->kwargs=na; n->kwargs[n->nkwargs++]=kw;
 }
 
-static Node *new_node(Parser *p, NodeKind kind) {
-    Node *n = arena_alloc(p->a, sizeof(Node));
-    memset(n, 0, sizeof(Node));
-    n->kind = kind;
-    return n;
-}
+/* forward */
+static Node *parse_expr(Parser *p);
+static Node *parse_atom(Parser *p);
 
-static void node_arg(Parser *p, Node *n, Node *arg) {
-    int cap = 0, i;
-    Node **na;
-    for (i = 0; i < n->nargs; i++)
-        ;
-    cap = 4;
-    while (cap <= n->nargs)
-        cap *= 2;
-    /* Arena memory cannot grow in place, so reallocate and copy. */
-    na = arena_alloc(p->a, sizeof(Node *) * (size_t)cap);
-    for (i = 0; i < n->nargs; i++)
-        na[i] = n->args[i];
-    n->args = na;
-    n->args[n->nargs++] = arg;
-}
-
-static Node *statement(Parser *p);
-static Node *call(Parser *p);
-static Node *argument(Parser *p);
-
-static Node *import_statement(Parser *p) {
-    Token *kw = take(p);
-    Node *n = new_node(p, ND_IMPORT);
-    ImportItem *items = NULL;
-    int len = 0, cap = 0;
-    n->line = kw->line;
-    n->col = kw->col;
-    for (;;) {
-        Token *mod = expect(p, T_NAME, "something to import");
-        Token *as;
-        ImportItem *ni;
-        char *alias;
-        int i;
-        if (!mod)
-            return NULL;
-        alias = mod->text;
-        {
-            const char *dot = strchr(mod->text, '.');
-            if (dot) {
-                /* `import os.path` binds `os`, like Python. */
-                alias = arena_dupn(p->a, mod->text, (size_t)(dot - mod->text));
-            }
-        }
-        if (peek(p)->kind == T_NAME && strcmp(peek(p)->text, "as") == 0) {
-            take(p);
-            as = expect(p, T_NAME, "a name after 'as'");
-            if (!as)
-                return NULL;
-            alias = as->text;
-        }
-        if (len == cap) {
-            cap = cap ? cap * 2 : 4;
-            ni = arena_alloc(p->a, sizeof(ImportItem) * (size_t)cap);
-            for (i = 0; i < len; i++)
-                ni[i] = items[i];
-            items = ni;
-        }
-        items[len].a = mod->text;
-        items[len].b = alias;
-        len++;
-        if (peek(p)->kind == T_PUNCT && strcmp(peek(p)->text, ",") == 0) {
-            take(p);
-            continue;
-        }
+/* dotted name: a.b.c as string */
+static char *parse_dotted_name(Parser *p, int *line, int *col){
+    Token *t=peek(p);
+    if(t->kind!=TOK_NAME) return NULL;
+    char *buf=arena_alloc(p->a,256); size_t len=0; int first=1;
+    *line=t->line; *col=t->col;
+    while(1){
+        Token *name=peek(p);
+        if(name->kind!=TOK_NAME) break;
+        if(!first){ if(len+1>=256) break; buf[len++]='.'; }
+        size_t nl=strlen(name->text);
+        if(len+nl>=255) break;
+        memcpy(buf+len,name->text,nl); len+=nl;
+        take(p); first=0;
+        if(peek(p)->kind==TOK_DOT){ take(p); continue; }
         break;
     }
-    n->imports = items;
-    n->nimports = len;
+    buf[len]='\0';
+    char *out=arena_dup(p->a,buf);
+    return out;
+}
+
+static Node *parse_import_stmt(Parser *p){
+    Token *kw=take(p); // import
+    Node *n=new_node(p,ND_IMPORT,kw->line,kw->col);
+    ImportItem *items=NULL; int len=0,cap=0;
+    while(1){
+        int l,c; char *mod=parse_dotted_name(p,&l,&c);
+        if(!mod){ fail(p,"expected module name after import",peek(p)); return NULL; }
+        char *alias=NULL;
+        if(peek(p)->kind==TOK_NAME && strcmp(peek(p)->text,"as")==0){
+            take(p);
+            Token *a=peek(p);
+            if(a->kind!=TOK_NAME){ fail(p,"expected name after 'as'",a); return NULL; }
+            alias=a->text; take(p);
+        } else {
+            // default alias = first component or full? Use full for simplicity, but for dotted use first part? We'll use last part? Let's use full for simplicity, but also first for compatibility.
+            // We'll set alias to mod's last component
+            char *dot=strrchr(mod,'.');
+            alias= dot? dot+1 : mod;
+        }
+        if(len==cap){ cap=cap?cap*2:4; ImportItem *ni=arena_alloc(p->a,sizeof(ImportItem)*(size_t)cap); int i; for(i=0;i<len;i++) ni[i]=items[i]; items=ni; }
+        items[len].name=mod; items[len].alias=alias; len++;
+        if(peek(p)->kind==TOK_COMMA){ take(p); continue; }
+        break;
+    }
+    n->imports=items; n->nimports=len;
     return n;
 }
 
-static Node *from_statement(Parser *p) {
-    Token *kw = take(p);
-    Token *base = expect(p, T_NAME, "a module after 'from'");
-    Token *third;
-    Node *n;
-    ImportItem *items = NULL;
-    int len = 0, cap = 0;
-    int paren = 0;
-    if (!base)
-        return NULL;
-    third = peek(p);
-    if (third->kind != T_NAME || strcmp(third->text, "import") != 0) {
-        char msg[256];
-        snprintf(msg, sizeof(msg), "expected 'import' after 'from %s'", base->text);
-        return fail(p, msg, third);
-    }
+static Node *parse_from_import_stmt(Parser *p){
+    Token *kw=take(p); // from
+    int l,c; char *base=parse_dotted_name(p,&l,&c);
+    if(!base){ fail(p,"expected module after 'from'",peek(p)); return NULL; }
+    Token *imp=peek(p);
+    if(imp->kind!=TOK_NAME || strcmp(imp->text,"import")!=0){ fail(p,"expected 'import' after 'from <module>'",imp); return NULL; }
     take(p);
-    n = new_node(p, ND_FROMIMPORT);
-    n->line = kw->line;
-    n->col = kw->col;
-    n->from_base = base->text;
-    if (peek(p)->kind == T_PUNCT && strcmp(peek(p)->text, "(") == 0) {
-        take(p);
-        paren = 1;
-    }
-    if (peek(p)->kind == T_PUNCT && strcmp(peek(p)->text, "*") == 0) {
-        take(p);
-        items = arena_alloc(p->a, sizeof(ImportItem));
-        items[0].a = "*";
-        items[0].b = "*";
-        len = 1;
+    Node *n=new_node(p,ND_FROM_IMPORT,kw->line,kw->col);
+    n->from_base=base;
+    ImportItem *items=NULL; int len=0,cap=0;
+    int paren=0;
+    if(peek(p)->kind==TOK_LPAREN){ take(p); paren=1; }
+    // handle *
+    if(peek(p)->kind==TOK_STAR){
+        Token *s=take(p);
+        if(len==cap){ cap=4; items=arena_alloc(p->a,sizeof(ImportItem)*(size_t)cap); }
+        items[0].name="*"; items[0].alias="*"; len=1;
+        (void)s;
     } else {
-        for (;;) {
-            Token *found = expect(p, T_NAME, "something to import");
-            ImportItem *ni;
-            int i;
-            char *alias;
-            if (!found)
-                return NULL;
-            alias = found->text;
-            if (peek(p)->kind == T_NAME && strcmp(peek(p)->text, "as") == 0) {
-                Token *as;
+        while(1){
+            if(peek(p)->kind==TOK_RPAREN||peek(p)->kind==TOK_EOF||peek(p)->kind==TOK_NEWLINE) break;
+            char *name=NULL; char *alias=NULL;
+            Token *t=peek(p);
+            if(t->kind!=TOK_NAME){ fail(p,"expected name to import",t); return NULL; }
+            name=t->text; take(p);
+            if(peek(p)->kind==TOK_NAME && strcmp(peek(p)->text,"as")==0){
                 take(p);
-                as = expect(p, T_NAME, "a name after 'as'");
-                if (!as)
-                    return NULL;
-                alias = as->text;
-            }
-            if (len == cap) {
-                cap = cap ? cap * 2 : 4;
-                ni = arena_alloc(p->a, sizeof(ImportItem) * (size_t)cap);
-                for (i = 0; i < len; i++)
-                    ni[i] = items[i];
-                items = ni;
-            }
-            items[len].a = found->text;
-            items[len].b = alias;
-            len++;
-            if (peek(p)->kind == T_PUNCT && strcmp(peek(p)->text, ",") == 0) {
-                take(p);
-                if (paren && peek(p)->kind == T_PUNCT &&
-                    strcmp(peek(p)->text, ")") == 0)
-                    break;
-                continue;
-            }
+                Token *a=peek(p);
+                if(a->kind!=TOK_NAME){ fail(p,"expected name after 'as'",a); return NULL; }
+                alias=a->text; take(p);
+            } else alias=name;
+            if(len==cap){ cap=cap?cap*2:4; ImportItem *ni=arena_alloc(p->a,sizeof(ImportItem)*(size_t)cap); int i; for(i=0;i<len;i++) ni[i]=items[i]; items=ni; }
+            items[len].name=name; items[len].alias=alias; len++;
+            if(peek(p)->kind==TOK_COMMA){ take(p); if(paren && peek(p)->kind==TOK_RPAREN) break; continue; }
             break;
         }
-        if (failed(p))
-            return NULL;
     }
-    if (paren) {
-        Token *closing = peek(p);
-        if (closing->kind != T_PUNCT || strcmp(closing->text, ")") != 0)
-            return fail(p, "'(' after import is never closed", closing);
+    if(paren){
+        if(peek(p)->kind!=TOK_RPAREN){ fail(p,"'(' after import is never closed",peek(p)); return NULL; }
         take(p);
     }
-    n->imports = items;
-    n->nimports = len;
+    n->imports=items; n->nimports=len;
     return n;
 }
 
-static Node *call(Parser *p) {
-    Token *name = expect(p, T_NAME, "a command");
-    Token *opener;
-    Node *n;
-    if (!name)
-        return NULL;
-    opener = expect(p, T_PUNCT, "'('");
-    if (!opener)
-        return NULL;
-    if (strcmp(opener->text, "(") != 0) {
-        char msg[256];
-        snprintf(msg, sizeof(msg), "expected '(' after %s", name->text);
-        return fail(p, msg, opener);
+static Node *parse_arg(Parser *p){
+    // check for NAME = expr
+    Token *t=peek(p);
+    if(t->kind==TOK_NAME && peek2(p)->kind==TOK_EQUAL){
+        Token *key=take(p); take(p); // =
+        Node *val=parse_expr(p);
+        if(!val) return NULL;
+        Node *kw=new_node(p,ND_KWARG,key->line,key->col);
+        kw->text=key->text;
+        kw->child=val;
+        return kw;
     }
-    n = new_node(p, ND_CALL);
-    n->text = name->text;
-    n->line = name->line;
-    n->col = name->col;
-    if (!(peek(p)->kind == T_PUNCT && strcmp(peek(p)->text, ")") == 0)) {
-        Node *arg = argument(p);
-        if (!arg)
-            return NULL;
-        node_arg(p, n, arg);
-        while (peek(p)->kind == T_PUNCT && strcmp(peek(p)->text, ",") == 0) {
-            take(p);
-            if (peek(p)->kind == T_PUNCT && strcmp(peek(p)->text, ")") == 0)
-                break;
-            arg = argument(p);
-            if (!arg)
-                return NULL;
-            node_arg(p, n, arg);
-        }
-    }
-    {
-        Token *closing = peek(p);
-        if (closing->kind != T_PUNCT || strcmp(closing->text, ")") != 0) {
-            char msg[256];
-            snprintf(msg, sizeof(msg), "'(' after %s is never closed", name->text);
-            return fail(p, msg, closing);
-        }
-        take(p);
-    }
-    return n;
+    return parse_expr(p);
 }
 
-/* A bare "(...)" in value position: a pair (or trio, or more) of values. */
-static Node *group(Parser *p) {
-    Token *opener = take(p);
-    Node *n;
-    int commas = 0, i;
-    if (peek(p)->kind == T_PUNCT && strcmp(peek(p)->text, ")") == 0) {
-        take(p);
-        n = new_node(p, ND_TUPLE);
-        n->line = opener->line;
-        n->col = opener->col;
-        return n;
-    }
-    n = new_node(p, ND_TUPLE);
-    n->line = opener->line;
-    n->col = opener->col;
-    for (;;) {
-        Node *el = argument(p);
-        if (!el)
-            return NULL;
-        node_arg(p, n, el);
-        if (peek(p)->kind == T_PUNCT && strcmp(peek(p)->text, ",") == 0) {
-            take(p);
-            commas++;
-            if (peek(p)->kind == T_PUNCT && strcmp(peek(p)->text, ")") == 0)
-                break;
-            continue;
+static Node *parse_call_trail(Parser *p, Node *func){
+    // func already, now '(' ... ')'
+    Token *lp=take(p); // '('
+    Node *call=new_node(p,ND_CALL,func->line,func->col);
+    call->child=func;
+    // skip newlines inside
+    while(peek(p)->kind==TOK_NEWLINE) take(p);
+    if(peek(p)->kind!=TOK_RPAREN){
+        while(1){
+            while(peek(p)->kind==TOK_NEWLINE) take(p);
+            if(peek(p)->kind==TOK_RPAREN) break;
+            Node *a=parse_arg(p);
+            if(!a) return NULL;
+            if(a->kind==ND_KWARG) node_add_kwarg(p,call,a);
+            else node_add_arg(p,call,a);
+            while(peek(p)->kind==TOK_NEWLINE) take(p);
+            if(peek(p)->kind==TOK_COMMA){ take(p); continue; }
+            break;
         }
-        break;
     }
-    {
-        Token *closing = peek(p);
-        if (closing->kind != T_PUNCT || strcmp(closing->text, ")") != 0)
-            return fail(p, "this '(' is never closed", closing);
+    while(peek(p)->kind==TOK_NEWLINE) take(p);
+    if(peek(p)->kind!=TOK_RPAREN){ fail(p,"'(' is never closed",lp); return NULL; }
+    take(p);
+    return call;
+}
+
+static Node *parse_atom(Parser *p){
+    Token *t=peek(p);
+    if(t->kind==TOK_NUMBER){
         take(p);
+        Node *n=new_node(p,ND_NUM,t->line,t->col);
+        n->num=t->num; n->is_int=t->is_int; return n;
     }
-    for (i = 0; i < n->nargs; i++) {
-        if (n->args[i]->kind == ND_KWARG) {
-            Node *bad = n->args[i];
-            if (!failed(p)) {
-                snprintf(p->err, 512, "a keyword cannot go inside (...)");
-                *p->eline = bad->line;
-                *p->ecol = bad->col;
+    if(t->kind==TOK_STRING){
+        take(p);
+        Node *n=new_node(p,ND_STR,t->line,t->col);
+        n->text=t->text; return n;
+    }
+    if(t->kind==TOK_NAME){
+        take(p);
+        Node *n=new_node(p,ND_NAME,t->line,t->col);
+        n->text=t->text; return n;
+    }
+    if(t->kind==TOK_LPAREN){
+        Token *lp=take(p);
+        while(peek(p)->kind==TOK_NEWLINE) take(p);
+        if(peek(p)->kind==TOK_RPAREN){
+            take(p);
+            Node *n=new_node(p,ND_TUPLE,lp->line,lp->col);
+            return n;
+        }
+        Node *first=parse_expr(p);
+        if(!first) return NULL;
+        while(peek(p)->kind==TOK_NEWLINE) take(p);
+        if(peek(p)->kind==TOK_COMMA){
+            // tuple
+            Node *tup=new_node(p,ND_TUPLE,lp->line,lp->col);
+            node_add_arg(p,tup,first);
+            while(peek(p)->kind==TOK_COMMA){
+                take(p);
+                while(peek(p)->kind==TOK_NEWLINE) take(p);
+                if(peek(p)->kind==TOK_RPAREN) break;
+                Node *el=parse_expr(p);
+                if(!el) return NULL;
+                node_add_arg(p,tup,el);
+                while(peek(p)->kind==TOK_NEWLINE) take(p);
             }
-            return NULL;
-        }
-    }
-    if (n->nargs == 1 && !commas)
-        return n->args[0];
-    return n;
-}
-
-static Node *argument(Parser *p) {
-    Token *t = peek(p);
-    if (t->kind == T_PUNCT && strcmp(t->text, "(") == 0)
-        return group(p);
-    if (t->kind == T_NUMBER) {
-        Node *n;
-        take(p);
-        n = new_node(p, ND_NUM);
-        n->num = t->num;
-        n->is_int = strchr(t->text, '.') == NULL;
-        n->line = t->line;
-        n->col = t->col;
-        return n;
-    }
-    if (t->kind == T_STRING) {
-        Node *n;
-        take(p);
-        n = new_node(p, ND_STR);
-        n->text = t->text;
-        n->line = t->line;
-        n->col = t->col;
-        return n;
-    }
-    if (t->kind == T_NAME) {
-        Token *next = &p->toks[p->idx + 1];
-        if (next->kind == T_PUNCT && strcmp(next->text, "=") == 0) {
-            Token *key = take(p);
-            Node *val;
-            Node *n;
+            if(peek(p)->kind!=TOK_RPAREN){ fail(p,"'(' is never closed",lp); return NULL; }
             take(p);
-            val = argument(p);
-            if (!val)
-                return NULL;
-            if (val->kind == ND_KWARG)
-                return fail(p, "a keyword value cannot be another keyword", key);
-            n = new_node(p, ND_KWARG);
-            n->text = key->text;
-            node_arg(p, n, val);
-            n->line = key->line;
-            n->col = key->col;
-            return n;
-        }
-        take(p);
-        if (peek(p)->kind == T_PUNCT && strcmp(peek(p)->text, "(") == 0) {
-            p->idx--;
-            return call(p);
+            return tup;
         } else {
-            Node *n = new_node(p, ND_WORD);
-            n->text = t->text;
-            n->line = t->line;
-            n->col = t->col;
-            return n;
+            if(peek(p)->kind!=TOK_RPAREN){ fail(p,"'(' is never closed",lp); return NULL; }
+            take(p);
+            return first;
         }
     }
-    return fail(p, "expected a number, a string, a word or a command", t);
+    return fail(p,"expected a value",t);
 }
 
-static Node *statement(Parser *p) {
-    Token *t = peek(p);
-    if (t->kind == T_NAME && strcmp(t->text, "import") == 0)
-        return import_statement(p);
-    if (t->kind == T_NAME && strcmp(t->text, "from") == 0)
-        return from_statement(p);
-    return call(p);
-}
-
-Node **parse_program(Arena *a, Token *toks, const char *src, const char *name,
-                     int *nstatements, char *err, int *eline, int *ecol) {
-    Parser p;
-    Node **out = NULL;
-    int len = 0, cap = 0;
-    p.toks = toks;
-    p.src = src;
-    p.name = name;
-    p.idx = 0;
-    p.a = a;
-    p.err = err;
-    p.eline = eline;
-    p.ecol = ecol;
-    err[0] = '\0';
-    while (peek(&p)->kind != T_END) {
-        Node *st = statement(&p);
-        Node **no;
-        int i;
-        if (!st)
-            return NULL;
-        if (len == cap) {
-            cap = cap ? cap * 2 : 16;
-            no = arena_alloc(a, sizeof(Node *) * (size_t)cap);
-            for (i = 0; i < len; i++)
-                no[i] = out[i];
-            out = no;
-        }
-        out[len++] = st;
+static Node *parse_expr(Parser *p){
+    Node *node=parse_atom(p);
+    if(!node) return NULL;
+    while(1){
+        Token *t=peek(p);
+        if(t->kind==TOK_DOT){
+            take(p);
+            Token *name=peek(p);
+            if(name->kind!=TOK_NAME){ fail(p,"expected name after '.'",name); return NULL; }
+            take(p);
+            Node *attr=new_node(p,ND_ATTR,name->line,name->col);
+            attr->child=node;
+            attr->text=name->text;
+            node=attr;
+        } else if(t->kind==TOK_LPAREN){
+            node=parse_call_trail(p,node);
+            if(!node) return NULL;
+        } else break;
     }
-    *nstatements = len;
+    return node;
+}
+
+static Node *parse_statement(Parser *p){
+    while(peek(p)->kind==TOK_NEWLINE) take(p);
+    Token *t=peek(p);
+    if(t->kind==TOK_EOF) return NULL;
+    if(t->kind==TOK_NAME && strcmp(t->text,"import")==0){
+        return parse_import_stmt(p);
+    }
+    if(t->kind==TOK_NAME && strcmp(t->text,"from")==0){
+        return parse_from_import_stmt(p);
+    }
+    // assignment? NAME = expr
+    if(t->kind==TOK_NAME && peek2(p)->kind==TOK_EQUAL){
+        Token *name=take(p); take(p);
+        Node *val=parse_expr(p);
+        if(!val) return NULL;
+        Node *as=new_node(p,ND_ASSIGN,name->line,name->col);
+        as->text=name->text;
+        as->child=val;
+        return as;
+    }
+    // expr stmt
+    Node *e=parse_expr(p);
+    if(!e) return NULL;
+    Node *st=new_node(p,ND_EXPR_STMT,e->line,e->col);
+    st->child=e;
+    return st;
+}
+
+Node **parse_program(Arena *a, Token *toks, const char *src, const char *name, int *nstatements, char *err, int *eline, int *ecol){
+    Parser p; p.toks=toks; p.idx=0; p.a=a; p.src=src; p.name=name; p.err=err; p.eline=eline; p.ecol=ecol;
+    err[0]='\0';
+    Node **out=NULL; int len=0,cap=0;
+    while(1){
+        while(peek(&p)->kind==TOK_NEWLINE) take(&p);
+        if(peek(&p)->kind==TOK_EOF) break;
+        Node *st=parse_statement(&p);
+        if(!st) return NULL;
+        if(len==cap){ cap=cap?cap*2:16; Node **no=arena_alloc(a,sizeof(Node*)*(size_t)cap); int i; for(i=0;i<len;i++) no[i]=out[i]; out=no; }
+        out[len++]=st;
+        // expect newline or EOF
+        while(peek(&p)->kind==TOK_NEWLINE) take(&p);
+    }
+    *nstatements=len;
     return out;
 }

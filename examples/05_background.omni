@@ -1,3 +1,0 @@
-# Long commands run in the background while the script goes on.
-cmd(background, "sleep 0.5")
-cmd("echo the script did not wait")

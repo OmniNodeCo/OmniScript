@@ -1,116 +1,143 @@
-# OmniScript 1.0.1 — native, no Python, installs as an app
+# OmniScript 2.0.0 — super simple
 
-[![build](https://github.com/OmniNodeCo/OmniScript/actions/workflows/build.yml/badge.svg)](https://github.com/OmniNodeCo/OmniScript/actions/workflows/build.yml)
-
-OmniScript is a tiny language for drawing and automating things. **This is the native rewrite: one C binary, libc only, no Python, no libraries.** Everything is custom:
-
-- lexer, parser, evaluator in C with arena allocation
-- pixel canvas, shapes (rect, circle, line), 5×7 font drawn by hand, BMP writer with no zlib
-- hardware windows: X11 on Linux, Win32 GDI on Windows, headless fallback writes `drawing.bmp`
-- updater with its own SHA-256 and minimal JSON parser, `curl` for transport, checksum enforced
-- `cmd()` captures stdout and stderr separately via `poll()` + dual pipes, `file()` and `input()` native
+A tiny language, C only, no dependencies. Three modules, Python-like imports.
 
 ```omni
-draw(
-    window(640, 400, "Demo"),
-    rect(0, 0, 640, 60, "#161b22"),
-    text(20, 20, "Hello, native OmniScript", white, 18),
-    circle(320, 220, 80, blue),
-    save("hello.bmp")
-)
+import draw
+import cmd
+import pathlib
 
-draw_gui.window_size(640, 400, "Demo")
-draw_gui.button(20, 300, 140, 36, "List files", action=cmd("ls -la"))
-draw_gui()
+draw.window(640, 400, "Demo")
+draw.rect(0, 0, 640, 60, "#161b22")
+draw.text(20, 20, "Hello, simple OmniScript", "white", 18)
+draw.circle(320, 220, 80, "blue")
+draw.button(20, 300, 140, 36, "List files", action="ls -la")
+draw.show()  # opens window if possible, else writes drawing.bmp
+
+cmd.run("ls -la")
+cmd.bg("sleep 10")
+
+pathlib.write("hello.txt", "hi")
+print(pathlib.read("hello.txt"))
+print(pathlib.exists("hello.txt"))
+
+p = pathlib.Path("hello.txt")
+print(p.read())
+print(p.name())
 ```
 
-A program is a list of commands. Each says what it did. There are no variables or loops — a bare word is its own name, which is how `create`, `background`, `red`, `blue` reach a command without quotes.
-
-## Commands
-
-- `draw(...)` — elements: `window(w, h, title, bg)`, `window_size(...)`, `rect(x, y, w, h, color)`, `circle(x, y, r, color)`, `line(x1, y1, x2, y2, color, width)`, `text(x, y, msg, color, size)`, `button(x, y, w, h, label, action=...)`, `save(path)`. With a display it opens a real window; without one it writes a BMP.
-- `draw_gui.window_size(...)` — `window_size(800, 600)`, `window_size("800x600")`, `window_size((800, 600))`, or keywords `width=`, `height=`, `title=`, `background=` / `bg=` / `color=`.
-- `draw_gui.button(...)` — `button(pos=(20, 30), text="Go", action=cmd("echo hi"))`. `pos=(x,y)`, `size=(w,h)`, `action=` / `command=` / `on_click=` / `do=` is the command kept for click. Also positional: `button(20, 30, 120, 32, "Go", cmd("..."))`.
-- `draw_gui(...)` — shows the queued buttons plus its own elements. `save("gui.bmp")` writes a BMP instead.
-- `cmd(...)` — shell command. `cmd(background, "sleep 10")` detaches. Prints combined output, says exit code if non-zero, returns pid/code.
-- `file(...)` — `file(create, "a.txt", "hi")`, `file(edit, "a.txt", "old", "new")`, `file(delete, "a.txt")`. Creates parents, refuses overwrite on create.
-- `input(...)` — `input("Name: ")` or `input(prompt="Name: ")`. Prints `typed: ...` and returns the line.
-
-Keywords work everywhere: `rect(x=0, y=0, color=blue)`, `rect(pos=(0,0), size=(64,40))`, `line(from=(0,0), to=(9,9), thickness=3)`. Colors: `#rrggbb`, `#rgb`, or names: black, white, red, green, blue, yellow, orange, purple, pink, cyan, teal, navy, grey/gray, silver, gold, brown, lime, maroon, olive.
-
-Errors point at the line with a caret.
-
-## Install
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/install.sh | bash
-```
-
-```powershell
-iwr -use1 https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/install.ps1 | iex
-```
-
-That takes the binary built for your machine from the newest release, verifies its `.sha256`, puts `omni` on PATH **and installs it as a desktop app**:
-- Linux: `~/.local/share/applications/omniscript.desktop` + icon in `~/.local/share/icons/` — appears in GNOME/KDE launcher
-- macOS: `~/Applications/OmniScript.app` bundle — appears in Launchpad/Spotlight
-- Windows: Start Menu `OmniScript` folder with `OmniScript.lnk`, `REPL.lnk`, `Uninstall.lnk` + Desktop shortcut — via `install.ps1`
-
-Channels: **release** (default) and **beta** (`-s beta`, builds from source with `cc` — no make required). `--version` pins a release, `--dry-run` shows the plan.
-
-From a clone:
+## Install / Build
 
 ```bash
 git clone https://github.com/OmniNodeCo/OmniScript
 cd OmniScript
-cc -O2 -std=c11 -Wall -Wextra -DOMNI_VERSION="1.0.1" -o omni src/*.c -lX11   # no make needed
-# or
-make                      # classic make still works
-./omni --version
-./omni examples/03_drawing.omni
-./omni -e 'cmd("echo hi")'
-./omni   # REPL
-./install.sh --prefix ~/.local   # also creates .desktop + icon
+make
+./omni --help
+./omni examples/01_hello.omni
 ```
 
-To remove:
+No X11? Drawings become BMP files.
 
-```bash
-./uninstall.sh --purge
+## Language
+
+Super simple:
+
+- `#` comment
+- newline or `;` separates statements
+- `import draw` , `import draw as d` , `import draw, cmd`
+- `from draw import window, rect` , `from draw import *` , `from draw import window as win`
+- `x = 123` , `y = "hi"` , `z = (1, 2)`
+- `print(...)` , `input("prompt: ")`
+- calls: `func(1, 2, key=val)` , attributes: `draw.rect(...)` , `pathlib.Path("a").read()`
+
+No loops, no ifs, no defs — just straight lines. Very very very simple.
+
+## Modules
+
+### `import draw`
+
+Simple GUI and BMP:
+
+- `draw.window(w, h, title?, bg?)` — also `draw.window_size` — supports `window("800x600")` or `window(size=(800,600))`
+- `draw.rect(x, y, w, h, color?)` — kwargs: `pos=(x,y)`, `size=(w,h)`, `color=`
+- `draw.circle(x, y, r, color?)` — `pos=`
+- `draw.line(x1,y1,x2,y2, color?, width?)` — `from=(x1,y1)`, `to=(x2,y2)`, `thickness=`
+- `draw.text(x, y, msg, color?, size?)` — `pos=`, `message=`
+- `draw.button(x, y, w, h, label, action?)` — `pos=`, `size=`, `label=`, `action=` / `command=` / `on_click=` — action is shell command string run on click
+- `draw.save(path)` — save BMP now
+- `draw.show()` — show window or save to `drawing.bmp`
+- `draw.clear()` — clear canvas
+- `draw()` — callable, same as `show()`, also accepts elements: `draw(window(640,400), rect(...))`
+
+Colors: `#rrggbb`, `#rgb`, or names: black, white, red, green, blue, yellow, orange, purple, pink, cyan, teal, navy, grey/gray, silver, gold, brown, lime, maroon, olive.
+
+Buttons: when GUI available (X11 on Linux, Win32 on Windows), window shows. Clicking a button runs its `action` string as shell command and prints output. Press `q` or `Esc` to close.
+
+### `import cmd`
+
+Run shell commands:
+
+- `cmd.run("ls -la")` — runs foreground, prints stdout+stderr, returns exit code
+- `cmd.bg("sleep 10")` — runs in background (detached), returns pid
+- `cmd("ls")` — shortcut for `run`
+
+Background uses `fork`+`setsid` on Unix, `CreateProcess` detached on Windows.
+
+### `import pathlib`
+
+Python-like file paths:
+
+- `pathlib.read(path)` — returns file content string
+- `pathlib.write(path, content)` — writes, creates parents, returns full path
+- `pathlib.append(path, content)`
+- `pathlib.exists(path)` — bool
+- `pathlib.is_file(path)` , `pathlib.is_dir(path)`
+- `pathlib.mkdir(path)` — mkdir -p
+- `pathlib.delete(path)` — also `unlink`, `remove`
+- `pathlib.list(dir=".")` — returns tuple of names
+- `pathlib.join(a, b, ...)` — join paths
+- `pathlib.name(path)` / `basename`
+- `pathlib.parent(path)` / `dirname`
+- `pathlib.suffix(path)` / `ext`
+- `pathlib.Path("file")` — returns Path object
+
+Path object:
+
+```omni
+p = pathlib.Path("a.txt")
+p.read()
+p.write("hi")
+p.exists()
+p.is_file()
+p.mkdir()
+p.delete()
+p.list()
+p.name()
+p.parent()
 ```
 
-```powershell
-.\uninstall.ps1 -Purge
-```
-
-## Update
-
-```bash
-omni update --check
-omni update
-omni update 1.0.0 stable /tmp
-```
-
-Update needs `curl` and refuses to install without a checksum.
-
-## How it is put together
-
-- `src/lex.c`, `src/parse.c` — tokenizer and parser, BOM accepted, `#` comments, `"""` triple strings
-- `src/eval.c` — evaluator, built-ins, color parser, GUI queue, error `longjmp`
-- `src/draw.c` — canvas, 5×7 font (96 glyphs hand-drawn), BMP writer (24-bit, bottom-up, padded)
-- `src/gui_x11.c`, `src/gui_win32.c`, `src/gui_stub.c` — native windows
-- `src/sha256.c` — FIPS 180-4 SHA-256
-- `src/update.c` — release discovery via GitHub API, asset `omni-<os>-<arch>[.exe]` + `.sha256`, verified install
-- `src/main.c` — CLI, REPL with paren/triple-string tracking, `omni ...` inside REPL via shell-like split
-- `src/util.c` — arena, output, numbers
-
-Tests: `make test` or `sh tests/run.sh ./omni` — 91 checks, no Python.
+All paths resolved relative to cwd.
 
 ## Examples
 
-- `01_first_steps.omni` — cmd + file
-- `02_asking.omni` — input
-- `03_drawing.omni` — shapes to BMP
-- `04_buttons.omni` — buttons to BMP
-- `05_background.omni` — background cmd
-- `06_gui.omni` — interactive window built line by line
-- `07_files.omni` — file lifecycle
+- `01_hello.omni` — draw + cmd + pathlib
+- `02_buttons.omni` — window with buttons
+- `03_files.omni` — pathlib basics
+- `04_cmd.omni` — background commands
+- `05_imports.omni` — import styles
+
+## How it is built
+
+- `src/lex.c` — tokenizer
+- `src/parse.c` — recursive descent, handles imports, assignments, calls, attributes, tuples
+- `src/eval.c` — interpreter, env, modules: draw, cmd, pathlib
+- `src/draw.c` — canvas, 5x7 font, BMP writer
+- `src/gui_x11.c`, `src/gui_win32.c`, `src/gui_stub.c` — windowing
+- `src/util.c` — arena, values, colors
+- `src/main.c` — CLI + REPL
+
+One binary, libc only.
+
+## License
+
+MIT

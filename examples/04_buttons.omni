@@ -1,8 +1,0 @@
-# Buttons live inside a drawing; each carries a command.
-draw(
-    window(300, 160, "Panel"),
-    text(20, 20, "Pick one:", white, 14),
-    button(20, 60, 120, 32, "List files", action=cmd("echo picked-list")),
-    button(160, 60, 120, 32, "Say hi", action=cmd("echo picked-hi")),
-    save("panel.bmp")
-)

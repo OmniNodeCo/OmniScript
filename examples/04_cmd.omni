@@ -1,0 +1,8 @@
+import cmd
+
+cmd.run("echo running foreground")
+cmd.bg("sleep 1 && echo background job done")
+cmd.run("echo script did not wait for bg")
+
+# cmd module is callable
+cmd("echo shortcut works")

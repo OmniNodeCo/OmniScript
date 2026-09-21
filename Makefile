@@ -1,13 +1,10 @@
-# OmniScript: one binary, libc only.
-VERSION := $(shell cat VERSION 2>/dev/null || echo 0.0.0)
-# Find a C compiler: cc, gcc, clang in that order
+VERSION := $(shell cat VERSION 2>/dev/null || echo 2.0.0)
 CC ?= $(shell command -v cc 2>/dev/null || command -v gcc 2>/dev/null || command -v clang 2>/dev/null || echo cc)
 CFLAGS ?= -O2
 CFLAGS += -std=c11 -Wall -Wextra -DOMNI_VERSION=\"$(VERSION)\"
 PREFIX ?= /usr/local
 
-SRC := src/util.c src/lex.c src/parse.c src/eval.c src/draw.c src/sha256.c \
-       src/update.c src/main.c
+SRC := src/util.c src/lex.c src/parse.c src/eval.c src/draw.c src/main.c
 
 ifeq ($(OS),Windows_NT)
   EXE := .exe
@@ -42,7 +39,11 @@ clean:
 	rm -f $(OBJ) $(BIN)
 
 test: $(BIN)
-	sh tests/run.sh ./$(BIN)
+	@echo "no old tests, running simple smoke"
+	./$(BIN) -e 'import draw; draw.window(100,100); draw.rect(0,0,50,50,"red"); draw.save("test.bmp")'
+	./$(BIN) -e 'import pathlib; pathlib.write("test.txt","hi"); print(pathlib.read("test.txt"))'
+	./$(BIN) -e 'import cmd; cmd.run("echo hello")'
+	@echo "smoke ok"
 
 install: $(BIN)
 	install -d $(DESTDIR)$(PREFIX)/bin

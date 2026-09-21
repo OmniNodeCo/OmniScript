@@ -1,0 +1,18 @@
+import pathlib
+
+pathlib.write("notes.txt", "eggs, milk")
+print(pathlib.read("notes.txt"))
+print(pathlib.exists("notes.txt"))
+print(pathlib.is_file("notes.txt"))
+
+p = pathlib.Path("notes.txt")
+print(p.name())
+print(p.parent())
+print(p.suffix())
+
+pathlib.mkdir("mydir/sub")
+pathlib.write("mydir/sub/file.txt", "nested")
+print(pathlib.list("mydir/sub"))
+
+pathlib.delete("notes.txt")
+pathlib.delete("mydir/sub/file.txt")

@@ -1,0 +1,8 @@
+import draw
+
+draw.window(400, 250, "Buttons")
+draw.text(20, 20, "Click a button:", "white", 14)
+draw.button(20, 60, 140, 36, "List files", action="ls -la")
+draw.button(200, 60, 140, 36, "Say hi", action="echo hi there")
+draw.button(20, 110, 320, 36, "Show cwd", action="pwd")
+draw.show()

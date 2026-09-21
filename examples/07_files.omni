@@ -1,4 +1,0 @@
-# Files: create one, change it, then remove it.
-file(create, "notes.txt", "eggs, milk")
-file(edit, "notes.txt", "milk", "milk, bread")
-file(delete, "notes.txt")

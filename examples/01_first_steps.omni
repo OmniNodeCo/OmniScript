@@ -1,3 +1,0 @@
-# Your first OmniScript: run a command, make a file.
-cmd("echo Hello from OmniScript")
-file(create, "hello.txt", "OmniScript was here")

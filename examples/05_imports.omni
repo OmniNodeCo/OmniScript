@@ -1,0 +1,27 @@
+# different import styles
+import draw
+import cmd as c
+import pathlib as fs
+
+from draw import window, rect, circle, text, button, show, save
+from pathlib import read, write, exists
+from cmd import run, bg
+
+window(320, 200, "Imports")
+rect(0, 0, 320, 50, "navy")
+text(20, 15, "imports work!", "white", 16)
+circle(160, 120, 40, "gold")
+save("imports.bmp")
+
+write("tmp.txt", "test")
+print(read("tmp.txt"))
+print(exists("tmp.txt"))
+
+run("echo from imported run")
+bg("sleep 0.2 && echo bg from imported bg")
+
+# import *
+from draw import *
+window(200, 100, "Star import")
+rect(10, 10, 50, 50, "red")
+save("star.bmp")
