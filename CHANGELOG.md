@@ -2,6 +2,20 @@
 
 All notable changes, newest first. This is the native rewrite, starting at 1.0.0.
 
+## [1.0.1] - 2026-09-21
+
+### Added
+
+- **PowerShell builder `build.ps1`** — no `make` required on any platform. Detects `cl` (MSVC), `gcc`, `clang`, `cc`, compiles all `src/*.c` directly with `gdi32`/`user32` on Windows and `X11` when available on Linux/macOS. `pwsh ./build.ps1` is now the recommended build on Windows; `make` remains as fallback. Supports `-NoGui`, `-Clean`, `-VerboseBuild`, `-Output`, `-Compiler`, `-Version`.
+- Installers now prefer `build.ps1` (beta channel) and fall back to `make` then direct `cc` compile, so a C compiler alone is enough. `install.sh` also builds without `make` when needed.
+
+### Changed
+
+- CI workflows (`build.yml`, `release.yml`) use `build.ps1` on Windows (no make), `make` on Linux/macOS.
+- `install.ps1` help and logic updated: beta channel says "Needs a C compiler (no make required)" and uses `build.ps1`.
+- `install.sh` help and logic updated: beta channel builds without `make` if missing.
+- `README.md` and `wiki/Install.md` document `pwsh ./build.ps1` as primary build.
+
 ## [1.0.0] - 2026-09-18
 
 Fresh start: no Python in the product.

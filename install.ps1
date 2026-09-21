@@ -10,9 +10,9 @@
 #             machine. The default when this script arrives with no source tree
 #             beside it.
 #   beta      the repository itself: this checkout, or a clone of main, built
-#             with a C compiler and make, with the command pointing at it so
-#             `git pull` plus `make` is an upgrade. The default when the script
-#             is run from a source tree.
+#             with a C compiler (no make needed), with the command pointing at
+#             it so `git pull` plus `pwsh build.ps1` is an upgrade. The default
+#             when the script is run from a source tree.
 #
 # If the release channel cannot deliver -- nothing published yet, no file built
 # for this machine, no network -- the script says so and installs from the
@@ -23,6 +23,9 @@
 # file in a directory on PATH works for everybody. Under pwsh on Linux or macOS
 # this script makes real symlinks instead, exactly like install.sh does. A
 # release executable needs no shim at all -- omni.exe runs itself.
+#
+# The beta channel uses build.ps1 (PowerShell builder, no make) when present,
+# falling back to make for older checkouts.
 #
 # Everything created here is written to a manifest so uninstall.ps1 can remove
 # it -- and only it.
@@ -81,7 +84,7 @@ Usage: install.ps1 [options]
   -Channel release|beta    release (the default): the newest published release,
                            one file, no dependencies. beta: the repository --
                            the source tree beside this script, or a clone of
-                           main. Needs a C compiler and make.
+                           main. Needs a C compiler (no make required).
   -Version VERSION         a particular release, for example 1.0.0 or v1.0.0
   -Prefix DIR              install root                [see below]
   -ApiUrl URL              the GitHub API to ask       [https://api.github.com]
@@ -551,14 +554,7 @@ if (-not (Test-SourceTree $Source)) {
     Stop-Die "$Source is not an OmniScript source tree"
 }
 
-# --------------------------------------------------------- build it
-$makeName = ''
-foreach ($candidate in @('make', 'gmake', 'mingw32-make')) {
-    if (Get-Command $candidate -ErrorAction SilentlyContinue) { $makeName = $candidate; break }
-}
-if (-not $makeName) {
-    Stop-Die 'the beta channel builds OmniScript from source and needs make; install it (or a C toolchain) and re-run, or use -Channel release'
-}
+# --------------------------------------------------------- build it (no make required)
 $ccName = $null
 foreach ($candidate in @('gcc','clang','cc','cl')) {
     if (Get-Command $candidate -ErrorAction SilentlyContinue) { $ccName = $candidate; break }
@@ -570,18 +566,59 @@ if (Test-Path -LiteralPath $versionFile) {
 }
 if (-not $OmniVersion) { $OmniVersion = 'unknown' }
 Write-Info "OmniScript $OmniVersion from $Source"
-Write-Note "built with $makeName, command into $Bin"
 
 if ($IsWin) { $binaryName = 'omni.exe' } else { $binaryName = 'omni' }
 $expectedBinary = Join-Path $Source $binaryName
 
-Invoke-OrShow {
-    $buildLog = & $makeName -C $Source 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        $tail = ($buildLog | Select-Object -Last 25) -join "`n"
-        Stop-Die "the build failed:`n$tail"
+# Prefer the PowerShell builder (build.ps1) -- no make needed.
+# Fall back to make for older checkouts that lack build.ps1.
+$builderPs1 = Join-Path $Source 'build.ps1'
+$built = $false
+$buildTool = ''
+
+if (Test-Path -LiteralPath $builderPs1) {
+    $buildTool = 'build.ps1'
+    Write-Note "building with $builderPs1 (no make needed), command into $Bin"
+    Invoke-OrShow {
+        # Use pwsh if available, else powershell, else direct invoke
+        $pwshCmd = Get-Command pwsh -ErrorAction SilentlyContinue
+        if (-not $pwshCmd) { $pwshCmd = Get-Command powershell -ErrorAction SilentlyContinue }
+        if ($pwshCmd) {
+            $buildLog = & $pwshCmd.Source -NoProfile -ExecutionPolicy Bypass -File $builderPs1 2>&1
+        } else {
+            # Direct invocation (works when running under pwsh)
+            $buildLog = & $builderPs1 2>&1
+        }
+        Write-Host ($buildLog -join "`n")
+        if ($LASTEXITCODE -ne 0) {
+            $tail = ($buildLog | Select-Object -Last 30) -join "`n"
+            Stop-Die "the build failed (build.ps1):`n$tail"
+        }
+    } "pwsh $builderPs1"
+    $built = $true
+} else {
+    # Legacy fallback: make
+    $makeName = ''
+    foreach ($candidate in @('make', 'gmake', 'mingw32-make')) {
+        if (Get-Command $candidate -ErrorAction SilentlyContinue) { $makeName = $candidate; break }
     }
-} "$makeName -C $Source"
+    if ($makeName) {
+        $buildTool = $makeName
+        Write-Note "build.ps1 not found, falling back to $makeName, command into $Bin"
+        Invoke-OrShow {
+            $buildLog = & $makeName -C $Source 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                $tail = ($buildLog | Select-Object -Last 25) -join "`n"
+                Stop-Die "the build failed:`n$tail"
+            }
+        } "$makeName -C $Source"
+        $built = $true
+    }
+}
+
+if (-not $built) {
+    Stop-Die 'the beta channel builds OmniScript from source and needs a C compiler (gcc, clang, or Visual Studio cl). Install one and re-run, or use -Channel release'
+}
 
 $binary = ''
 foreach ($candidate in @($expectedBinary, (Join-Path $Source 'omni'), (Join-Path $Source 'omni.exe'))) {

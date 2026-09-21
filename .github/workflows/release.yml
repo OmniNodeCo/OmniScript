@@ -72,13 +72,21 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
-      - name: Build omni
+      - name: Build omni (Unix - make)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           set -euo pipefail
           if command -v make >/dev/null 2>&1; then MK=make; elif command -v mingw32-make >/dev/null 2>&1; then MK=mingw32-make; else MK=gmake; fi
           $MK
           if [ -f ./omni.exe ]; then ./omni.exe --version; else ./omni --version; fi
+      - name: Build omni (Windows - build.ps1, no make)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          ./build.ps1 -VerboseBuild
+          if (Test-Path ./omni.exe) { ./omni.exe --version } else { ./omni --version }
       - name: Name asset like updater expects and hash it
         shell: bash
         run: |
@@ -175,7 +183,7 @@ jobs:
           iwr -use1 https://raw.githubusercontent.com/$repo/main/install.ps1 | iex
           \`\`\`
 
-          That takes the file built for your machine from this release, checks its \`.sha256\` and puts \`omni\` on PATH. \`-s beta\` builds from source (\`cc\`+\`make\`), \`--version\` pins a release, \`omni update\` keeps it current.
+          That takes the file built for your machine from this release, checks its \`.sha256\` and puts \`omni\` on PATH. \`-s beta\` builds from source (\`cc\` or \`pwsh build.ps1\`), \`--version\` pins a release, \`omni update\` keeps it current.
 
           ## Try it
 

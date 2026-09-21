@@ -93,10 +93,13 @@ bmp_ok() {
 }
 
 # ------------------------------------------------------------- CLI basics
+# Version comes from VERSION file, not hardcoded
+VER_EXPECTED="$(cat "$ROOT/VERSION" 2>/dev/null | tr -d ' \t\n\r' || echo 1.0.0)"
+[ -n "$VER_EXPECTED" ] || VER_EXPECTED="1.0.0"
 run "" --version
-check "version" 0 1.0.0 -
+check "version" 0 "$VER_EXPECTED" -
 run "" -V
-check "version-short" 0 1.0.0 -
+check "version-short" 0 "$VER_EXPECTED" -
 run "" --help
 check "help" 0 "omni FILE" -
 run "" -h
@@ -265,7 +268,7 @@ case "$err" in
 esac
 printf 'omni --version\nexit\n' > repl3.txt
 run repl3.txt
-check "repl-omni-version" 0 1.0.0 -
+check "repl-omni-version" 0 "$VER_EXPECTED" -
 printf "omni -e 'cmd(\"echo nested\")'\nexit\n" > repl4.txt
 run repl4.txt
 check "repl-omni-e" 0 nested -

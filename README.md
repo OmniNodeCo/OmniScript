@@ -50,14 +50,16 @@ curl -fsSL https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/install.
 iwr -use1 https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/install.ps1 | iex
 ```
 
-That takes the binary built for your machine from the newest release, verifies its `.sha256`, and puts `omni` on PATH. Channels: **release** (default) and **beta** (`-s beta`, builds from source with `cc` and `make`). `--version` pins a release, `--dry-run` shows the plan.
+That takes the binary built for your machine from the newest release, verifies its `.sha256`, and puts `omni` on PATH. Channels: **release** (default) and **beta** (`-s beta`, builds from source with `cc` — no make required, `pwsh build.ps1` is the PowerShell builder). `--version` pins a release, `--dry-run` shows the plan.
 
 From a clone:
 
 ```bash
 git clone https://github.com/OmniNodeCo/OmniScript
 cd OmniScript
-make
+pwsh ./build.ps1          # no make needed — Windows, Linux, macOS (MSVC, gcc, clang)
+# or
+make                      # classic make still works
 ./omni --version
 ./omni examples/03_drawing.omni
 ./omni -e 'cmd("echo hi")'

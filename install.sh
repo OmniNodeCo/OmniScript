@@ -3,7 +3,7 @@
 # Install OmniScript.
 #
 #   ./install.sh              the newest release: one file, no dependencies
-#   ./install.sh -s beta      build the repository instead (needs cc and make)
+#   ./install.sh -s beta      build the repository instead (needs cc, no make)
 #   ./install.sh --version 1.0.0
 #   ./install.sh --dry-run    show what would happen and change nothing
 #
@@ -15,7 +15,10 @@
 #
 # With no release to be had -- no network, nothing published yet -- it says so
 # and installs from source instead: the tree beside this script, or a clone of
-# main. That needs a C compiler and make, and nothing else.
+# main. That needs a C compiler and nothing else (build.ps1 or direct cc).
+#
+# The beta channel prefers build.ps1 (pwsh, no make) when present, then make,
+# then a direct cc compile -- all libc only.
 
 set -euo pipefail
 
@@ -36,7 +39,7 @@ Usage: install.sh [options]
                      release (the default): the newest published release, one
                      file, no dependencies.
                      beta: the repository -- the source tree beside this script,
-                     or a clone of main. Needs a C compiler and make.
+                     or a clone of main. Needs a C compiler (no make required).
   --version VERSION  a particular release, for example 1.0.0 or v1.0.0
   --prefix DIR       where to install                        [~/.local]
   --api-url URL      the GitHub API to ask              [https://api.github.com]
@@ -392,16 +395,73 @@ find_source() {
 }
 
 find_tools() {
-    command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1 ||
-        command -v clang >/dev/null 2>&1 ||
-        die "no C compiler on PATH; the beta channel needs cc and make"
-    command -v make >/dev/null 2>&1 ||
-        die "no make on PATH; the beta channel needs cc and make"
+    # Only a C compiler is required now; make is optional.
+    # build.ps1 (PowerShell) is preferred when pwsh/powershell exists.
+    if command -v cc >/dev/null 2>&1; then
+        return 0
+    fi
+    if command -v gcc >/dev/null 2>&1; then
+        return 0
+    fi
+    if command -v clang >/dev/null 2>&1; then
+        return 0
+    fi
+    if command -v cl >/dev/null 2>&1; then
+        return 0
+    fi
+    die "no C compiler on PATH; the beta channel needs a C compiler (cc, gcc, clang, or cl)"
 }
 
 build_source() {
     info "Building in $SOURCE_DIR"
-    run make -C "$SOURCE_DIR"
+    # Prefer PowerShell builder (no make), then make, then direct cc
+    if [ -f "$SOURCE_DIR/build.ps1" ]; then
+        if command -v pwsh >/dev/null 2>&1; then
+            run pwsh -NoProfile -ExecutionPolicy Bypass -File "$SOURCE_DIR/build.ps1"
+            return 0
+        elif command -v powershell >/dev/null 2>&1; then
+            run powershell -NoProfile -ExecutionPolicy Bypass -File "$SOURCE_DIR/build.ps1"
+            return 0
+        fi
+    fi
+    if command -v make >/dev/null 2>&1; then
+        run make -C "$SOURCE_DIR"
+        return 0
+    fi
+    if command -v mingw32-make >/dev/null 2>&1; then
+        run mingw32-make -C "$SOURCE_DIR"
+        return 0
+    fi
+    # Direct cc compile, no make
+    info "no make or pwsh -- compiling directly with cc"
+    CC="${CC:-}"
+    if [ -z "$CC" ]; then
+        for c in cc gcc clang; do
+            if command -v "$c" >/dev/null 2>&1; then CC="$c"; break; fi
+        done
+    fi
+    [ -n "$CC" ] || die "no cc found for direct build"
+    VER="$(cat "$SOURCE_DIR/VERSION" 2>/dev/null | tr -d ' \t\n\r' || echo 0.0.0)"
+    SRC="$SOURCE_DIR/src/util.c $SOURCE_DIR/src/lex.c $SOURCE_DIR/src/parse.c $SOURCE_DIR/src/eval.c $SOURCE_DIR/src/draw.c $SOURCE_DIR/src/sha256.c $SOURCE_DIR/src/update.c $SOURCE_DIR/src/main.c"
+    if [ -f /usr/include/X11/Xlib.h ] || [ -f /usr/local/include/X11/Xlib.h ] || [ -f /opt/X11/include/X11/Xlib.h ]; then
+        SRC="$SRC $SOURCE_DIR/src/gui_x11.c"
+        CFLAGS_EXTRA="-DHAVE_X11"
+        LDFLAGS_EXTRA="-lX11"
+    else
+        SRC="$SRC $SOURCE_DIR/src/gui_stub.c"
+        CFLAGS_EXTRA=""
+        LDFLAGS_EXTRA=""
+    fi
+    # Windows MSYS/MINGW needs gdi32
+    case "$(uname -s 2>/dev/null)" in
+        MINGW*|MSYS*|CYGWIN*) LDFLAGS_EXTRA="$LDFLAGS_EXTRA -lgdi32 -luser32" ;;
+    esac
+    if [ "$DRY_RUN" = 1 ]; then
+        printf '    [dry-run] %s -O2 -std=c11 -Wall -Wextra -DOMNI_VERSION=\"%s\" -D_POSIX_C_SOURCE=200809L %s -o %s/src/omni %s %s\n' "$CC" "$VER" "$CFLAGS_EXTRA" "$SOURCE_DIR" "$SRC" "$LDFLAGS_EXTRA"
+    else
+        # shellcheck disable=SC2086
+        $CC -O2 -std=c11 -Wall -Wextra -DOMNI_VERSION=\""$VER"\" -D_POSIX_C_SOURCE=200809L $CFLAGS_EXTRA -o "$SOURCE_DIR/omni" $SRC $LDFLAGS_EXTRA
+    fi
 }
 
 install_from_source() {
@@ -544,7 +604,7 @@ if [ "$INSTALLED" != 1 ]; then
         OMNI_VERSION="unknown"
     fi
     info "OmniScript $OMNI_VERSION from $SOURCE_DIR"
-    note "built with cc and make, commands into $BIN_DIR"
+    note "built with cc (no make required), commands into $BIN_DIR"
     ensure_bin_dir
     build_source
     install_from_source
