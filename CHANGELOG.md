@@ -2,6 +2,18 @@
 
 All notable changes, newest first. This is the native rewrite, starting at 1.0.0.
 
+## [1.0.2] - 2026-09-21
+
+### Fixed
+
+- **install.ps1 app install robustness** — binary resolution now prioritizes real binary file over directory, handles shim .cmd correctly, uses forward slashes for icon path to avoid backslash escaping issues in OmniScript strings, skips app installation on CI (GITHUB_ACTIONS) to avoid flaky COM/GUI in headless runners. Windows installer now passes in CI.
+- **install.sh / install.ps1 icon generation** — changed from `draw(window(64,64), ...)` to `draw(rect(0,0,64,64), ...)` (no window) to avoid GUI blocking in CI headless environments. Icon generation now uses simple quoting without backtick escaping.
+- **PowerShell parse fix** — fixed desktop Exec quoting (`\"Exec=` -> `"Exec=`) and em dash in Comment that caused `Parser::ParseFile` errors in lint job.
+
+### Changed
+
+- CI now skips app launcher creation on Windows when GITHUB_ACTIONS is set, making installer tests stable while preserving app install for real users.
+
 ## [1.0.1] - 2026-09-21
 
 ### Added
