@@ -715,9 +715,11 @@ function Install-App {
         if (-not $DryRun) {
             New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
             $iconBmp = Join-Path $DataDir 'icon.bmp'
+            $iconBmpForOmni = $iconBmp -replace '\\','/'
             if ($appBin -and (Test-Path -LiteralPath $appBin -PathType Leaf)) {
-                # Generate 64x64 icon using omni itself
-                & $appBin -e "draw(window(64, 64, `"OmniScript`"), rect(0, 0, 64, 64, `"#0d1117`"), circle(32, 32, 20, `"#1f6feb`"), text(8, 20, `"Om`", white, 14), save(`"$iconBmp`"))" 2>&1 | Out-Null
+                # Generate 64x64 icon using omni itself — no window to avoid GUI blocking in CI
+                $code = 'draw(rect(0,0,64,64,"#0d1117"), circle(32,32,20,"#1f6feb"), text(8,20,"Om",white,14), save("'+$iconBmpForOmni+'"))'
+                & $appBin -e $code 2>&1 | Out-Null
                 if (Test-Path -LiteralPath $iconBmp) {
                     $script:IconFile = $iconBmp
                     Write-Note "generated icon $iconBmp"

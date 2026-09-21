@@ -507,9 +507,9 @@ install_app() {
         printf '    [dry-run] generate icon via %s\n' "$app_bin"
     else
         mkdir -p "$ICON_DIR" "$ICON_DIR2" "$DATA_DIR" 2>/dev/null || true
-        # Generate BMP icon if possible
+        # Generate BMP icon if possible — no window to avoid GUI blocking in CI
         if [ -x "$app_bin" ]; then
-            "$app_bin" -e 'draw(window(64, 64, "OmniScript"), rect(0, 0, 64, 64, "#0d1117"), circle(32, 32, 20, "#1f6feb"), text(8, 20, "Om", white, 14), save("'"$DATA_DIR"'/icon.bmp"))' >/dev/null 2>&1 || true
+            "$app_bin" -e 'draw(rect(0, 0, 64, 64, "#0d1117"), circle(32, 32, 20, "#1f6feb"), text(8, 20, "Om", white, 14), save("'"$DATA_DIR"'/icon.bmp"))' >/dev/null 2>&1 || true
             if [ -f "$DATA_DIR/icon.bmp" ]; then
                 ICON_FILE="$DATA_DIR/icon.bmp"
                 # Try to convert to PNG if convert/magick available, else keep BMP
