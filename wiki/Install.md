@@ -17,7 +17,7 @@ iwr -use1 https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/install.p
 ## Channels and options
 
 - **release** (default) — newest published release, one binary, libc only
-- **beta** (`-s beta` / `-Channel beta`) — repository itself, built with `cc` (no make required); `git pull` then `pwsh build.ps1` is the upgrade, `make` still works as fallback
+- **beta** (`-s beta` / `-Channel beta`) — repository itself, built with `cc` (no make required); `git pull` then rebuild is the upgrade, `make` still works as fallback
 
 ```bash
 ./install.sh --version 1.0.0   # a particular release
@@ -31,9 +31,9 @@ Every install is recorded in `~/.local/share/omniscript/install.txt`, which [[Un
 
 ```bash
 git clone https://github.com/OmniNodeCo/OmniScript && cd OmniScript
-pwsh ./build.ps1               # no make needed (Windows, Linux, macOS)
+cc -O2 -std=c11 -o omni src/*.c -lX11   # no make needed
 # or
-make && ./omni --version       # classic make still works
+make && ./omni --version                # classic make still works
 ./omni --version
 ```
 

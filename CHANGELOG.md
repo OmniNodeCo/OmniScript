@@ -2,19 +2,22 @@
 
 All notable changes, newest first. This is the native rewrite, starting at 1.0.0.
 
-## [1.0.1] - 2026-09-21
+## [1.0.2] - 2026-09-21
 
-### Added
+### Fixed
 
-- **PowerShell builder `build.ps1`** — no `make` required on any platform. Detects `cl` (MSVC), `gcc`, `clang`, `cc`, compiles all `src/*.c` directly with `gdi32`/`user32` on Windows and `X11` when available on Linux/macOS. `pwsh ./build.ps1` is now the recommended build on Windows; `make` remains as fallback. Supports `-NoGui`, `-Clean`, `-VerboseBuild`, `-Output`, `-Compiler`, `-Version`.
-- Installers now prefer `build.ps1` (beta channel) and fall back to `make` then direct `cc` compile, so a C compiler alone is enough. `install.sh` also builds without `make` when needed.
+- **install.ps1 rewritten to work without make** — previous 1.0.1 build.ps1 approach broke on some Windows setups. Now beta builds directly with C compiler (cl, gcc, clang, cc) embedded in install.ps1, no external build.ps1, no make required. Detects GUI (win32 on Windows, X11 when headers exist, stub otherwise), links gdi32/user32 or X11, cleans obj files, falls back to make if direct compile fails. Test-SourceTree now checks src/main.c only (Makefile optional). Help text updated.
+- **install.sh fixed to work without make** — direct cc compile first (no make), then make fallback. Handles Windows MSYS/MINGW gdi32, X11 detection on Linux/macOS, VERSION from file. No build.ps1 dependency.
 
 ### Changed
 
-- CI workflows (`build.yml`, `release.yml`) use `build.ps1` on Windows (no make), `make` on Linux/macOS.
-- `install.ps1` help and logic updated: beta channel says "Needs a C compiler (no make required)" and uses `build.ps1`.
-- `install.sh` help and logic updated: beta channel builds without `make` if missing.
-- `README.md` and `wiki/Install.md` document `pwsh ./build.ps1` as primary build.
+- Removed `build.ps1` (separate PowerShell builder) — functionality now embedded directly in install.ps1 and install.sh, so one file does it all.
+- CI workflows restored to make-based builds (known green) — build.yml and release.yml use make on all platforms via bash with MK detection, no build.ps1 reference.
+- README and wiki/Install document `cc -O2 -std=c11 -o omni src/*.c` (no make needed) and make fallback.
+
+## [1.0.1] - 2026-09-21 (removed)
+
+- Added PowerShell builder `build.ps1` — later removed in 1.0.2 because install.ps1 needs to be self-contained. See 1.0.2 for fixed approach.
 
 ## [1.0.0] - 2026-09-18
 
@@ -23,14 +26,14 @@ Fresh start: no Python in the product.
 ### Added
 
 - **Native binary, libc only.** One `omni` binary built with `cc` + `make`, no dependencies. `VERSION` file is the single source of truth.
-- **Custom lexer/parser/evaluator** in C: arena allocation per statement, BOM accepted, `#` comments, `"""` triple-quoted strings, `name=value` keywords, `(a, b)` tuples, duplicate-keyword and positional-after-keyword errors.
+- **Custom lexer/parser/evaluator** in C: arena allocation per statement, BOM accepted, `#` comments, `\"\"\"` triple-quoted strings, `name=value` keywords, `(a, b)` tuples, duplicate-keyword and positional-after-keyword errors.
 - **Canvas and BMP writer** — `canvas_new`, `canvas_rect`, `canvas_circle`, `canvas_line`, `canvas_text`, `img_write_bmp` (24-bit BMP, no zlib). 5×7 pixel font hand-drawn for all 96 printable ASCII.
 - **Hardware windows** — X11 backend (`-DHAVE_X11`, `-lX11`) with color allocation and button hit-testing, Win32 GDI backend (`-lgdi32`) with `CreateSolidBrush`/`Ellipse`/`LineTo`, and stub fallback that writes `drawing.bmp` when no display is present.
-- **Built-ins:** `draw()`, `draw_gui.window_size()`, `draw_gui.button()`, `draw_gui()`, `cmd()`, `file(create|edit|delete)`, `input()`. Keyword aliases (`w`/`h`/`bg`/`colour`/`fill`/`r`/`pos`/`size`/`from`/`to`/`msg`/`text`/`label`/`action`/`command`/`on_click`/`do=`), pair parsing (`pos=(10,20)`, `size="800x600"`), window-size unpacking.
+- **Built-ins:** `draw()`, `draw_gui.window_size()`, `draw_gui.button()`, `draw_gui()`, `cmd()`, `file(create|edit|delete)`, `input()`. Keyword aliases (`w`/`h`/`bg`/`colour`/`fill`/`r`/`pos`/`size`/`from`/`to`/`msg`/`text`/`label`/`action`/`command`/`on_click`/`do=`), pair parsing (`pos=(10,20)`, `size=\"800x600\"`), window-size unpacking.
 - **cmd() with true stderr capture** — POSIX dual pipes + `poll()` to avoid deadlock, background mode via `fork`+`setsid` or Win32 `DETACHED_PROCESS`, stdout and stderr both said.
 - **file()** creates parents, refuses existing on create, counts occurrences on edit.
 - **input()** with `prompt=` / `text=` / `msg=` keywords, `typed: ...` echo, EOF handling.
-- **Updater with own crypto** — `src/sha256.c` FIPS 180-4, `src/update.c` minimal JSON (string unescape, `\uXXXX` → UTF-8), repo validation to block shell injection, asset `omni-<os>-<arch>[.exe]` + `omni-...sha256`, mandatory checksum verification, `exe_path` via `/proc/self/exe` / `_NSGetExecutablePath` / `GetModuleFileNameA`.
+- **Updater with own crypto** — `src/sha256.c` FIPS 180-4, `src/update.c` minimal JSON (string unescape, `\\uXXXX` → UTF-8), repo validation to block shell injection, asset `omni-<os>-<arch>[.exe]` + `omni-...sha256`, mandatory checksum verification, `exe_path` via `/proc/self/exe` / `_NSGetExecutablePath` / `GetModuleFileNameA`.
 - **REPL** runs `omni ...` lines in-session (files, `-e`, `--version`, `update`) and bare `update`, `help`, `exit`, with paren/triple-string continuation and shell-like quoting. `help` lists language.
 - **Installers** rewritten for native: release channel downloads `omni-<os>-<arch>` + `.sha256`, verifies, installs one `omni` binary; beta channel builds with `cc`+`make`. Both PowerShell and bash versions parse cleanly, manifest is key=value, `--force` keeps `.bak`.
 - **Tests** — `tests/run.sh` 91 checks, POSIX sh, validates CLI, cmd capture (stdout+stderr, large interleaved), file lifecycle, input, lexer errors, removals (`import`/`python` removed in 1.0.0), draw with keyword aliases and BMP header validation (`BM` + dimensions + size field), draw_gui queue, REPL, update argument validation, and all examples.

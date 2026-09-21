@@ -15,10 +15,10 @@
 #
 # With no release to be had -- no network, nothing published yet -- it says so
 # and installs from source instead: the tree beside this script, or a clone of
-# main. That needs a C compiler and nothing else (build.ps1 or direct cc).
+# main. That needs a C compiler and nothing else (no make required).
 #
-# The beta channel prefers build.ps1 (pwsh, no make) when present, then make,
-# then a direct cc compile -- all libc only.
+# Beta builds directly with cc (gcc, clang) -- no make needed. Make is tried
+# as fallback for older environments.
 
 set -euo pipefail
 
@@ -366,7 +366,8 @@ install_release() {
 
 # ============================================================== beta channel
 is_source_tree() {
-    [ -f "$1/Makefile" ] && [ -f "$1/src/main.c" ]
+    # src/main.c is enough; Makefile is optional (no make required)
+    [ -f "$1/src/main.c" ]
 }
 
 find_source() {
@@ -395,35 +396,67 @@ find_source() {
 }
 
 find_tools() {
-    # Only a C compiler is required now; make is optional.
-    # build.ps1 (PowerShell) is preferred when pwsh/powershell exists.
-    if command -v cc >/dev/null 2>&1; then
-        return 0
-    fi
-    if command -v gcc >/dev/null 2>&1; then
-        return 0
-    fi
-    if command -v clang >/dev/null 2>&1; then
-        return 0
-    fi
-    if command -v cl >/dev/null 2>&1; then
-        return 0
-    fi
+    # Only a C compiler is required now; make is optional fallback
+    if command -v cc >/dev/null 2>&1; then return 0; fi
+    if command -v gcc >/dev/null 2>&1; then return 0; fi
+    if command -v clang >/dev/null 2>&1; then return 0; fi
+    if command -v cl >/dev/null 2>&1; then return 0; fi
     die "no C compiler on PATH; the beta channel needs a C compiler (cc, gcc, clang, or cl)"
 }
 
 build_source() {
     info "Building in $SOURCE_DIR"
-    # Prefer PowerShell builder (no make), then make, then direct cc
-    if [ -f "$SOURCE_DIR/build.ps1" ]; then
-        if command -v pwsh >/dev/null 2>&1; then
-            run pwsh -NoProfile -ExecutionPolicy Bypass -File "$SOURCE_DIR/build.ps1"
-            return 0
-        elif command -v powershell >/dev/null 2>&1; then
-            run powershell -NoProfile -ExecutionPolicy Bypass -File "$SOURCE_DIR/build.ps1"
+    # Try direct cc compile first (no make), then fall back to make
+    CC="${CC:-}"
+    if [ -z "$CC" ]; then
+        for c in cc gcc clang; do
+            if command -v "$c" >/dev/null 2>&1; then CC="$c"; break; fi
+        done
+    fi
+    if [ -n "$CC" ]; then
+        VER="$(cat "$SOURCE_DIR/VERSION" 2>/dev/null | tr -d ' \t\n\r' || echo 0.0.0)"
+        SRC="$SOURCE_DIR/src/util.c $SOURCE_DIR/src/lex.c $SOURCE_DIR/src/parse.c $SOURCE_DIR/src/eval.c $SOURCE_DIR/src/draw.c $SOURCE_DIR/src/sha256.c $SOURCE_DIR/src/update.c $SOURCE_DIR/src/main.c"
+        # Detect GUI like Makefile does
+        if [ -f /usr/include/X11/Xlib.h ] || [ -f /usr/local/include/X11/Xlib.h ] || [ -f /opt/X11/include/X11/Xlib.h ] || [ -f /opt/homebrew/include/X11/Xlib.h ]; then
+            SRC="$SRC $SOURCE_DIR/src/gui_x11.c"
+            CFLAGS_EXTRA="-DHAVE_X11"
+            LDFLAGS_EXTRA="-lX11"
+        else
+            # On Windows MSYS/MINGW, try win32, else stub
+            case "$(uname -s 2>/dev/null)" in
+                MINGW*|MSYS*|CYGWIN*)
+                    if [ -f "$SOURCE_DIR/src/gui_win32.c" ]; then
+                        SRC="$SRC $SOURCE_DIR/src/gui_win32.c"
+                        LDFLAGS_EXTRA="-lgdi32 -luser32"
+                        CFLAGS_EXTRA=""
+                    else
+                        SRC="$SRC $SOURCE_DIR/src/gui_stub.c"
+                        CFLAGS_EXTRA=""
+                        LDFLAGS_EXTRA=""
+                    fi
+                    ;;
+                *)
+                    SRC="$SRC $SOURCE_DIR/src/gui_stub.c"
+                    CFLAGS_EXTRA=""
+                    LDFLAGS_EXTRA=""
+                    ;;
+            esac
+        fi
+        # If not already set by Windows branch
+        : "${CFLAGS_EXTRA:=}"
+        : "${LDFLAGS_EXTRA:=}"
+        info "Compiling directly with $CC (no make)"
+        if [ "$DRY_RUN" = 1 ]; then
+            printf '    [dry-run] %s -O2 -std=c11 -Wall -Wextra -DOMNI_VERSION=\"%s\" -D_POSIX_C_SOURCE=200809L %s -o %s/omni %s %s\n' "$CC" "$VER" "$CFLAGS_EXTRA" "$SOURCE_DIR" "$SRC" "$LDFLAGS_EXTRA"
             return 0
         fi
+        # shellcheck disable=SC2086
+        if $CC -O2 -std=c11 -Wall -Wextra -DOMNI_VERSION=\""$VER"\" -D_POSIX_C_SOURCE=200809L $CFLAGS_EXTRA -o "$SOURCE_DIR/omni" $SRC $LDFLAGS_EXTRA 2>&1; then
+            return 0
+        fi
+        warn "direct $CC compile failed, trying make"
     fi
+    # Fallback to make
     if command -v make >/dev/null 2>&1; then
         run make -C "$SOURCE_DIR"
         return 0
@@ -432,36 +465,11 @@ build_source() {
         run mingw32-make -C "$SOURCE_DIR"
         return 0
     fi
-    # Direct cc compile, no make
-    info "no make or pwsh -- compiling directly with cc"
-    CC="${CC:-}"
-    if [ -z "$CC" ]; then
-        for c in cc gcc clang; do
-            if command -v "$c" >/dev/null 2>&1; then CC="$c"; break; fi
-        done
+    if command -v gmake >/dev/null 2>&1; then
+        run gmake -C "$SOURCE_DIR"
+        return 0
     fi
-    [ -n "$CC" ] || die "no cc found for direct build"
-    VER="$(cat "$SOURCE_DIR/VERSION" 2>/dev/null | tr -d ' \t\n\r' || echo 0.0.0)"
-    SRC="$SOURCE_DIR/src/util.c $SOURCE_DIR/src/lex.c $SOURCE_DIR/src/parse.c $SOURCE_DIR/src/eval.c $SOURCE_DIR/src/draw.c $SOURCE_DIR/src/sha256.c $SOURCE_DIR/src/update.c $SOURCE_DIR/src/main.c"
-    if [ -f /usr/include/X11/Xlib.h ] || [ -f /usr/local/include/X11/Xlib.h ] || [ -f /opt/X11/include/X11/Xlib.h ]; then
-        SRC="$SRC $SOURCE_DIR/src/gui_x11.c"
-        CFLAGS_EXTRA="-DHAVE_X11"
-        LDFLAGS_EXTRA="-lX11"
-    else
-        SRC="$SRC $SOURCE_DIR/src/gui_stub.c"
-        CFLAGS_EXTRA=""
-        LDFLAGS_EXTRA=""
-    fi
-    # Windows MSYS/MINGW needs gdi32
-    case "$(uname -s 2>/dev/null)" in
-        MINGW*|MSYS*|CYGWIN*) LDFLAGS_EXTRA="$LDFLAGS_EXTRA -lgdi32 -luser32" ;;
-    esac
-    if [ "$DRY_RUN" = 1 ]; then
-        printf '    [dry-run] %s -O2 -std=c11 -Wall -Wextra -DOMNI_VERSION=\"%s\" -D_POSIX_C_SOURCE=200809L %s -o %s/src/omni %s %s\n' "$CC" "$VER" "$CFLAGS_EXTRA" "$SOURCE_DIR" "$SRC" "$LDFLAGS_EXTRA"
-    else
-        # shellcheck disable=SC2086
-        $CC -O2 -std=c11 -Wall -Wextra -DOMNI_VERSION=\""$VER"\" -D_POSIX_C_SOURCE=200809L $CFLAGS_EXTRA -o "$SOURCE_DIR/omni" $SRC $LDFLAGS_EXTRA
-    fi
+    die "build failed and no make found to fall back to"
 }
 
 install_from_source() {

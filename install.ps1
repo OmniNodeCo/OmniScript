@@ -10,9 +10,9 @@
 #             machine. The default when this script arrives with no source tree
 #             beside it.
 #   beta      the repository itself: this checkout, or a clone of main, built
-#             with a C compiler (no make needed), with the command pointing at
-#             it so `git pull` plus `pwsh build.ps1` is an upgrade. The default
-#             when the script is run from a source tree.
+#             with a C compiler (no make required), with the command pointing at
+#             it so `git pull` plus a rebuild is an upgrade. The default when
+#             the script is run from a source tree.
 #
 # If the release channel cannot deliver -- nothing published yet, no file built
 # for this machine, no network -- the script says so and installs from the
@@ -24,8 +24,9 @@
 # this script makes real symlinks instead, exactly like install.sh does. A
 # release executable needs no shim at all -- omni.exe runs itself.
 #
-# The beta channel uses build.ps1 (PowerShell builder, no make) when present,
-# falling back to make for older checkouts.
+# Beta builds directly with the C compiler (cl, gcc, clang, cc) -- no make,
+# no build.ps1, no extra tools. If direct compile fails, make is tried as
+# fallback for older environments.
 #
 # Everything created here is written to a manifest so uninstall.ps1 can remove
 # it -- and only it.
@@ -43,7 +44,7 @@ param(
     [switch]$Help
 )
 
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = "Stop"
 $ProgressPreference = 'SilentlyContinue'
 
 $Repo = 'OmniNodeCo/OmniScript'
@@ -66,7 +67,7 @@ $BinaryPath = ''
 
 function Write-Info { param([string]$Text) Write-Host "==> $Text" }
 function Write-Note { param([string]$Text) Write-Host "    $Text" }
-function Write-Warn { param([string]$Text) Write-Host "    $Text" }
+function Write-Warn { param([string]$Text) Write-Host "    $Text" -ForegroundColor Yellow }
 function Stop-Die {
     param([string]$Text)
     Write-Host "install.ps1: error: $Text" -ForegroundColor Red
@@ -173,9 +174,6 @@ function Read-Url {
     return ConvertTo-Text $response.Content
 }
 
-# PowerShell 7.4 and newer answer with bytes when a server does not call its body
-# text -- a mirror, a proxy or a plain file server easily manages that. Everything
-# downstream of here wants a string.
 function ConvertTo-Text {
     param($Content)
     if ($null -eq $Content) { return '' }
@@ -199,11 +197,9 @@ function Get-Sha256 {
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
-# A command this script already put there is ours to replace: the manifest says so.
 function Test-Recorded {
     param([string]$Path)
     if (-not (Test-Path -LiteralPath $Manifest)) { return $false }
-    # The manifest is key=value, so "did we put this here" is a line to match.
     foreach ($line in (Get-Content -LiteralPath $Manifest)) {
         $parts = "$line" -split '=', 2
         if ($parts.Count -lt 2) { continue }
@@ -217,16 +213,13 @@ function Test-Recorded {
 
 function Test-SourceTree {
     param([string]$Dir)
-    return ((Test-Path (Join-Path $Dir 'Makefile')) -and (Test-Path (Join-Path $Dir 'src/main.c')))
+    # A source tree is src/main.c existing; Makefile is optional now (no make required)
+    return (Test-Path -LiteralPath (Join-Path $Dir 'src/main.c'))
 }
 
 function New-Shim {
     param([string]$Path, [string]$Target)
     if ($IsWin) {
-        # A .cmd shim: no privileges needed.
-        # A .cmd shim hands %* through cmd.exe's own parsing, which strips
-        # double quotes; programs with quoted one-liners are what the release
-        # channel's omni.exe is for. Files and quote-free arguments pass fine.
         $lines = @(
             '@echo off',
             ('"{0}" %*' -f $Target)
@@ -239,9 +232,6 @@ function New-Shim {
 }
 
 # ============================================================ release channel
-# Fills in $ReleaseResult: 0 installed as a single file, 1 the channel cannot
-# deliver and the repository should be used instead. $RelFatal says when 1 must
-# not be a fallback.
 function Install-FromRelease {
     $script:ReleaseResult = 1
     $platform = Get-PlatformTag
@@ -336,8 +326,7 @@ function Install-FromRelease {
     $target = Join-Path $Bin $name
 
     if ((Test-Path -LiteralPath $target) -and -not $Force -and -not (Test-Recorded $target)) {
-        Stop-Die "$target already exists and was not created by this script.
-       Re-run with -Force to move it aside (a .bak copy is kept next to it)."
+        Stop-Die "$target already exists and was not created by this script.`n       Re-run with -Force to move it aside (a .bak copy is kept next to it)."
     }
     Invoke-OrShow { New-Item -ItemType Directory -Force -Path $Bin | Out-Null } "mkdir $Bin"
 
@@ -364,10 +353,6 @@ function Install-FromRelease {
 }
 
 # ------------------------------------------------------- the shared tail
-# One key=value per line, and one repeated line per command: the same file
-# install.sh writes, so a shell can read it with sed and this can read it with
-# -split. WriteAllLines because Set-Content -Encoding UTF8 leaves a BOM on
-# PowerShell 5.1, and a BOM becomes part of the first key.
 function Write-Manifest {
     if ($DryRun) {
         Write-Note "[dry-run] write $Manifest"
@@ -410,8 +395,6 @@ function Test-Install {
     $reported = (& $probePath --version) 2>&1
     if ($LASTEXITCODE -ne 0) { throw "$probePath --version failed: $reported" }
     Write-Note "$reported"
-    # No double quotes here on purpose: a .cmd shim hands its arguments to
-    # cmd.exe a second time, and cmd.exe eats quotes on the way through.
     $smoke = & $probePath -e 'cmd(whoami)'
     if ($LASTEXITCODE -ne 0) { throw "the interpreter did not run: $smoke" }
     Write-Note "$smoke"
@@ -479,8 +462,6 @@ $CommandKind = if ($IsWin) { 'shim' } else { 'symlink' }
 $OmniVersion = 'unknown'
 
 # ======================================================================= main
-# Which channel? An explicit one wins. Otherwise a source tree beside the script
-# means "install what is here", and no source tree means "get me the release".
 $here = $PSScriptRoot
 $besideUs = $false
 if ($Source) { $besideUs = $true }
@@ -555,11 +536,134 @@ if (-not (Test-SourceTree $Source)) {
 }
 
 # --------------------------------------------------------- build it (no make required)
-$ccName = $null
-foreach ($candidate in @('gcc','clang','cc','cl')) {
-    if (Get-Command $candidate -ErrorAction SilentlyContinue) { $ccName = $candidate; break }
+# This is the fixed builder: direct C compile, no make, no build.ps1
+# Tries cl (MSVC), then gcc, clang, cc. Falls back to make if direct fails.
+
+function Find-Compiler {
+    # Returns @{Path='...'; Name='cl'|'gcc'|'clang'|'cc'} or $null
+    if ($env:CC) {
+        $c = Get-Command $env:CC -ErrorAction SilentlyContinue
+        if ($c) { return @{ Path=$c.Source; Name=([System.IO.Path]::GetFileNameWithoutExtension($c.Source).ToLowerInvariant()) } }
+        if (Test-Path -LiteralPath $env:CC) {
+            return @{ Path=$env:CC; Name=([System.IO.Path]::GetFileNameWithoutExtension($env:CC).ToLowerInvariant()) }
+        }
+    }
+    foreach ($name in @('cl','gcc','clang','cc')) {
+        $c = Get-Command $name -ErrorAction SilentlyContinue
+        if ($c) { return @{ Path=$c.Source; Name=$name } }
+        $c = Get-Command "$name.exe" -ErrorAction SilentlyContinue
+        if ($c) { return @{ Path=$c.Source; Name=$name } }
+    }
+    return $null
 }
-if ($ccName) { $env:CC = $ccName; Write-Note "using compiler $ccName" }
+
+function Build-Direct {
+    param([string]$SrcRoot, [string]$VersionStr)
+
+    $srcDir = Join-Path $SrcRoot 'src'
+    $base = @('util.c','lex.c','parse.c','eval.c','draw.c','sha256.c','update.c','main.c')
+    $gui = 'gui_stub.c'
+
+    # Detect GUI file
+    if ($IsWin) {
+        $gui = 'gui_win32.c'
+    } else {
+        # Check for X11 headers like Makefile does
+        $x11 = $false
+        foreach ($h in @('/usr/include/X11/Xlib.h','/usr/local/include/X11/Xlib.h','/opt/X11/include/X11/Xlib.h','/opt/homebrew/include/X11/Xlib.h')) {
+            if (Test-Path -LiteralPath $h) { $x11 = $true; break }
+        }
+        if ($x11) { $gui = 'gui_x11.c' } else { $gui = 'gui_stub.c' }
+    }
+
+    $sources = @()
+    foreach ($f in $base) { $sources += (Join-Path $srcDir $f) }
+    $sources += (Join-Path $srcDir $gui)
+
+    foreach ($s in $sources) {
+        if (-not (Test-Path -LiteralPath $s)) {
+            Write-Warn "missing $s"
+            return $false
+        }
+    }
+
+    $comp = Find-Compiler
+    if (-not $comp) {
+        Write-Warn "no C compiler found (tried cl, gcc, clang, cc)"
+        return $false
+    }
+
+    $ccPath = $comp.Path
+    $ccName = $comp.Name
+    Write-Note "using compiler $ccName at $ccPath"
+    if ($ccName) { $env:CC = $ccName }
+
+    $verEsc = $VersionStr -replace '"','\"'
+    $outName = if ($IsWin) { 'omni.exe' } else { 'omni' }
+    $outPath = Join-Path $SrcRoot $outName
+
+    try {
+        if ($ccName -eq 'cl') {
+            # MSVC: cl /nologo /O2 /W3 /std:c11 /D OMNI_VERSION="x" src\*.c /Fe:omni.exe /link gdi32.lib user32.lib
+            $clArgs = @('/nologo','/O2','/W3','/std:c11',"/D", "OMNI_VERSION=`"$verEsc`"", "/Fe$outPath") + $sources + @('/link','gdi32.lib','user32.lib')
+            Write-Info "Compiling with cl (no make)"
+            & $ccPath @clArgs 2>&1 | ForEach-Object { Write-Host $_ }
+            if ($LASTEXITCODE -ne 0) { throw "cl exited $LASTEXITCODE" }
+            # Clean cl obj files
+            Get-ChildItem -Path $srcDir -Filter "*.obj" -ErrorAction SilentlyContinue | ForEach-Object {
+                if ($_.Name -like "omni_*" -or $_.Name -like "*.obj") { Remove-Item -Force $_.FullName -ErrorAction SilentlyContinue }
+            }
+        } else {
+            $cflags = @('-O2','-std=c11','-Wall','-Wextra',"-DOMNI_VERSION=`"$verEsc`"")
+            if (-not $IsWin) { $cflags += '-D_POSIX_C_SOURCE=200809L' }
+            if ($gui -eq 'gui_x11.c') { $cflags += '-DHAVE_X11' }
+            $ld = @()
+            if ($IsWin) { $ld += '-lgdi32'; $ld += '-luser32' } elseif ($gui -eq 'gui_x11.c') { $ld += '-lX11' }
+
+            $allArgs = $cflags + @('-o',$outPath) + $sources + $ld
+            Write-Info "Compiling with $ccName (no make)"
+            & $ccPath @allArgs 2>&1 | ForEach-Object { Write-Host $_ }
+            if ($LASTEXITCODE -ne 0) { throw "$ccName exited $LASTEXITCODE" }
+        }
+
+        if (-not (Test-Path -LiteralPath $outPath)) {
+            Write-Warn "build finished but $outPath not found"
+            return $false
+        }
+        if (-not $IsWin) {
+            try { & chmod 755 $outPath } catch { }
+        }
+        Write-Note "built $outPath"
+        return $true
+    } catch {
+        Write-Warn "direct build failed: $($_.Exception.Message)"
+        return $false
+    }
+}
+
+function Build-WithMake {
+    param([string]$SrcRoot)
+    $mk = ''
+    foreach ($cand in @('make','gmake','mingw32-make')) {
+        if (Get-Command $cand -ErrorAction SilentlyContinue) { $mk = $cand; break }
+    }
+    if (-not $mk) {
+        Write-Warn "no make found (tried make, gmake, mingw32-make)"
+        return $false
+    }
+    Write-Info "Building with $mk (fallback)"
+    try {
+        $log = & $mk -C $SrcRoot 2>&1
+        $log | ForEach-Object { Write-Host $_ }
+        if ($LASTEXITCODE -ne 0) { throw "$mk exited $LASTEXITCODE" }
+        return $true
+    } catch {
+        Write-Warn "make build failed: $($_.Exception.Message)"
+        return $false
+    }
+}
+
+# --- version ---
 $versionFile = Join-Path $Source 'VERSION'
 if (Test-Path -LiteralPath $versionFile) {
     $OmniVersion = ((Get-Content -LiteralPath $versionFile -TotalCount 1) -join '').Trim()
@@ -570,59 +674,28 @@ Write-Info "OmniScript $OmniVersion from $Source"
 if ($IsWin) { $binaryName = 'omni.exe' } else { $binaryName = 'omni' }
 $expectedBinary = Join-Path $Source $binaryName
 
-# Prefer the PowerShell builder (build.ps1) -- no make needed.
-# Fall back to make for older checkouts that lack build.ps1.
-$builderPs1 = Join-Path $Source 'build.ps1'
+# --- try direct, then make ---
 $built = $false
-$buildTool = ''
-
-if (Test-Path -LiteralPath $builderPs1) {
-    $buildTool = 'build.ps1'
-    Write-Note "building with $builderPs1 (no make needed), command into $Bin"
-    Invoke-OrShow {
-        # Use pwsh if available, else powershell, else direct invoke
-        $pwshCmd = Get-Command pwsh -ErrorAction SilentlyContinue
-        if (-not $pwshCmd) { $pwshCmd = Get-Command powershell -ErrorAction SilentlyContinue }
-        if ($pwshCmd) {
-            $buildLog = & $pwshCmd.Source -NoProfile -ExecutionPolicy Bypass -File $builderPs1 2>&1
-        } else {
-            # Direct invocation (works when running under pwsh)
-            $buildLog = & $builderPs1 2>&1
-        }
-        Write-Host ($buildLog -join "`n")
-        if ($LASTEXITCODE -ne 0) {
-            $tail = ($buildLog | Select-Object -Last 30) -join "`n"
-            Stop-Die "the build failed (build.ps1):`n$tail"
-        }
-    } "pwsh $builderPs1"
-    $built = $true
+if (-not $DryRun) {
+    $built = Build-Direct -SrcRoot $Source -VersionStr $OmniVersion
+    if (-not $built) {
+        Write-Note "direct compile failed, trying make"
+        $built = Build-WithMake -SrcRoot $Source
+    }
 } else {
-    # Legacy fallback: make
-    $makeName = ''
-    foreach ($candidate in @('make', 'gmake', 'mingw32-make')) {
-        if (Get-Command $candidate -ErrorAction SilentlyContinue) { $makeName = $candidate; break }
-    }
-    if ($makeName) {
-        $buildTool = $makeName
-        Write-Note "build.ps1 not found, falling back to $makeName, command into $Bin"
-        Invoke-OrShow {
-            $buildLog = & $makeName -C $Source 2>&1
-            if ($LASTEXITCODE -ne 0) {
-                $tail = ($buildLog | Select-Object -Last 25) -join "`n"
-                Stop-Die "the build failed:`n$tail"
-            }
-        } "$makeName -C $Source"
-        $built = $true
-    }
+    Write-Note "[dry-run] would build $expectedBinary from $Source"
+    $built = $true
 }
 
 if (-not $built) {
-    Stop-Die 'the beta channel builds OmniScript from source and needs a C compiler (gcc, clang, or Visual Studio cl). Install one and re-run, or use -Channel release'
+    Stop-Die "the beta channel builds OmniScript from source and needs a C compiler (cl, gcc, clang, cc). Install one and re-run, or use -Channel release"
 }
+
+Write-Note "command into $Bin"
 
 $binary = ''
 foreach ($candidate in @($expectedBinary, (Join-Path $Source 'omni'), (Join-Path $Source 'omni.exe'))) {
-    if ((Test-Path -LiteralPath $candidate)) { $binary = $candidate; break }
+    if (Test-Path -LiteralPath $candidate) { $binary = $candidate; break }
 }
 if (-not $binary -and -not $DryRun) { Stop-Die "the build finished but left no binary in $Source" }
 if ($DryRun) { $binary = $expectedBinary }
@@ -637,8 +710,8 @@ function Add-Command {
     if (Test-Path $path) {
         $ours = Test-Recorded $path
         if (-not $ours) {
-            $item = Get-Item $path -Force
-            if ($item.LinkType -and $item.Target) {
+            $item = Get-Item $path -Force -ErrorAction SilentlyContinue
+            if ($item -and $item.LinkType -and $item.Target) {
                 if ($Source -and "$($item.Target)".StartsWith($Source)) { $ours = $true }
             } else {
                 $head = (Get-Content -Path $path -TotalCount 5 -ErrorAction SilentlyContinue) -join "`n"
@@ -651,8 +724,7 @@ function Add-Command {
             return
         }
         if (-not $Force) {
-            Stop-Die "$path already exists and was not created by this script.
-       Re-run with -Force to move it aside (a .bak copy is kept next to it)."
+            Stop-Die "$path already exists and was not created by this script.`n       Re-run with -Force to move it aside (a .bak copy is kept next to it)."
         }
         Invoke-OrShow { Move-Item -Force -Path $path -Destination "$path.bak" } "move $path to $path.bak"
         Write-Note "moved the old $Name to $path.bak"
@@ -667,17 +739,14 @@ function Test-NoForeignCommands {
         $path = Join-Path $Bin $name
         if ($IsWin) { $path = "$path.cmd" }
         if ((Test-Path $path) -and -not $Force -and -not (Test-Recorded $path)) {
-            $item = Get-Item $path -Force
-            if (-not $item.LinkType) {
-                Stop-Die "$path already exists and was not created by this script.
-       Re-run with -Force to move it aside (a .bak copy is kept next to it)."
+            $item = Get-Item $path -Force -ErrorAction SilentlyContinue
+            if (-not $item -or -not $item.LinkType) {
+                Stop-Die "$path already exists and was not created by this script.`n       Re-run with -Force to move it aside (a .bak copy is kept next to it)."
             }
         }
     }
 }
 
-# A beta command follows the source it was built from: a symlink on systems
-# that have them, a small .cmd shim on Windows.
 function New-CommandLink {
     param([string]$Path, [string]$Target)
     if ($IsWin) {
@@ -691,6 +760,7 @@ function New-CommandLink {
 Test-NoForeignCommands
 $Mode = 'symlink'
 foreach ($name in $Commands) { Add-Command -Name $name -Target $binary }
+
 # ------------------------------------------------------- manifest and checks
 Write-Manifest
 try {

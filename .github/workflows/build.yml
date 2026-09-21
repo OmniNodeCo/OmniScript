@@ -69,7 +69,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $failed = 0
-          foreach ($name in @("install.ps1", "uninstall.ps1", "build.ps1")) {
+          foreach ($name in @("install.ps1", "uninstall.ps1")) {
             $path = (Resolve-Path $name).Path
             $tokens = $null; $errors = $null
             [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors) | Out-Null
@@ -79,16 +79,6 @@ jobs:
             } else { Write-Host "$name parses cleanly" }
           }
           if ($failed) { throw "$failed PowerShell parse error(s)" }
-      - name: build.ps1 builds (no make)
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          ./build.ps1 -VerboseBuild
-          if ($IsWindows) { $bin = "./omni.exe" } else { $bin = "./omni" }
-          & $bin --version
-          & $bin -e 'draw(window(10,10), save("lint-ps.bmp"))'
-          if (-not (Test-Path "lint-ps.bmp")) { throw "lint-ps.bmp missing" }
-          Remove-Item -Force $bin, "lint-ps.bmp" -ErrorAction SilentlyContinue
 
   test:
     name: Test (${{ matrix.os }})
@@ -192,7 +182,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          foreach ($name in @("install.ps1", "uninstall.ps1", "build.ps1")) {
+          foreach ($name in @("install.ps1", "uninstall.ps1")) {
             $path = (Resolve-Path $name).Path
             $tokens = $null; $errors = $null
             [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors) | Out-Null
@@ -244,14 +234,10 @@ jobs:
           $bin = if ($IsWindows) { $prefix } else { Join-Path $prefix "bin" }
           $omni = if ($IsWindows) { Join-Path $bin "omni.cmd" } else { Join-Path $bin "omni" }
           $omniBin = if ($IsWindows) { Join-Path $bin "omni.exe" } else { Join-Path $bin "omni" }
-          # If no binary exists in prefix yet, try direct build first to surface errors (build.ps1, no make needed)
-          Write-Host "--- direct build in checkout (build.ps1) ---"
-          if (Test-Path "./build.ps1") {
-            ./build.ps1 -VerboseBuild 2>&1 | Out-String | ForEach-Object { Write-Host $_ }
-          } else {
-            if (Get-Command make -ErrorAction SilentlyContinue) { $mk='make' } elseif (Get-Command mingw32-make -ErrorAction SilentlyContinue) { $mk='mingw32-make' } else { $mk='gmake' }
-            & $mk -C $PWD 2>&1 | Out-String | ForEach-Object { Write-Host $_ }
-          }
+          # If no binary exists in prefix yet, try direct build first to surface errors
+          Write-Host "--- direct make in checkout ---"
+          if (Get-Command make -ErrorAction SilentlyContinue) { $mk='make' } elseif (Get-Command mingw32-make -ErrorAction SilentlyContinue) { $mk='mingw32-make' } else { $mk='gmake' }
+          & $mk -C $PWD 2>&1 | Out-String | ForEach-Object { Write-Host $_ }
           if (Test-Path ./omni.exe) { Write-Host "./omni.exe exists" } ; if (Test-Path ./omni) { Write-Host "./omni exists" }
           Write-Host "--- install.ps1 ---"
           $out = (& ./install.ps1 -Prefix $prefix *>&1 | Out-String); Write-Host $out
@@ -299,8 +285,7 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y libx11-dev || true
-      - name: Build omni (Unix - make)
-        if: runner.os != 'Windows'
+      - name: Build omni
         shell: bash
         run: |
           set -euo pipefail
@@ -310,16 +295,6 @@ jobs:
           "$BIN" --version
           "$BIN" -e 'draw(window(64, 32, "bin"), rect(0,0,64,32,blue), save("bin-check.bmp"))'
           test -f bin-check.bmp
-      - name: Build omni (Windows - build.ps1, no make)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          ./build.ps1 -VerboseBuild
-          $bin = if (Test-Path ./omni.exe) { "./omni.exe" } else { "./omni" }
-          & $bin --version
-          & $bin -e 'draw(window(64, 32, "bin"), rect(0,0,64,32,blue), save("bin-check.bmp"))'
-          if (-not (Test-Path "bin-check.bmp")) { throw "bin-check.bmp missing" }
       - name: Name the asset like the updater expects
         shell: bash
         run: |
