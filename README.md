@@ -1,6 +1,28 @@
-# OmniScript 2.0.0 — super simple
+# OmniScript — very very very simple
 
-A tiny language, C only, no dependencies. Three modules, Python-like imports.
+A tiny programming language. One C file binary, no dependencies.
+
+```
+import draw
+import cmd
+import pathlib
+```
+
+That's it. Three modules.
+
+## Build
+
+```bash
+make
+./omni --version   # 2.0.0
+./omni --help
+```
+
+No make? `cc -O2 -std=c11 -o omni src/*.c -lX11` (Linux) or `src/gui_stub.c` if no X11.
+
+## Hello World
+
+`hello.omni`:
 
 ```omni
 import draw
@@ -9,132 +31,150 @@ import pathlib
 
 draw.window(640, 400, "Demo")
 draw.rect(0, 0, 640, 60, "#161b22")
-draw.text(20, 20, "Hello, simple OmniScript", "white", 18)
+draw.text(20, 20, "Hello, OmniScript", "white", 18)
 draw.circle(320, 220, 80, "blue")
 draw.button(20, 300, 140, 36, "List files", action="ls -la")
-draw.show()  # opens window if possible, else writes drawing.bmp
+draw.show()
 
-cmd.run("ls -la")
-cmd.bg("sleep 10")
+cmd.run("echo hi")
 
-pathlib.write("hello.txt", "hi")
-print(pathlib.read("hello.txt"))
-print(pathlib.exists("hello.txt"))
-
-p = pathlib.Path("hello.txt")
-print(p.read())
-print(p.name())
+pathlib.write("hi.txt", "hello")
+print(pathlib.read("hi.txt"))
 ```
-
-## Install / Build
 
 ```bash
-git clone https://github.com/OmniNodeCo/OmniScript
-cd OmniScript
-make
-./omni --help
-./omni examples/01_hello.omni
+./omni hello.omni
 ```
 
-No X11? Drawings become BMP files.
+No GUI? It writes `drawing.bmp` automatically.
 
 ## Language
 
-Super simple:
+Super simple, no tricks:
 
-- `#` comment
-- newline or `;` separates statements
-- `import draw` , `import draw as d` , `import draw, cmd`
-- `from draw import window, rect` , `from draw import *` , `from draw import window as win`
-- `x = 123` , `y = "hi"` , `z = (1, 2)`
-- `print(...)` , `input("prompt: ")`
-- calls: `func(1, 2, key=val)` , attributes: `draw.rect(...)` , `pathlib.Path("a").read()`
+```omni
+# comment
+import draw
+import draw as d
+import draw, cmd, pathlib
+from draw import window, rect
+from draw import window as win
+from draw import *
 
-No loops, no ifs, no defs — just straight lines. Very very very simple.
+x = 123
+y = "hello"
+z = (10, 20)
+
+print("hi", x, y)
+input("Name: ")
+```
+
+- statements separated by newline or `;`
+- `=` assignment
+- `a.b` attribute
+- `f(1, 2, key=val)` call with positional + keyword args
+- `(1, 2)` tuple
+
+No loops, no if, no functions — just straight lines.
 
 ## Modules
 
-### `import draw`
-
-Simple GUI and BMP:
-
-- `draw.window(w, h, title?, bg?)` — also `draw.window_size` — supports `window("800x600")` or `window(size=(800,600))`
-- `draw.rect(x, y, w, h, color?)` — kwargs: `pos=(x,y)`, `size=(w,h)`, `color=`
-- `draw.circle(x, y, r, color?)` — `pos=`
-- `draw.line(x1,y1,x2,y2, color?, width?)` — `from=(x1,y1)`, `to=(x2,y2)`, `thickness=`
-- `draw.text(x, y, msg, color?, size?)` — `pos=`, `message=`
-- `draw.button(x, y, w, h, label, action?)` — `pos=`, `size=`, `label=`, `action=` / `command=` / `on_click=` — action is shell command string run on click
-- `draw.save(path)` — save BMP now
-- `draw.show()` — show window or save to `drawing.bmp`
-- `draw.clear()` — clear canvas
-- `draw()` — callable, same as `show()`, also accepts elements: `draw(window(640,400), rect(...))`
-
-Colors: `#rrggbb`, `#rgb`, or names: black, white, red, green, blue, yellow, orange, purple, pink, cyan, teal, navy, grey/gray, silver, gold, brown, lime, maroon, olive.
-
-Buttons: when GUI available (X11 on Linux, Win32 on Windows), window shows. Clicking a button runs its `action` string as shell command and prints output. Press `q` or `Esc` to close.
-
-### `import cmd`
-
-Run shell commands:
-
-- `cmd.run("ls -la")` — runs foreground, prints stdout+stderr, returns exit code
-- `cmd.bg("sleep 10")` — runs in background (detached), returns pid
-- `cmd("ls")` — shortcut for `run`
-
-Background uses `fork`+`setsid` on Unix, `CreateProcess` detached on Windows.
-
-### `import pathlib`
-
-Python-like file paths:
-
-- `pathlib.read(path)` — returns file content string
-- `pathlib.write(path, content)` — writes, creates parents, returns full path
-- `pathlib.append(path, content)`
-- `pathlib.exists(path)` — bool
-- `pathlib.is_file(path)` , `pathlib.is_dir(path)`
-- `pathlib.mkdir(path)` — mkdir -p
-- `pathlib.delete(path)` — also `unlink`, `remove`
-- `pathlib.list(dir=".")` — returns tuple of names
-- `pathlib.join(a, b, ...)` — join paths
-- `pathlib.name(path)` / `basename`
-- `pathlib.parent(path)` / `dirname`
-- `pathlib.suffix(path)` / `ext`
-- `pathlib.Path("file")` — returns Path object
-
-Path object:
+### draw — GUI + BMP
 
 ```omni
+import draw
+
+draw.window(800, 600, "My App", "#0d1117")   # or window("800x600") or window(size=(800,600))
+draw.rect(10, 10, 100, 50, "red")            # x,y,w,h,color
+draw.circle(100, 100, 30, "blue")            # x,y,r,color
+draw.line(0, 0, 100, 100, "green", 2)        # x1,y1,x2,y2,color,width
+draw.text(20, 20, "Hello", "white", 18)      # x,y,msg,color,size
+draw.button(20, 80, 120, 30, "Click", action="ls -la")
+draw.save("out.bmp")
+draw.show()   # or draw()
+draw.clear()
+```
+
+Kwargs work: `rect(pos=(10,20), size=(100,40), color="red")`, `circle(pos=(50,50), radius=20)`, `line(from=(0,0), to=(10,10), thickness=2)`, `text(pos=(0,0), message="hi")`, `button(pos=(0,0), size=(100,30), label="Go", action="echo hi")`.
+
+Colors: `#rrggbb`, `#rgb`, or `black white red green blue yellow orange purple pink cyan teal navy grey gray silver gold brown lime maroon olive`.
+
+Buttons: when window is shown (X11 / Win32), clicking runs the `action` shell command. Press `q` or `Esc` to close.
+
+### cmd — shell commands
+
+```omni
+import cmd
+
+cmd.run("ls -la")   # foreground, prints output, returns exit code
+cmd.bg("sleep 10")  # background, returns pid
+cmd("pwd")          # same as run
+```
+
+### pathlib — like Python
+
+```omni
+import pathlib
+
+pathlib.write("a.txt", "hi")
+pathlib.read("a.txt")
+pathlib.append("a.txt", " more")
+pathlib.exists("a.txt")   # True/False
+pathlib.is_file("a.txt")
+pathlib.is_dir("mydir")
+pathlib.mkdir("mydir/sub")
+pathlib.list(".")
+pathlib.delete("a.txt")
+pathlib.join("a", "b", "c.txt")
+pathlib.name("a/b/c.txt")
+pathlib.parent("a/b/c.txt")
+pathlib.suffix("a.txt")
+
 p = pathlib.Path("a.txt")
+p.write("hello")
 p.read()
-p.write("hi")
 p.exists()
-p.is_file()
-p.mkdir()
 p.delete()
-p.list()
 p.name()
 p.parent()
 ```
 
-All paths resolved relative to cwd.
-
 ## Examples
 
-- `01_hello.omni` — draw + cmd + pathlib
-- `02_buttons.omni` — window with buttons
-- `03_files.omni` — pathlib basics
-- `04_cmd.omni` — background commands
-- `05_imports.omni` — import styles
+```
+examples/
+  01_hello.omni    draw + cmd + pathlib
+  02_buttons.omni  buttons
+  03_files.omni    pathlib
+  04_cmd.omni      background jobs
+  05_imports.omni  import styles
+  06_gui.omni      full gui demo
+```
 
-## How it is built
+## REPL
 
-- `src/lex.c` — tokenizer
-- `src/parse.c` — recursive descent, handles imports, assignments, calls, attributes, tuples
-- `src/eval.c` — interpreter, env, modules: draw, cmd, pathlib
-- `src/draw.c` — canvas, 5x7 font, BMP writer
-- `src/gui_x11.c`, `src/gui_win32.c`, `src/gui_stub.c` — windowing
-- `src/util.c` — arena, values, colors
-- `src/main.c` — CLI + REPL
+```bash
+./omni
+omni> import draw
+omni> draw.window(200,100)
+omni> draw.rect(0,0,50,50,"red")
+omni> draw.show()
+omni> exit
+```
+
+## Structure
+
+```
+src/
+  omni.h    types
+  lex.c     tokenizer
+  parse.c   parser (imports, assign, call, attr, tuple)
+  eval.c    interpreter + draw/cmd/pathlib modules
+  draw.c    canvas + 5x7 font + BMP
+  gui_x11.c / gui_win32.c / gui_stub.c
+  util.c    values + colors + arena
+  main.c    cli + repl
+```
 
 One binary, libc only.
 
