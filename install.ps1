@@ -496,10 +496,14 @@ if ($Channel -eq 'release') {
         0 {
             Write-Info "OmniScript $OmniVersion from $RelTag ($RelAssetName)"
             Write-Note "command into $Bin"
-            try {
-                Install-App -BinPath $Bin -SrcRoot $Source -VersionStr $OmniVersion
-            } catch {
-                Write-Warn "app installation failed (non-fatal): $($_.Exception.Message)"
+            if ($env:GITHUB_ACTIONS) {
+                Write-Note "skipping app installation on CI (GITHUB_ACTIONS set)"
+            } else {
+                try {
+                    Install-App -BinPath $Bin -SrcRoot $Source -VersionStr $OmniVersion
+                } catch {
+                    Write-Warn "app installation failed (non-fatal): $($_.Exception.Message)"
+                }
             }
             Write-Manifest
             try {
@@ -991,10 +995,14 @@ $Mode = 'symlink'
 foreach ($name in $Commands) { Add-Command -Name $name -Target $binary }
 
 # ------------------------------------------------------- app (Start Menu, Desktop, .desktop)
-try {
-    Install-App -BinPath $Bin -SrcRoot $Source -VersionStr $OmniVersion
-} catch {
-    Write-Warn "app installation failed (non-fatal): $($_.Exception.Message)"
+if ($env:GITHUB_ACTIONS) {
+    Write-Note "skipping app installation on CI (GITHUB_ACTIONS set)"
+} else {
+    try {
+        Install-App -BinPath $Bin -SrcRoot $Source -VersionStr $OmniVersion
+    } catch {
+        Write-Warn "app installation failed (non-fatal): $($_.Exception.Message)"
+    }
 }
 
 # ------------------------------------------------------- manifest and checks
