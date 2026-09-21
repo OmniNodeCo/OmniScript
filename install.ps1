@@ -820,9 +820,9 @@ function Install-App {
                     '[Desktop Entry]',
                     'Name=OmniScript',
                     'GenericName=OmniScript Language',
-                    'Comment=Native tiny language for drawing and automating — one binary, libc only',
-                    \"Exec=$Bin/omni\",
-                    \"Icon=$iconForDesktop\",
+                    'Comment=Native tiny language for drawing and automating -- one binary, libc only',
+                    "Exec=$Bin/omni",
+                    "Icon=$iconForDesktop",
                     'Terminal=true',
                     'Type=Application',
                     'Categories=Development;Education;Science;',
@@ -832,12 +832,12 @@ function Install-App {
                     '',
                     '[Desktop Action REPL]',
                     'Name=Open REPL',
-                    \"Exec=$Bin/omni\",
+                    "Exec=$Bin/omni",
                     'Terminal=true',
                     '',
                     '[Desktop Action Examples]',
                     'Name=Run Examples',
-                    \"Exec=$Bin/omni $SrcRoot/examples/03_drawing.omni\",
+                    "Exec=$Bin/omni $SrcRoot/examples/03_drawing.omni",
                     'Terminal=true'
                 )
                 Set-Content -Path $DesktopFile -Value $desktopContent -Encoding UTF8
