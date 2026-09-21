@@ -2,7 +2,7 @@
 $ErrorActionPreference = "Stop"
 $Root = (Resolve-Path "$PSScriptRoot\..\..").Path
 $Version = (Get-Content "$Root\VERSION" -First 1).Trim()
-if (-not $Version) { $Version = "2.0.0" }
+if (-not $Version) { $Version = "1.0.0" }
 
 Write-Host "==> OmniScript $Version Windows installer"
 Write-Host "    Building omni.exe"

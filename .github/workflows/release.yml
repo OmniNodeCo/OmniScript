@@ -1,4 +1,4 @@
-# Release for OmniScript 2.0.0 — native installers DMG DEB EXE
+# Release for OmniScript 1.0.0 — native installers DMG DEB EXE
 name: release
 
 on:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing tag to release, e.g. v2.0.0
+        description: Existing tag to release, e.g. v1.0.0
         required: true
         type: string
 

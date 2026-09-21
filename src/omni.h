@@ -12,7 +12,7 @@
 #include <stdio.h>
 
 #ifndef OMNI_VERSION
-#define OMNI_VERSION "2.0.0-simple"
+#define OMNI_VERSION "1.0.0-simple"
 #endif
 
 /* ---------- arena */

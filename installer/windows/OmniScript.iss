@@ -1,10 +1,10 @@
 ; OmniScript Inno Setup installer
-; Build with: iscc /DMyAppVersion=2.0.0 OmniScript.iss
+; Build with: iscc /DMyAppVersion=1.0.0 OmniScript.iss
 ; Requires Inno Setup 6: https://jrsoftware.org/isinfo.php
 
 #define MyAppName "OmniScript"
 #ifndef MyAppVersion
-  #define MyAppVersion "2.0.0"
+  #define MyAppVersion "1.0.0"
 #endif
 #define MyAppPublisher "OmniNodeCo"
 #define MyAppURL "https://github.com/OmniNodeCo/OmniScript"

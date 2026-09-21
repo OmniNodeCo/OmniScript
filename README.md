@@ -24,25 +24,25 @@ Or PowerShell:
 installer\windows\build.ps1
 ```
 Requires Inno Setup 6 (https://jrsoftware.org/isinfo.php).  
-Output: `dist/OmniScript-2.0.0-Windows-x86_64-Setup.exe` — installs to Program Files, adds to PATH, Start Menu + uninstaller.
+Output: `dist/OmniScript-1.0.0-Windows-x86_64-Setup.exe` — installs to Program Files, adds to PATH, Start Menu + uninstaller.
 
 ### macOS — DMG
 
 ```bash
 ./installer/macos/build-dmg.sh
 ```
-Creates `dist/OmniScript-2.0.0-macOS.dmg` with `OmniScript.app`. Drag to Applications.
+Creates `dist/OmniScript-1.0.0-macOS.dmg` with `OmniScript.app`. Drag to Applications.
 
 ### Linux — DEB + tarball
 
 ```bash
 ./installer/linux/build-deb.sh
-sudo dpkg -i dist/omniscript_2.0.0_amd64.deb
+sudo dpkg -i dist/omniscript_1.0.0_amd64.deb
 # or
-sudo apt install ./dist/omniscript_2.0.0_amd64.deb
+sudo apt install ./dist/omniscript_1.0.0_amd64.deb
 ```
 
-Also builds `dist/omniscript-2.0.0-linux-amd64.tar.gz`.
+Also builds `dist/omniscript-1.0.0-linux-amd64.tar.gz`.
 
 ### All installers
 
@@ -58,7 +58,7 @@ Creates `dist/` with tarball, DEB, DMG (or tar.gz fallback) and `SHA256SUMS.txt`
 
 ```bash
 make
-./omni --version   # 2.0.0
+./omni --version   # 1.0.0
 ./omni --help
 sudo make install  # to /usr/local/bin
 ```

@@ -1,4 +1,4 @@
-# OmniScript 2.0.0 — super simple
+# OmniScript 1.0.0 — super simple
 
 Three modules:
 

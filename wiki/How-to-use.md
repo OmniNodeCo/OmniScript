@@ -4,7 +4,7 @@
 
 ```bash
 make
-./omni --version  # should be 2.0.0
+./omni --version  # should be 1.0.0
 ```
 
 ## Write a script

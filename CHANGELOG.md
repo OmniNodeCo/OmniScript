@@ -1,8 +1,8 @@
 # Changelog
 
-## [2.0.0] - 2026-09-21
+## [1.0.0] - 2026-09-21
 
-Super simple rewrite — cleared everything. Native installers: Inno Setup EXE (Windows), DMG (macOS), DEB + tarball (Linux).
+Super simple — cleared everything. Native installers: Inno Setup EXE (Windows), DMG (macOS), DEB + tarball (Linux).
 
 ### Added
 
@@ -16,12 +16,4 @@ Super simple rewrite — cleared everything. Native installers: Inno Setup EXE (
 
 ### Removed
 
-- Old `draw()` element syntax, `draw_gui`, `file()`, complex eval, updater, sha256
-
-## [1.0.1] - 2026-09-21
-
-Old native rewrite — see git history.
-
-## [1.0.0] - 2026-09-18
-
-Initial native rewrite.
+- Old `draw()` element syntax, `draw_gui`, `file()`, complex eval, updater, sha256, install.sh/install.ps1 curl-pipe (now native installers)

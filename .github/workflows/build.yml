@@ -1,4 +1,4 @@
-# CI for OmniScript 2.0.0 super simple
+# CI for OmniScript 1.0.0 super simple
 name: build
 
 on:

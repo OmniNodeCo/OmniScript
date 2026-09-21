@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-VERSION="$(cat "$ROOT/VERSION" 2>/dev/null | tr -d ' \t\n\r' || echo 2.0.0)"
+VERSION="$(cat "$ROOT/VERSION" 2>/dev/null | tr -d ' \t\n\r' || echo 1.0.0)"
 echo "==> OmniScript $VERSION macOS DMG"
 
 # Build omni binary if not exists
@@ -27,7 +27,7 @@ cp "$ROOT/omni" "$APP_DIR/Contents/MacOS/omni"
 chmod 755 "$APP_DIR/Contents/MacOS/omni"
 
 # Copy Info.plist with version substitution
-sed "s/2.0.0/$VERSION/g" "$ROOT/installer/macos/Info.plist" > "$APP_DIR/Contents/Info.plist"
+sed "s/1.0.0/$VERSION/g" "$ROOT/installer/macos/Info.plist" > "$APP_DIR/Contents/Info.plist"
 
 # Copy docs
 cp "$ROOT/README.md" "$APP_DIR/Contents/Resources/" 2>/dev/null || true
