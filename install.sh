@@ -1,24 +1,25 @@
 #!/usr/bin/env bash
 #
-# Install OmniScript.
+# Install OmniScript as a command and as a desktop app.
 #
 #   ./install.sh              the newest release: one file, no dependencies
 #   ./install.sh -s beta      build the repository instead (needs cc, no make)
 #   ./install.sh --version 1.0.0
 #   ./install.sh --dry-run    show what would happen and change nothing
 #
-# What it does: asks GitHub what the newest release is, downloads the file built
-# for this machine, checks it against the .sha256 published beside it, and puts
-# `omni` in ~/.local/bin. Then it runs what it installed, and writes
-# ~/.local/share/omniscript/install.txt so uninstall.sh can take the whole
-# thing back out.
+# What it does:
+#   - release channel: downloads omni-<os>-<arch> + .sha256 from GitHub,
+#     verifies, installs one `omni` binary into PREFIX/bin
+#   - beta channel: builds from source (cc, no make required) and links
+#   - app channel: creates a desktop entry (Linux), .app bundle (macOS),
+#     Start Menu shortcut is handled by install.ps1 on Windows. This script
+#     also creates .desktop + icon on Linux/macOS so OmniScript appears as
+#     an app in launchers.
+#   - writes ~/.local/share/omniscript/install.txt manifest for uninstall.sh
 #
 # With no release to be had -- no network, nothing published yet -- it says so
 # and installs from source instead: the tree beside this script, or a clone of
 # main. That needs a C compiler and nothing else (no make required).
-#
-# Beta builds directly with cc (gcc, clang) -- no make needed. Make is tried
-# as fallback for older environments.
 
 set -euo pipefail
 
@@ -47,8 +48,11 @@ Usage: install.sh [options]
   --dry-run, -n      print what would happen and change nothing
   -h, --help         this text
 
-Commands go into PREFIX/bin. Everything installed is recorded in
-~/.local/share/omniscript/install.txt, which is what uninstall.sh reads.
+Commands go into PREFIX/bin. A desktop app entry is also created:
+  Linux   ~/.local/share/applications/omniscript.desktop + icon
+  macOS   ~/Applications/OmniScript.app (plus binary in PREFIX/bin)
+Everything is recorded in ~/.local/share/omniscript/install.txt, which
+uninstall.sh reads.
 USAGE
 }
 
@@ -101,6 +105,8 @@ HISTORY_FILE="$HOME/.omniscript_history"
 SOURCE_DIR="" CLONED=0
 MODE="" COMMAND_KIND="" BINARY_PATH="" OMNI_VERSION="unknown"
 RELEASE_TAG="" INSTALLED_COMMANDS=""
+# App installation paths (filled by install_app)
+DESKTOP_FILE="" ICON_FILE="" ICON_PNG="" APP_BUNDLE="" APP_ICON="" START_MENU_LNK=""
 
 # --------------------------------------------------------------- this machine
 platform_tag() {
@@ -122,6 +128,13 @@ platform_tag() {
 is_windows_host() {
     case "$(uname -s 2>/dev/null)" in
         MINGW*|MSYS*|CYGWIN*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+is_macos_host() {
+    case "$(uname -s 2>/dev/null)" in
+        Darwin*) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -155,13 +168,11 @@ fetch_file() {
     fi
 }
 
-# One scalar out of a JSON document, without needing a JSON parser.
 json_value() {
     printf '%s' "$1" | tr ',{' '\n\n' | grep -m1 "\"$2\"[ \t]*:" 2>/dev/null |
         sed -e 's/.*:[ \t]*"//' -e 's/".*$//' || true
 }
 
-# The download URL of the asset whose file name is exactly the one asked for.
 asset_url() {
     printf '%s' "$1" | tr ',{' '\n\n' | grep 'browser_download_url' 2>/dev/null |
         sed -e 's/.*:[ \t]*"//' -e 's/".*$//' |
@@ -195,14 +206,12 @@ ensure_bin_dir() {
         die "$BIN_DIR is not writable; try --prefix ~/.local, or run with sudo --prefix /usr/local"
 }
 
-# A command this script already put there is ours to replace: the manifest says so.
 recorded_by_us() {
     [ -f "$MANIFEST" ] || return 1
     grep -qxF -e "command=$1" -e "binary=$1" "$MANIFEST" 2>/dev/null
 }
 
 place_command() {
-    # place_command <name> <target> <symlink|copy>
     name="$1"; target="$2"; kind="${3:-symlink}"
     path="$BIN_DIR/$name"
     if [ -L "$path" ] || [ -e "$path" ]; then
@@ -229,7 +238,6 @@ place_command() {
     INSTALLED_COMMANDS="$INSTALLED_COMMANDS $path"
 }
 
-# Refuse before touching anything, rather than halfway through.
 check_no_foreign_commands() {
     foreign=""
     for name in $COMMANDS; do
@@ -248,9 +256,6 @@ check_no_foreign_commands() {
 # ============================================================ release channel
 REL_JSON="" REL_VERSION="" REL_ASSET_NAME="" REL_ASSET_URL=""
 REL_DOWNLOAD=""
-# Set when the release channel was asked for something specific and did not get
-# it: a pinned version that is not there, or a download whose checksum does not
-# match. Those are errors, not a reason to quietly install something else.
 REL_FATAL=""
 
 discover_release() {
@@ -366,7 +371,6 @@ install_release() {
 
 # ============================================================== beta channel
 is_source_tree() {
-    # src/main.c is enough; Makefile is optional (no make required)
     [ -f "$1/src/main.c" ]
 }
 
@@ -396,7 +400,6 @@ find_source() {
 }
 
 find_tools() {
-    # Only a C compiler is required now; make is optional fallback
     if command -v cc >/dev/null 2>&1; then return 0; fi
     if command -v gcc >/dev/null 2>&1; then return 0; fi
     if command -v clang >/dev/null 2>&1; then return 0; fi
@@ -406,7 +409,6 @@ find_tools() {
 
 build_source() {
     info "Building in $SOURCE_DIR"
-    # Try direct cc compile first (no make), then fall back to make
     CC="${CC:-}"
     if [ -z "$CC" ]; then
         for c in cc gcc clang; do
@@ -416,13 +418,11 @@ build_source() {
     if [ -n "$CC" ]; then
         VER="$(cat "$SOURCE_DIR/VERSION" 2>/dev/null | tr -d ' \t\n\r' || echo 0.0.0)"
         SRC="$SOURCE_DIR/src/util.c $SOURCE_DIR/src/lex.c $SOURCE_DIR/src/parse.c $SOURCE_DIR/src/eval.c $SOURCE_DIR/src/draw.c $SOURCE_DIR/src/sha256.c $SOURCE_DIR/src/update.c $SOURCE_DIR/src/main.c"
-        # Detect GUI like Makefile does
         if [ -f /usr/include/X11/Xlib.h ] || [ -f /usr/local/include/X11/Xlib.h ] || [ -f /opt/X11/include/X11/Xlib.h ] || [ -f /opt/homebrew/include/X11/Xlib.h ]; then
             SRC="$SRC $SOURCE_DIR/src/gui_x11.c"
             CFLAGS_EXTRA="-DHAVE_X11"
             LDFLAGS_EXTRA="-lX11"
         else
-            # On Windows MSYS/MINGW, try win32, else stub
             case "$(uname -s 2>/dev/null)" in
                 MINGW*|MSYS*|CYGWIN*)
                     if [ -f "$SOURCE_DIR/src/gui_win32.c" ]; then
@@ -442,7 +442,6 @@ build_source() {
                     ;;
             esac
         fi
-        # If not already set by Windows branch
         : "${CFLAGS_EXTRA:=}"
         : "${LDFLAGS_EXTRA:=}"
         info "Compiling directly with $CC (no make)"
@@ -450,13 +449,11 @@ build_source() {
             printf '    [dry-run] %s -O2 -std=c11 -Wall -Wextra -DOMNI_VERSION=\"%s\" -D_POSIX_C_SOURCE=200809L %s -o %s/omni %s %s\n' "$CC" "$VER" "$CFLAGS_EXTRA" "$SOURCE_DIR" "$SRC" "$LDFLAGS_EXTRA"
             return 0
         fi
-        # shellcheck disable=SC2086
         if $CC -O2 -std=c11 -Wall -Wextra -DOMNI_VERSION=\""$VER"\" -D_POSIX_C_SOURCE=200809L $CFLAGS_EXTRA -o "$SOURCE_DIR/omni" $SRC $LDFLAGS_EXTRA 2>&1; then
             return 0
         fi
         warn "direct $CC compile failed, trying make"
     fi
-    # Fallback to make
     if command -v make >/dev/null 2>&1; then
         run make -C "$SOURCE_DIR"
         return 0
@@ -488,9 +485,166 @@ install_from_source() {
     done
 }
 
+# ============================================================== app installation
+# Install OmniScript as a desktop app: .desktop + icon on Linux, .app on macOS
+install_app() {
+    info "Installing OmniScript as an app"
+    # Determine binary to use for icon generation and Exec
+    app_bin="$BIN_DIR/$MAIN_COMMAND"
+    [ -x "$app_bin" ] || app_bin="$(printf '%s\n' $INSTALLED_COMMANDS | head -1)"
+    [ -x "$app_bin" ] || app_bin="$SOURCE_DIR/omni"
+    is_windows_host && {
+        # Windows app shortcuts are handled by install.ps1; this script only does Linux/macOS
+        return 0
+    }
+
+    # --- icon generation ---
+    # Try to generate a 64x64 icon using omni itself
+    ICON_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/64x64/apps"
+    ICON_DIR2="$DATA_DIR/icons"
+    if [ "$DRY_RUN" = 1 ]; then
+        printf '    [dry-run] mkdir -p %s\n' "$ICON_DIR"
+        printf '    [dry-run] generate icon via %s\n' "$app_bin"
+    else
+        mkdir -p "$ICON_DIR" "$ICON_DIR2" "$DATA_DIR" 2>/dev/null || true
+        # Generate BMP icon if possible
+        if [ -x "$app_bin" ]; then
+            "$app_bin" -e 'draw(window(64, 64, "OmniScript"), rect(0, 0, 64, 64, "#0d1117"), circle(32, 32, 20, "#1f6feb"), text(8, 20, "Om", white, 14), save("'"$DATA_DIR"'/icon.bmp"))' >/dev/null 2>&1 || true
+            if [ -f "$DATA_DIR/icon.bmp" ]; then
+                ICON_FILE="$DATA_DIR/icon.bmp"
+                # Try to convert to PNG if convert/magick available, else keep BMP
+                if command -v convert >/dev/null 2>&1; then
+                    convert "$DATA_DIR/icon.bmp" "$ICON_DIR/omniscript.png" 2>/dev/null && ICON_PNG="$ICON_DIR/omniscript.png" || true
+                    convert "$DATA_DIR/icon.bmp" "$ICON_DIR2/icon.png" 2>/dev/null && true
+                fi
+                if [ -z "$ICON_PNG" ] && command -v magick >/dev/null 2>&1; then
+                    magick "$DATA_DIR/icon.bmp" "$ICON_DIR/omniscript.png" 2>/dev/null && ICON_PNG="$ICON_DIR/omniscript.png" || true
+                fi
+                # Fallback: copy BMP as PNG name (some launchers accept BMP)
+                if [ -z "$ICON_PNG" ]; then
+                    cp "$DATA_DIR/icon.bmp" "$ICON_DIR/omniscript.bmp" 2>/dev/null && ICON_PNG="$ICON_DIR/omniscript.bmp" || true
+                fi
+                # Also copy to DATA_DIR/icons for manifest
+                cp "$DATA_DIR/icon.bmp" "$ICON_DIR2/icon.bmp" 2>/dev/null || true
+                if [ -f "$ICON_DIR2/icon.bmp" ]; then
+                    ICON_FILE="$ICON_DIR2/icon.bmp"
+                fi
+            fi
+        fi
+        # If icon generation failed, create a minimal placeholder
+        if [ -z "$ICON_FILE" ]; then
+            # Create a tiny placeholder file so manifest has something
+            printf 'OmniScript icon placeholder' > "$DATA_DIR/icon.txt" 2>/dev/null || true
+            ICON_FILE="$DATA_DIR/icon.txt"
+        fi
+    fi
+
+    # --- Linux .desktop file ---
+    APPS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+    if [ "$DRY_RUN" = 1 ]; then
+        printf '    [dry-run] mkdir -p %s\n' "$APPS_DIR"
+        printf '    [dry-run] write %s/omniscript.desktop\n' "$APPS_DIR"
+    else
+        mkdir -p "$APPS_DIR" 2>/dev/null || true
+        DESKTOP_FILE="$APPS_DIR/omniscript.desktop"
+        # Prefer PNG icon if we have it, else use generic name or BMP path
+        if [ -n "$ICON_PNG" ]; then
+            ICON_NAME="$ICON_PNG"
+        elif [ -n "$ICON_FILE" ]; then
+            ICON_NAME="$ICON_FILE"
+        else
+            ICON_NAME="omniscript"
+        fi
+        cat > "$DESKTOP_FILE" <<DESKTOP
+[Desktop Entry]
+Name=OmniScript
+GenericName=OmniScript Language
+Comment=Native tiny language for drawing and automating — one binary, libc only
+Exec=$BIN_DIR/omni
+Icon=$ICON_NAME
+Terminal=true
+Type=Application
+Categories=Development;Education;Science;
+Keywords=omni;script;drawing;automation;programming;
+StartupWMClass=OmniScript
+MimeType=text/x-omniscript;
+Actions=REPL;Examples;
+
+[Desktop Action REPL]
+Name=Open REPL
+Exec=$BIN_DIR/omni
+Terminal=true
+
+[Desktop Action Examples]
+Name=Run Examples
+Exec=$BIN_DIR/omni $SOURCE_DIR/examples/03_drawing.omni
+Terminal=true
+DESKTOP
+        chmod 644 "$DESKTOP_FILE" 2>/dev/null || true
+        note "created app launcher $DESKTOP_FILE"
+        # Update desktop database if possible
+        if command -v update-desktop-database >/dev/null 2>&1; then
+            update-desktop-database "$APPS_DIR" 2>/dev/null || true
+        fi
+        if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+            gtk-update-icon-cache -f -t "${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor" 2>/dev/null || true
+        fi
+    fi
+
+    # --- macOS .app bundle ---
+    if is_macos_host; then
+        MAC_APP_DIR="$HOME/Applications"
+        [ -d "$MAC_APP_DIR" ] || MAC_APP_DIR="/Applications"
+        # Prefer user Applications
+        if [ ! -w "$HOME/Applications" ] && [ -w "/Applications" ]; then
+            MAC_APP_DIR="/Applications"
+        else
+            MAC_APP_DIR="$HOME/Applications"
+            mkdir -p "$MAC_APP_DIR" 2>/dev/null || true
+        fi
+        APP_BUNDLE="$MAC_APP_DIR/OmniScript.app"
+        if [ "$DRY_RUN" = 1 ]; then
+            printf '    [dry-run] mkdir -p %s/Contents/MacOS %s/Contents/Resources\n' "$APP_BUNDLE" "$APP_BUNDLE"
+            printf '    [dry-run] create %s as macOS app bundle\n' "$APP_BUNDLE"
+        else
+            mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources" 2>/dev/null || true
+            # Copy binary
+            if [ -f "$BIN_DIR/omni" ]; then
+                cp "$BIN_DIR/omni" "$APP_BUNDLE/Contents/MacOS/OmniScript" 2>/dev/null || cp "$BIN_DIR/omni" "$APP_BUNDLE/Contents/MacOS/omni" 2>/dev/null || true
+                chmod 755 "$APP_BUNDLE/Contents/MacOS/OmniScript" 2>/dev/null || true
+                chmod 755 "$APP_BUNDLE/Contents/MacOS/omni" 2>/dev/null || true
+            elif [ -f "$SOURCE_DIR/omni" ]; then
+                cp "$SOURCE_DIR/omni" "$APP_BUNDLE/Contents/MacOS/OmniScript" 2>/dev/null || true
+                chmod 755 "$APP_BUNDLE/Contents/MacOS/OmniScript" 2>/dev/null || true
+            fi
+            # Icon
+            if [ -f "$DATA_DIR/icon.bmp" ]; then
+                cp "$DATA_DIR/icon.bmp" "$APP_BUNDLE/Contents/Resources/icon.bmp" 2>/dev/null || true
+                APP_ICON="$APP_BUNDLE/Contents/Resources/icon.bmp"
+            fi
+            # Info.plist
+            cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key><string>OmniScript</string>
+    <key>CFBundleDisplayName</key><string>OmniScript</string>
+    <key>CFBundleIdentifier</key><string>com.omninode.omniscript</string>
+    <key>CFBundleVersion</key><string>$OMNI_VERSION</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleExecutable</key><string>OmniScript</string>
+    <key>LSMinimumSystemVersion</key><string>10.12</string>
+    <key>NSHighResolutionCapable</key><true/>
+</dict>
+</plist>
+PLIST
+            note "created macOS app $APP_BUNDLE"
+        fi
+    fi
+}
+
 # ------------------------------------------------------------------ manifest
-# One key=value per line, and one repeated line per command: plain text, so
-# writing it needs nothing and reading it needs no JSON parser.
 write_manifest() {
     if [ "$DRY_RUN" = 1 ]; then
         printf '    [dry-run] write %s\n' "$MANIFEST"
@@ -515,6 +669,12 @@ write_manifest() {
         printf 'repo_url=%s\n' "$REPO_URL"
         printf 'source=%s\n' "$SOURCE_DIR"
         printf 'version=%s\n' "$OMNI_VERSION"
+        # App entries
+        [ -n "$DESKTOP_FILE" ] && printf 'desktop_file=%s\n' "$DESKTOP_FILE"
+        [ -n "$ICON_FILE" ] && printf 'icon_file=%s\n' "$ICON_FILE"
+        [ -n "$ICON_PNG" ] && printf 'icon_png=%s\n' "$ICON_PNG"
+        [ -n "$APP_BUNDLE" ] && printf 'app_bundle=%s\n' "$APP_BUNDLE"
+        [ -n "$APP_ICON" ] && printf 'app_icon=%s\n' "$APP_ICON"
     } > "$MANIFEST"
     note "wrote $MANIFEST"
 }
@@ -550,10 +710,15 @@ verify_install() {
                return 1 ;;
         esac
     fi
+    # App verification (non-fatal)
+    if [ -n "$DESKTOP_FILE" ] && [ -f "$DESKTOP_FILE" ]; then
+        note "app launcher $DESKTOP_FILE"
+    fi
+    if [ -n "$APP_BUNDLE" ] && [ -d "$APP_BUNDLE" ]; then
+        note "macOS app $APP_BUNDLE"
+    fi
 }
 
-# A release install that does not run is worse than no install: take back
-# exactly the files it just wrote.
 undo_release_install() {
     warn "rolling the release install back"
     for path in $INSTALLED_COMMANDS; do
@@ -563,13 +728,14 @@ undo_release_install() {
             note "removed $path"
         fi
     done
+    [ -n "$DESKTOP_FILE" ] && [ -f "$DESKTOP_FILE" ] && rm -f "$DESKTOP_FILE" && note "removed $DESKTOP_FILE"
+    [ -n "$ICON_PNG" ] && [ -f "$ICON_PNG" ] && rm -f "$ICON_PNG" && note "removed $ICON_PNG"
+    [ -n "$APP_BUNDLE" ] && [ -d "$APP_BUNDLE" ] && rm -rf "$APP_BUNDLE" && note "removed $APP_BUNDLE"
     [ -f "$MANIFEST" ] && rm -f "$MANIFEST" && note "removed $MANIFEST"
     return 0
 }
 
 # ------------------------------------------------------------------------ main
-# Which channel? An explicit one wins. Otherwise a source tree beside the script
-# means "install what is here", and no source tree means "get me the release".
 source_beside_us() {
     script_dir="$(dirname "$0")"
     here="$(cd "$script_dir" 2>/dev/null && pwd -P || true)"
@@ -594,6 +760,8 @@ if [ "$CHANNEL" = release ]; then
         INSTALLED=1
         info "OmniScript $OMNI_VERSION from $RELEASE_TAG ($REL_ASSET_NAME)"
         note "commands into $BIN_DIR, no dependencies"
+        ensure_bin_dir
+        install_app || warn "app install failed (non-fatal)"
     else
         [ -n "$REL_FATAL" ] && die "$REL_FATAL"
         warn "the release channel did not deliver; installing from $REPO_URL instead"
@@ -616,6 +784,7 @@ if [ "$INSTALLED" != 1 ]; then
     ensure_bin_dir
     build_source
     install_from_source
+    install_app || warn "app install failed (non-fatal)"
 fi
 
 write_manifest
@@ -627,7 +796,6 @@ if ! verify_install; then
     die "$VERIFY_ERROR"
 fi
 
-# ------------------------------------------------------------- PATH advice
 case ":$PATH:" in
     *":$BIN_DIR:"*) on_path=1 ;;
     *) on_path=0 ;;
@@ -639,13 +807,19 @@ if [ "$DRY_RUN" = 1 ]; then
 fi
 
 printf '\n'
-info "OmniScript $OMNI_VERSION is installed ($CHANNEL channel)"
+info "OmniScript $OMNI_VERSION is installed ($CHANNEL channel) as an app"
 if [ "$on_path" = 1 ]; then
     note "run it with: omni -e 'cmd(\"echo hello\")'   or just: omni"
 else
     note "$BIN_DIR is not on your PATH yet. Add this to your shell profile:"
     printf '\n        export PATH="%s:$PATH"\n\n' "$BIN_DIR"
     note "then open a new terminal, or run that line now."
+fi
+if [ -n "$DESKTOP_FILE" ]; then
+    note "app launcher: $DESKTOP_FILE (shows in your app menu)"
+fi
+if [ -n "$APP_BUNDLE" ]; then
+    note "macOS app: $APP_BUNDLE"
 fi
 note "update with: omni update            ($CHANNEL channel)"
 if [ -n "$SOURCE_DIR" ]; then

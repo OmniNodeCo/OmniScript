@@ -38,8 +38,7 @@ function Invoke-OrShow {
 }
 function Test-SourceTree {
     param([string]$Dir)
-    return ($Dir -and (Test-Path -LiteralPath (Join-Path $Dir 'Makefile')) -and
-        (Test-Path -LiteralPath (Join-Path $Dir 'src/main.c')))
+    return ($Dir -and (Test-Path -LiteralPath (Join-Path $Dir 'src/main.c')))
 }
 
 if ($Help) {
@@ -84,6 +83,8 @@ $MVersion = ''; $MMode = ''; $MChannel = ''; $MSource = ''
 $MBinary = ''; $MCloned = $false
 $MHistory = Join-Path $(if ($IsWin) { $env:USERPROFILE } else { $env:HOME }) '.omniscript_history'
 $MCommands = @()
+$MDesktop = ''; $MIcon = ''; $MStartMenu = ''; $MShortcuts = @()
+$MDesktopFile = ''; $MIconPng = ''; $MAppBundle = ''
 
 if (Test-Path -LiteralPath $Manifest) {
     Write-Info "Reading $Manifest"
@@ -100,6 +101,13 @@ if (Test-Path -LiteralPath $Manifest) {
             'cloned_by_installer' { $MCloned = ($value -eq '1') }
             'history_file'        { if ($value) { $MHistory = $value } }
             'command'             { if ($value) { $MCommands += $value } }
+            'desktop_file'        { if ($value) { $MDesktop = $value; $MDesktopFile = $value } }
+            'icon_file'           { if ($value) { $MIcon = $value } }
+            'icon_png'            { if ($value) { $MIconPng = $value } }
+            'app_bundle'          { if ($value) { $MAppBundle = $value } }
+            'start_menu_dir'      { if ($value) { $MStartMenu = $value } }
+            'shortcut'            { if ($value) { $MShortcuts += $value } }
+            'app_icon'            { if ($value) { $MIcon = $value } }
         }
     }
     if ($MVersion) {
@@ -180,6 +188,64 @@ if ($MBinary -and (Test-Path -LiteralPath $MBinary)) {
     if (-not $listed) {
         Write-Info 'Removing the downloaded executable'
         Remove-Item-IfOurs -Path $MBinary -What 'executable'
+    }
+}
+
+# ------------------------------------------------------------- app files
+Write-Info 'Removing the app'
+# Shortcuts first (Windows)
+foreach ($sc in $MShortcuts) {
+    if ($sc) { Remove-Item-IfOurs -Path $sc -What 'shortcut' }
+}
+# Fallback: try default Start Menu locations if manifest missing
+if (-not $MStartMenu -and $IsWin) {
+    $defaultSM = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\OmniScript'
+    if (Test-Path $defaultSM) {
+        Invoke-OrShow { Remove-Item -LiteralPath $defaultSM -Recurse -Force } "remove Start Menu $defaultSM"
+        Write-Note "removed app folder $defaultSM"
+        $Removed += 1
+    }
+}
+if ($MStartMenu -and (Test-Path $MStartMenu)) {
+    Invoke-OrShow { Remove-Item -LiteralPath $MStartMenu -Recurse -Force } "remove Start Menu $MStartMenu"
+    Write-Note "removed app folder $MStartMenu"
+    $Removed += 1
+}
+if ($MDesktop) { Remove-Item-IfOurs -Path $MDesktop -What 'desktop file' }
+if ($MDesktopFile -and $MDesktopFile -ne $MDesktop) { Remove-Item-IfOurs -Path $MDesktopFile -What 'desktop file' }
+if ($MIcon) {
+    # Only remove if inside data dir or icons
+    if ($MIcon -like "*omniscript*" -or $MIcon -like "*icons*" -or $MIcon -like "*OmniScript*") {
+        Remove-Item-IfOurs -Path $MIcon -What 'icon'
+    }
+}
+if ($MIconPng) { Remove-Item-IfOurs -Path $MIconPng -What 'icon' }
+if ($MAppBundle) { Remove-Item-IfOurs -Path $MAppBundle -What 'macOS app bundle' }
+
+# Fallback for Linux/macOS when manifest missing or older
+if (-not $MDesktop) {
+    $fallbackDesktop = @(
+        (Join-Path $env:HOME '.local/share/applications/omniscript.desktop'),
+        (Join-Path $env:HOME '.local/share/applications/OmniScript.desktop')
+    )
+    foreach ($fd in $fallbackDesktop) {
+        if (Test-Path $fd) {
+            $content = Get-Content $fd -TotalCount 10 -ErrorAction SilentlyContinue | Out-String
+            if ($content -match 'OmniScript') {
+                Invoke-OrShow { Remove-Item -LiteralPath $fd -Force } "remove $fd"
+                Write-Note "removed $fd"
+                $Removed += 1
+            }
+        }
+    }
+}
+if (-not $MAppBundle -and -not $IsWin) {
+    foreach ($b in @("$env:HOME/Applications/OmniScript.app", "/Applications/OmniScript.app")) {
+        if (Test-Path $b) {
+            Invoke-OrShow { Remove-Item -LiteralPath $b -Recurse -Force } "remove $b"
+            Write-Note "removed $b"
+            $Removed += 1
+        }
     }
 }
 

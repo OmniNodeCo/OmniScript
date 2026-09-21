@@ -64,6 +64,11 @@ $RelAssetName = ''
 $RelDownload = ''
 $RelFatal = ''
 $BinaryPath = ''
+# App installation paths
+$DesktopFile = ''
+$IconFile = ''
+$StartMenuDir = ''
+$AppShortcuts = New-Object System.Collections.Generic.List[string]
 
 function Write-Info { param([string]$Text) Write-Host "==> $Text" }
 function Write-Note { param([string]$Text) Write-Host "    $Text" }
@@ -379,6 +384,11 @@ function Write-Manifest {
         "version=$OmniVersion"
     )
     foreach ($path in $InstalledCommands) { if ($path) { $lines += "command=$path" } }
+    # App entries
+    if ($DesktopFile) { $lines += "desktop_file=$DesktopFile" }
+    if ($IconFile) { $lines += "icon_file=$IconFile" }
+    if ($StartMenuDir) { $lines += "start_menu_dir=$StartMenuDir" }
+    foreach ($s in $AppShortcuts) { if ($s) { $lines += "shortcut=$s" } }
     [System.IO.File]::WriteAllLines($Manifest, [string[]]$lines)
     if (-not (Test-Path -LiteralPath $Manifest)) { Stop-Die "the manifest did not get written to $Manifest" }
     Write-Note "wrote $Manifest"
@@ -486,6 +496,11 @@ if ($Channel -eq 'release') {
         0 {
             Write-Info "OmniScript $OmniVersion from $RelTag ($RelAssetName)"
             Write-Note "command into $Bin"
+            try {
+                Install-App -BinPath $Bin -SrcRoot $Source -VersionStr $OmniVersion
+            } catch {
+                Write-Warn "app installation failed (non-fatal): $($_.Exception.Message)"
+            }
             Write-Manifest
             try {
                 Test-Install
@@ -663,6 +678,177 @@ function Build-WithMake {
     }
 }
 
+# ============================================================== app installation
+# Install OmniScript as a desktop app: Start Menu shortcuts on Windows,
+# .desktop file on Linux, .app bundle on macOS when run under pwsh.
+function Install-App {
+    param([string]$BinPath, [string]$SrcRoot, [string]$VersionStr)
+
+    Write-Info "Installing OmniScript as an app"
+
+    # Determine binary for icon generation and shortcuts
+    $appBin = $BinPath
+    if (-not $appBin) { $appBin = $binary }
+    if (-not $appBin) { $appBin = Join-Path $SrcRoot $(if ($IsWin) { 'omni.exe' } else { 'omni' }) }
+
+    # --- icon generation ---
+    try {
+        if (-not $DryRun) {
+            New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
+            $iconBmp = Join-Path $DataDir 'icon.bmp'
+            if (Test-Path -LiteralPath $appBin) {
+                # Generate 64x64 icon using omni itself
+                & $appBin -e "draw(window(64, 64, `"OmniScript`"), rect(0, 0, 64, 64, `"#0d1117`"), circle(32, 32, 20, `"#1f6feb`"), text(8, 20, `"Om`", white, 14), save(`"$iconBmp`"))" 2>&1 | Out-Null
+                if (Test-Path -LiteralPath $iconBmp) {
+                    $script:IconFile = $iconBmp
+                    Write-Note "generated icon $iconBmp"
+                }
+            }
+        } else {
+            Write-Note "[dry-run] would generate icon via $appBin"
+        }
+    } catch {
+        Write-Warn "icon generation failed: $($_.Exception.Message)"
+    }
+
+    if ($IsWin) {
+        # --- Windows: Start Menu + Desktop shortcuts ---
+        try {
+            $startMenuRoot = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
+            $script:StartMenuDir = Join-Path $startMenuRoot 'OmniScript'
+            if ($DryRun) {
+                Write-Note "[dry-run] mkdir $StartMenuDir"
+                Write-Note "[dry-run] create shortcuts in $StartMenuDir"
+            } else {
+                New-Item -ItemType Directory -Force -Path $StartMenuDir | Out-Null
+                # WScript.Shell for .lnk
+                $shell = New-Object -ComObject WScript.Shell
+
+                # Main app shortcut - points to omni.exe (or shim)
+                $lnkPath = Join-Path $StartMenuDir 'OmniScript.lnk'
+                $shortcut = $shell.CreateShortcut($lnkPath)
+                $targetForLnk = $appBin
+                # If appBin is a .cmd shim, point to the real exe behind it
+                if ($targetForLnk -like '*.cmd') {
+                    $shimContent = Get-Content -LiteralPath $targetForLnk -TotalCount 5 -ErrorAction SilentlyContinue | Out-String
+                    $m = [regex]::Match($shimContent, '"([^"]+)"')
+                    if ($m.Success) { $targetForLnk = $m.Groups[1].Value }
+                }
+                $shortcut.TargetPath = $targetForLnk
+                $shortcut.WorkingDirectory = Split-Path $targetForLnk -Parent
+                $shortcut.Description = "OmniScript $VersionStr - native tiny language"
+                if ($IconFile) { $shortcut.IconLocation = $IconFile } else { $shortcut.IconLocation = $targetForLnk }
+                $shortcut.Save()
+                $AppShortcuts.Add($lnkPath)
+                Write-Note "created Start Menu shortcut $lnkPath"
+
+                # REPL shortcut (explicit)
+                $replLnk = Join-Path $StartMenuDir 'OmniScript REPL.lnk'
+                $repl = $shell.CreateShortcut($replLnk)
+                $repl.TargetPath = $targetForLnk
+                $repl.Arguments = ''
+                $repl.WorkingDirectory = $env:USERPROFILE
+                $repl.Description = "OmniScript REPL"
+                $repl.IconLocation = if ($IconFile) { $IconFile } else { $targetForLnk }
+                $repl.Save()
+                $AppShortcuts.Add($replLnk)
+                Write-Note "created $replLnk"
+
+                # Uninstall shortcut
+                $unLnk = Join-Path $StartMenuDir 'Uninstall OmniScript.lnk'
+                $un = $shell.CreateShortcut($unLnk)
+                $un.TargetPath = 'powershell.exe'
+                $un.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$($Source)\uninstall.ps1`" -Purge"
+                if (-not (Test-Path -LiteralPath (Join-Path $Source 'uninstall.ps1'))) {
+                    $un.Arguments = "-NoProfile -ExecutionPolicy Bypass -Command `"iwr -use1 https://raw.githubusercontent.com/$Repo/main/uninstall.ps1 | iex`""
+                }
+                $un.WorkingDirectory = $Source
+                $un.Description = "Uninstall OmniScript"
+                $un.Save()
+                $AppShortcuts.Add($unLnk)
+
+                # Desktop shortcut (optional, only if user has Desktop)
+                $desktop = [Environment]::GetFolderPath('Desktop')
+                if ($desktop -and (Test-Path $desktop)) {
+                    $deskLnk = Join-Path $desktop 'OmniScript.lnk'
+                    if (-not (Test-Path $deskLnk)) {
+                        $d = $shell.CreateShortcut($deskLnk)
+                        $d.TargetPath = $targetForLnk
+                        $d.WorkingDirectory = $env:USERPROFILE
+                        $d.Description = "OmniScript $VersionStr"
+                        $d.IconLocation = if ($IconFile) { $IconFile } else { $targetForLnk }
+                        $d.Save()
+                        $AppShortcuts.Add($deskLnk)
+                        Write-Note "created Desktop shortcut $deskLnk"
+                        $script:DesktopFile = $deskLnk
+                    }
+                }
+            }
+        } catch {
+            Write-Warn "Windows app shortcut creation failed: $($_.Exception.Message)"
+        }
+    } else {
+        # --- Linux/macOS when run under pwsh (install.ps1 can run there too) ---
+        try {
+            $appsDir = if ($env:XDG_DATA_HOME) { Join-Path $env:XDG_DATA_HOME 'applications' } else { Join-Path $env:HOME '.local/share/applications' }
+            $iconsDir = if ($env:XDG_DATA_HOME) { Join-Path $env:XDG_DATA_HOME 'icons/hicolor/64x64/apps' } else { Join-Path $env:HOME '.local/share/icons/hicolor/64x64/apps' }
+            if ($DryRun) {
+                Write-Note "[dry-run] mkdir $appsDir $iconsDir"
+                Write-Note "[dry-run] write $appsDir/omniscript.desktop"
+            } else {
+                New-Item -ItemType Directory -Force -Path $appsDir,$iconsDir | Out-Null
+                # Copy icon if we have it
+                if ($IconFile -and (Test-Path $IconFile)) {
+                    $destPng = Join-Path $iconsDir 'omniscript.png'
+                    $destBmp = Join-Path $iconsDir 'omniscript.bmp'
+                    try {
+                        if (Get-Command convert -ErrorAction SilentlyContinue) {
+                            & convert $IconFile $destPng 2>&1 | Out-Null
+                            if (Test-Path $destPng) { $script:IconFile = $destPng }
+                        } elseif (Get-Command magick -ErrorAction SilentlyContinue) {
+                            & magick $IconFile $destPng 2>&1 | Out-Null
+                            if (Test-Path $destPng) { $script:IconFile = $destPng }
+                        } else {
+                            Copy-Item -Force $IconFile $destBmp
+                            $script:IconFile = $destBmp
+                        }
+                    } catch { }
+                }
+                $iconForDesktop = if ($IconFile) { $IconFile } else { 'omniscript' }
+                $script:DesktopFile = Join-Path $appsDir 'omniscript.desktop'
+                $desktopContent = @(
+                    '[Desktop Entry]',
+                    'Name=OmniScript',
+                    'GenericName=OmniScript Language',
+                    'Comment=Native tiny language for drawing and automating — one binary, libc only',
+                    \"Exec=$Bin/omni\",
+                    \"Icon=$iconForDesktop\",
+                    'Terminal=true',
+                    'Type=Application',
+                    'Categories=Development;Education;Science;',
+                    'Keywords=omni;script;drawing;automation;',
+                    'StartupWMClass=OmniScript',
+                    'MimeType=text/x-omniscript;',
+                    '',
+                    '[Desktop Action REPL]',
+                    'Name=Open REPL',
+                    \"Exec=$Bin/omni\",
+                    'Terminal=true',
+                    '',
+                    '[Desktop Action Examples]',
+                    'Name=Run Examples',
+                    \"Exec=$Bin/omni $SrcRoot/examples/03_drawing.omni\",
+                    'Terminal=true'
+                )
+                Set-Content -Path $DesktopFile -Value $desktopContent -Encoding UTF8
+                Write-Note "created app launcher $DesktopFile"
+            }
+        } catch {
+            Write-Warn "Linux/macOS app launcher creation failed: $($_.Exception.Message)"
+        }
+    }
+}
+
 # --- version ---
 $versionFile = Join-Path $Source 'VERSION'
 if (Test-Path -LiteralPath $versionFile) {
@@ -760,6 +946,13 @@ function New-CommandLink {
 Test-NoForeignCommands
 $Mode = 'symlink'
 foreach ($name in $Commands) { Add-Command -Name $name -Target $binary }
+
+# ------------------------------------------------------- app (Start Menu, Desktop, .desktop)
+try {
+    Install-App -BinPath $Bin -SrcRoot $Source -VersionStr $OmniVersion
+} catch {
+    Write-Warn "app installation failed (non-fatal): $($_.Exception.Message)"
+}
 
 # ------------------------------------------------------- manifest and checks
 Write-Manifest

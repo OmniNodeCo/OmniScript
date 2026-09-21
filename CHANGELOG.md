@@ -2,22 +2,26 @@
 
 All notable changes, newest first. This is the native rewrite, starting at 1.0.0.
 
-## [1.0.2] - 2026-09-21
+## [1.0.1] - 2026-09-21
+
+### Added
+
+- **Install as an app** — OmniScript now installs as a desktop application, not just a CLI binary.
+  - **Linux:** creates `~/.local/share/applications/omniscript.desktop` with icon, Terminal=true, Actions for REPL and Examples. Icon generated via omni itself (`draw(window(64,64), circle(...), text("Om"), save(icon.bmp))`) then converted to PNG via ImageMagick if available, placed in `~/.local/share/icons/hicolor/64x64/apps/omniscript.png`. Shows in GNOME/KDE app menu.
+  - **macOS:** creates `~/Applications/OmniScript.app` bundle with `Contents/MacOS/OmniScript` binary, `Resources/icon.bmp`, and `Info.plist` (com.omninode.omniscript). Appears in Launchpad/Spotlight.
+  - **Windows (install.ps1):** creates Start Menu folder `%APPDATA%\Microsoft\Windows\Start Menu\Programs\OmniScript` with shortcuts: `OmniScript.lnk`, `OmniScript REPL.lnk`, `Uninstall OmniScript.lnk`, plus Desktop shortcut. Icon generated to `%LOCALAPPDATA%\OmniScript\icon.bmp` and used via WScript.Shell COM. All recorded in manifest.
+- **Manifest extended** — new keys: `desktop_file`, `icon_file`, `icon_png`, `app_bundle`, `app_icon`, `start_menu_dir`, `shortcut` (multiple).
 
 ### Fixed
 
-- **install.ps1 rewritten to work without make** — previous 1.0.1 build.ps1 approach broke on some Windows setups. Now beta builds directly with C compiler (cl, gcc, clang, cc) embedded in install.ps1, no external build.ps1, no make required. Detects GUI (win32 on Windows, X11 when headers exist, stub otherwise), links gdi32/user32 or X11, cleans obj files, falls back to make if direct compile fails. Test-SourceTree now checks src/main.c only (Makefile optional). Help text updated.
-- **install.sh fixed to work without make** — direct cc compile first (no make), then make fallback. Handles Windows MSYS/MINGW gdi32, X11 detection on Linux/macOS, VERSION from file. No build.ps1 dependency.
+- **install.ps1 rewritten to work without make** — direct C compile with cl/gcc/clang/cc (no make, no build.ps1), GUI detection (win32/x11/stub), links gdi32/user32/X11, fallback to make. Test-SourceTree checks src/main.c only.
+- **install.sh fixed to work without make** — direct cc compile first, make fallback, handles MSYS/MINGW gdi32, X11 detection.
+- **uninstall.sh / uninstall.ps1** now remove app launcher, icons, Start Menu, shortcuts, and macOS bundle. `belongs_to_us` extended to recognize app files.
 
 ### Changed
 
-- Removed `build.ps1` (separate PowerShell builder) — functionality now embedded directly in install.ps1 and install.sh, so one file does it all.
-- CI workflows restored to make-based builds (known green) — build.yml and release.yml use make on all platforms via bash with MK detection, no build.ps1 reference.
-- README and wiki/Install document `cc -O2 -std=c11 -o omni src/*.c` (no make needed) and make fallback.
-
-## [1.0.1] - 2026-09-21 (removed)
-
-- Added PowerShell builder `build.ps1` — later removed in 1.0.2 because install.ps1 needs to be self-contained. See 1.0.2 for fixed approach.
+- CI workflows use make on all platforms (known green).
+- README and wiki/Install document app installation and no-make builds.
 
 ## [1.0.0] - 2026-09-18
 
@@ -26,28 +30,14 @@ Fresh start: no Python in the product.
 ### Added
 
 - **Native binary, libc only.** One `omni` binary built with `cc` + `make`, no dependencies. `VERSION` file is the single source of truth.
-- **Custom lexer/parser/evaluator** in C: arena allocation per statement, BOM accepted, `#` comments, `\"\"\"` triple-quoted strings, `name=value` keywords, `(a, b)` tuples, duplicate-keyword and positional-after-keyword errors.
-- **Canvas and BMP writer** — `canvas_new`, `canvas_rect`, `canvas_circle`, `canvas_line`, `canvas_text`, `img_write_bmp` (24-bit BMP, no zlib). 5×7 pixel font hand-drawn for all 96 printable ASCII.
-- **Hardware windows** — X11 backend (`-DHAVE_X11`, `-lX11`) with color allocation and button hit-testing, Win32 GDI backend (`-lgdi32`) with `CreateSolidBrush`/`Ellipse`/`LineTo`, and stub fallback that writes `drawing.bmp` when no display is present.
-- **Built-ins:** `draw()`, `draw_gui.window_size()`, `draw_gui.button()`, `draw_gui()`, `cmd()`, `file(create|edit|delete)`, `input()`. Keyword aliases (`w`/`h`/`bg`/`colour`/`fill`/`r`/`pos`/`size`/`from`/`to`/`msg`/`text`/`label`/`action`/`command`/`on_click`/`do=`), pair parsing (`pos=(10,20)`, `size=\"800x600\"`), window-size unpacking.
-- **cmd() with true stderr capture** — POSIX dual pipes + `poll()` to avoid deadlock, background mode via `fork`+`setsid` or Win32 `DETACHED_PROCESS`, stdout and stderr both said.
-- **file()** creates parents, refuses existing on create, counts occurrences on edit.
-- **input()** with `prompt=` / `text=` / `msg=` keywords, `typed: ...` echo, EOF handling.
-- **Updater with own crypto** — `src/sha256.c` FIPS 180-4, `src/update.c` minimal JSON (string unescape, `\\uXXXX` → UTF-8), repo validation to block shell injection, asset `omni-<os>-<arch>[.exe]` + `omni-...sha256`, mandatory checksum verification, `exe_path` via `/proc/self/exe` / `_NSGetExecutablePath` / `GetModuleFileNameA`.
-- **REPL** runs `omni ...` lines in-session (files, `-e`, `--version`, `update`) and bare `update`, `help`, `exit`, with paren/triple-string continuation and shell-like quoting. `help` lists language.
-- **Installers** rewritten for native: release channel downloads `omni-<os>-<arch>` + `.sha256`, verifies, installs one `omni` binary; beta channel builds with `cc`+`make`. Both PowerShell and bash versions parse cleanly, manifest is key=value, `--force` keeps `.bak`.
-- **Tests** — `tests/run.sh` 91 checks, POSIX sh, validates CLI, cmd capture (stdout+stderr, large interleaved), file lifecycle, input, lexer errors, removals (`import`/`python` removed in 1.0.0), draw with keyword aliases and BMP header validation (`BM` + dimensions + size field), draw_gui queue, REPL, update argument validation, and all examples.
-- **Examples** — 7 native `.omni` files covering cmd, input, drawing, buttons, background, gui, files.
-- **CI and release** — workflows build C on Linux/macOS/Windows, run test suite, exercise installers, build per-platform binaries, create `SHA256SUMS.txt` + per-binary `.sha256`, publish GitHub release.
-
-### Removed
-
-- Python package `omniscript/`, `pyproject.toml`, `tools/build_executable.py`, PyInstaller, zipapp, wheel, sdist, `python()` built-in, `import`/`from ... import` statements.
-- Old wiki pages that described Python behavior.
-
-### Fixed
-
-- Font glyphs `g` and `q` previously indistinguishable from `9`; now have distinct descenders.
-- `longjmp` clobber warnings in `run_source` fixed by using `ip->source` directly.
-- `full_path` truncation warning fixed with bounded copy.
-- `RGB` macro missing paren in Win32 stub fixed.
+- **Custom lexer/parser/evaluator** in C: arena allocation per statement, BOM accepted, `#` comments, `\"\"\"` triple-quoted strings, `name=value` keywords, `(a, b)` tuples.
+- **Canvas and BMP writer** — 5×7 pixel font hand-drawn for all 96 printable ASCII, 24-bit BMP writer no zlib.
+- **Hardware windows** — X11 backend, Win32 GDI backend, stub fallback writes `drawing.bmp`.
+- **Built-ins:** `draw()`, `draw_gui.window_size()`, `draw_gui.button()`, `draw_gui()`, `cmd()`, `file()`, `input()`.
+- **cmd() with true stderr capture** — dual pipes + poll(), background fork/DETACHED_PROCESS.
+- **Updater with own crypto** — SHA-256 FIPS 180-4, minimal JSON, mandatory .sha256.
+- **REPL** with `omni ...` lines, `help`, `exit`.
+- **Installers** for native, manifest key=value.
+- **Tests** — 91 checks, POSIX sh.
+- **Examples** — 7 native .omni files.
+- **CI and release** — workflows build C, test, installers, binaries, SHA256SUMS.

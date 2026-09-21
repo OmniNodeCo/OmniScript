@@ -1,6 +1,6 @@
 # Install
 
-One line, no dependencies. The installer takes the binary built for your machine from the newest release, checks its `.sha256`, and puts `omni` on PATH.
+One line, no dependencies. The installer takes the binary built for your machine from the newest release, checks its `.sha256`, puts `omni` on PATH **and installs it as an app**.
 
 ## Linux and macOS
 
@@ -8,19 +8,31 @@ One line, no dependencies. The installer takes the binary built for your machine
 curl -fsSL https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/install.sh | bash
 ```
 
+This creates:
+- `~/.local/bin/omni` (binary)
+- `~/.local/share/applications/omniscript.desktop` (app launcher, shows in GNOME/KDE)
+- `~/.local/share/icons/hicolor/64x64/apps/omniscript.png` (icon, generated via omni)
+- macOS: `~/Applications/OmniScript.app` bundle (Launchpad/Spotlight)
+
 ## Windows
 
 ```powershell
 iwr -use1 https://raw.githubusercontent.com/OmniNodeCo/OmniScript/main/install.ps1 | iex
 ```
 
+This creates:
+- `%LOCALAPPDATA%\Programs\OmniScript\omni.exe` (binary, on PATH if configured)
+- Start Menu `OmniScript` folder with `OmniScript.lnk`, `REPL.lnk`, `Uninstall.lnk`
+- Desktop `OmniScript.lnk` (if Desktop exists)
+- Icon `%LOCALAPPDATA%\OmniScript\icon.bmp` (generated via omni)
+
 ## Channels and options
 
-- **release** (default) — newest published release, one binary, libc only
+- **release** (default) — newest published release, one binary, libc only, plus app entries
 - **beta** (`-s beta` / `-Channel beta`) — repository itself, built with `cc` (no make required); `git pull` then rebuild is the upgrade, `make` still works as fallback
 
 ```bash
-./install.sh --version 1.0.0   # a particular release
+./install.sh --version 1.0.1   # a particular release
 ./install.sh --dry-run         # show plan, touch nothing
 ./install.sh --prefix ~/.local # where command goes (default)
 ```

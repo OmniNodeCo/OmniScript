@@ -69,6 +69,7 @@ BIN_DIR="$PREFIX/bin"
 
 M_MODE="" M_SOURCE="" M_CLONED=0 M_VERSION="" M_BINARY="" M_CHANNEL=""
 M_COMMANDS="" M_HISTORY="$HOME/.omniscript_history"
+M_DESKTOP="" M_ICON="" M_ICON_PNG="" M_APP_BUNDLE="" M_APP_ICON=""
 
 # One key=value per line, so reading it is sed: no JSON parser, nothing to
 # escape. A repeated key is a list.
@@ -85,6 +86,11 @@ read_manifest() {
     M_CLONED="$(mget cloned_by_installer)"
     [ -n "$(mget history_file)" ] && M_HISTORY="$(mget history_file)"
     M_COMMANDS="$(mall command)"
+    M_DESKTOP="$(mget desktop_file)"
+    M_ICON="$(mget icon_file)"
+    M_ICON_PNG="$(mget icon_png)"
+    M_APP_BUNDLE="$(mget app_bundle)"
+    M_APP_ICON="$(mget app_icon)"
 }
 
 if [ -f "$MANIFEST" ]; then
@@ -118,6 +124,12 @@ EOF
     if [ -n "$M_BINARY" ] && [ "$M_BINARY" = "$path" ]; then
         return 0
     fi
+    # App files are also ours if manifest lists them
+    [ -n "$M_DESKTOP" ] && [ "$M_DESKTOP" = "$path" ] && return 0
+    [ -n "$M_ICON" ] && [ "$M_ICON" = "$path" ] && return 0
+    [ -n "$M_ICON_PNG" ] && [ "$M_ICON_PNG" = "$path" ] && return 0
+    [ -n "$M_APP_BUNDLE" ] && [ "$M_APP_BUNDLE" = "$path" ] && return 0
+    [ -n "$M_APP_ICON" ] && [ "$M_APP_ICON" = "$path" ] && return 0
     if [ -L "$path" ]; then
         target="$(readlink "$path" 2>/dev/null || true)"
         case "$target" in
@@ -131,8 +143,7 @@ EOF
         fi
         # No manifest roots to compare against: trust a link whose target sits in
         # an OmniScript tree.
-        if [ -z "$M_SOURCE" ] && [ -f "$(dirname "$target")/Makefile" ] &&
-                [ -f "$(dirname "$target")/src/main.c" ]; then
+        if [ -z "$M_SOURCE" ] && [ -f "$(dirname "$target")/src/main.c" ]; then
             return 0
         fi
         return 1
@@ -187,6 +198,42 @@ EOF
         info "Removing the downloaded executable"
         remove_path "$M_BINARY" "executable"
     fi
+fi
+
+# ------------------------------------------------------------- app files
+info "Removing the app launcher"
+if [ -n "$M_DESKTOP" ]; then
+    remove_path "$M_DESKTOP" "desktop file"
+else
+    # Fallback: try default locations
+    for d in "${XDG_DATA_HOME:-$HOME/.local/share}/applications/omniscript.desktop" "$HOME/.local/share/applications/omniscript.desktop"; do
+        if [ -f "$d" ]; then
+            # Check if it looks like ours
+            if grep -q "OmniScript" "$d" 2>/dev/null; then
+                remove_path "$d" "desktop file"
+            fi
+        fi
+    done
+fi
+if [ -n "$M_ICON_PNG" ]; then
+    remove_path "$M_ICON_PNG" "icon"
+fi
+if [ -n "$M_ICON" ]; then
+    # Only remove if inside DATA_DIR or icons dir, to be safe
+    case "$M_ICON" in
+        "$DATA_DIR"/*|*/icons/*|*/omniscript/*) remove_path "$M_ICON" "icon" ;;
+        *) warn "$M_ICON" "icon outside data dir, leaving alone (use --force)" ;;
+    esac
+fi
+if [ -n "$M_APP_BUNDLE" ]; then
+    remove_path "$M_APP_BUNDLE" "macOS app bundle"
+else
+    # Fallback for macOS
+    for b in "$HOME/Applications/OmniScript.app" "/Applications/OmniScript.app"; do
+        if [ -d "$b" ]; then
+            remove_path "$b" "macOS app bundle"
+        fi
+    done
 fi
 
 # --------------------------------------------------------------- purge
