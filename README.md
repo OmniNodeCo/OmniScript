@@ -1,4 +1,4 @@
-# OmniScript 1.0.2 — native, no Python, installs as an app
+# OmniScript 1.0.1 — native, no Python, installs as an app
 
 [![build](https://github.com/OmniNodeCo/OmniScript/actions/workflows/build.yml/badge.svg)](https://github.com/OmniNodeCo/OmniScript/actions/workflows/build.yml)
 
@@ -62,7 +62,7 @@ From a clone:
 ```bash
 git clone https://github.com/OmniNodeCo/OmniScript
 cd OmniScript
-cc -O2 -std=c11 -Wall -Wextra -DOMNI_VERSION="1.0.2" -o omni src/*.c -lX11   # no make needed
+cc -O2 -std=c11 -Wall -Wextra -DOMNI_VERSION="1.0.1" -o omni src/*.c -lX11   # no make needed
 # or
 make                      # classic make still works
 ./omni --version
