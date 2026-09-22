@@ -10,84 +10,83 @@ import pathlib
 
 Three modules, Python-like imports.
 
-## Install — native installers (EXE, DMG, DEB, RPM) — OS integrated, type `omni` and it reacts
+## Install — OS integrated, type `omni` and it reacts, runs files
 
-No more `curl | bash`. Proper native installers in `installer/`:
-
-### Windows — Inno Setup EXE
+### Windows — EXE (Inno Setup) — works in any terminal
 
 ```bat
 installer\windows\build.bat
 ```
-Or PowerShell:
-```powershell
-installer\windows\build.ps1
-```
-Requires Inno Setup 6 (https://jrsoftware.org/isinfo.php).  
-Output: `dist/OmniScript-1.0.1-Windows-x86_64-Setup.exe` — installs to Program Files, adds to **both SYSTEM and USER PATH**, creates fallback copy in `C:\Windows\omni.exe`, Start Menu + uninstaller.
+Output: `dist/OmniScript-1.0.2-Windows-x86_64-Setup.exe` — installs to Program Files, adds to **both SYSTEM and USER PATH**, fallback copies to `C:\Windows\omni.exe` + `C:\Windows\System32\omni.exe`, file association `.omni` → double-click runs file.
 
-**After install, REOPEN terminal, then:**
+**After install, REOPEN terminal (CMD, PowerShell, Windows Terminal, Git Bash all work), then:**
+
 ```bat
 omni --version
 omni
+omni examples\01_hello.omni
+omni myfile.omni
+omni -e "import draw; draw.window(200,100); draw.rect(0,0,50,50,\"red\"); draw.show()"
 ```
 
-If you still see `'omni' is not recognized`:
-1. **Reopen** CMD/PowerShell (old window doesn't get new PATH)
-2. Try full path: `"C:\Program Files\OmniScript\omni.exe" --version`
-3. Or: `C:\Windows\omni.exe --version` (fallback copy)
-4. Manual PATH: `setx PATH "%PATH%;C:\Program Files\OmniScript"` then reopen terminal
-5. PowerShell: `$env:Path += ";C:\Program Files\OmniScript"; omni --version`
+If `'omni' is not recognized` (you installed 1.0.0):
+```bat
+"C:\Program Files\OmniScript\omni.exe" --version
+C:\Windows\omni.exe --version
+setx PATH "%PATH%;C:\Program Files\OmniScript"
+:: reopen terminal
+```
+Or install **1.0.2** which fixes it.
 
 ### macOS — DMG + PKG
 
 ```bash
 ./installer/macos/build-dmg.sh
+# Drag OmniScript.app to Applications
+# Double-click Install CLI.command inside DMG
+omni --version
+omni examples/01_hello.omni
 ```
-Creates `dist/OmniScript-1.0.1-macOS.dmg` with `OmniScript.app` + `Install CLI.command`. Drag to Applications, then double-click `Install CLI.command` to install `omni` to `/usr/local/bin`.
+
+### Linux — DEB + RPM
 
 ```bash
+sudo dpkg -i dist/omniscript_1.0.2_amd64.deb
+sudo rpm -i dist/omniscript-1.0.2-1.x86_64.rpm
 omni --version
-omni
+omni examples/01_hello.omni
 ```
 
-### Linux — DEB + RPM + tarball
-
-```bash
-./installer/linux/build-deb.sh
-sudo dpkg -i dist/omniscript_1.0.1_amd64.deb
-
-./installer/linux/build-rpm.sh
-sudo rpm -i dist/omniscript-1.0.1-1.x86_64.rpm
-
-# After install, type and it reacts:
-omni --version
-omni
-```
-
-### All installers
+### All
 
 ```bash
 ./installer/build-all.sh
-# or
 make dist
 ```
 
-Creates `dist/` with tarball, DEB, RPM, DMG, PKG, EXE + `SHA256SUMS.txt`.
+## How to run files — researched and tested
 
-### Quick build (dev)
+OmniScript binary (`src/main.c`) supports:
 
 ```bash
-make
-./omni --version   # 1.0.1
-./omni --help
-sudo make install  # to /usr/local/bin
+omni FILE              # run script file
+omni -e "CODE"         # run one-liner
+omni --version
+omni --help
+omni                   # REPL, type help, exit
 ```
+
+**Windows tested:**
+- `omni examples\01_hello.omni` — runs file, shows GUI or writes BMP
+- `omni myfile.omni` — any .omni file, path with spaces needs quotes: `omni "C:\My Files\test.omni"`
+- Double-click `.omni` file → runs via file association (`HKCR\.omni` → `OmniScriptFile` → `"{app}\omni.exe" "%1"`)
+- `omni -e "import cmd; cmd.run(\"dir\")"` — runs command
+
+**All terminals work:** CMD, PowerShell, Windows Terminal, Git Bash, VS Code terminal — after reopen.
 
 ## Hello World
 
 `hello.omni`:
-
 ```omni
 import draw
 import cmd
@@ -101,84 +100,40 @@ draw.button(20, 300, 140, 36, "List files", action="ls -la")
 draw.show()
 
 cmd.run("echo hi")
-
 pathlib.write("hi.txt", "hello")
 print(pathlib.read("hi.txt"))
 ```
 
 ```bash
-./omni hello.omni
+omni hello.omni
+omni -e "import pathlib; print(pathlib.read(\"hi.txt\"))"
 ```
-
-No GUI? Writes `drawing.bmp`.
 
 ## Language
 
 ```omni
-# comment
-import draw
-import draw as d
 import draw, cmd, pathlib
 from draw import window, rect
-from draw import window as win
-from draw import *
-
 x = 123
-y = "hello"
-z = (10, 20)
-
-print("hi", x, y)
-input("Name: ")
+print("hi", x)
 ```
 
-- newline or `;` separates statements
-- `=` assignment, `a.b` attribute, `f(1, 2, key=val)` call, `(1,2)` tuple
-- No loops, no if, no defs — straight lines only
+- newline or `;` separates statements, `=` assign, `a.b` attr, `f(1,2,key=val)` call, `(1,2)` tuple
 
 ## Modules
 
-### draw
-
-```omni
-import draw
-draw.window(800, 600, "My App", "#0d1117")
-draw.rect(10, 10, 100, 50, "red")
-draw.circle(100, 100, 30, "blue")
-draw.line(0, 0, 100, 100, "green", 2)
-draw.text(20, 20, "Hello", "white", 18)
-draw.button(20, 80, 120, 30, "Click", action="ls -la")
-draw.save("out.bmp")
-draw.show()
-draw.clear()
-```
-
-### cmd
-
-```omni
-import cmd
-cmd.run("ls -la")
-cmd.bg("sleep 10")
-```
-
-### pathlib
-
-```omni
-import pathlib
-pathlib.write("a.txt", "hi")
-pathlib.read("a.txt")
-p = pathlib.Path("a.txt")
-p.write("hello")
-```
+- `draw`: window, rect, circle, line, text, button, save, show, clear
+- `cmd`: run, bg
+- `pathlib`: read/write/exists/mkdir/list/delete + Path object
 
 ## Structure
 
 ```
 src/omni.h, lex.c, parse.c, eval.c, draw.c, gui_*.c, util.c, main.c
-installer/windows/OmniScript.iss   # Inno Setup EXE — OS integrated
-installer/macos/build-dmg.sh       # DMG + PKG
+installer/windows/OmniScript.iss   # EXE — OS integrated + file assoc
+installer/macos/build-dmg.sh       # DMG + PKG + Install CLI.command
 installer/linux/build-deb.sh       # DEB
 installer/linux/build-rpm.sh       # RPM
-installer/build-all.sh             # all
 ```
 
 MIT

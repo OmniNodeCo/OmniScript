@@ -1,33 +1,40 @@
 # Changelog
 
+## [1.0.2] - 2026-09-22
+
+Make `omni` runnable in any terminal and able to run files — OS integrated, file association.
+
+### Fixed
+
+- **Windows PATH**: `omni` not recognized after install — now adds to BOTH SYSTEM and USER PATH, always (even if task unchecked), broadcasts WM_SETTINGCHANGE, creates fallback copies in `{win}\omni.exe` and `{sys}\omni.exe` so `omni` works immediately even before PATH reload. Works in CMD, PowerShell, Windows Terminal, Git Bash.
+- **Windows file association**: Added `.omni` file association — double-click `.omni` file runs with OmniScript, registry `HKCR\.omni` -> `OmniScriptFile`, `shell\open\command` = `"{app}\omni.exe" "%1"`.
+- **Windows EXE**: Now runs `omni --version` and shows message "REOPEN terminal, then type: omni --version and omni examples\01_hello.omni"
+
+### Added
+
+- `omni file.omni` — runs files (already in main.c, now OS integrated via file association)
+- `omni -e "code"` — runs one-liner
+- `omni` — REPL
+
 ## [1.0.1] - 2026-09-22
 
 Fix Windows `omni` not recognized after install — OS integrated, type `omni` and it reacts.
 
 ### Fixed
 
-- **Windows EXE**: Now adds to both SYSTEM and USER PATH, broadcasts WM_SETTINGCHANGE, creates fallback copy in `{win}\omni.exe`, always adds PATH even if task unchecked, adds App Paths registry for `omni` and `omni.exe`. After install, **reopen terminal** then `omni --version` works.
-- **Inno Setup**: Added `desktopicon` task, fixed `OMNI_VERSION` quoting in `build.bat`/`build.ps1` (`-DOMNI_VERSION=\"1.0.1\"`), added `omni-wrapper.bat`.
+- **Windows EXE**: Adds to both SYSTEM and USER PATH, broadcasts WM_SETTINGCHANGE, fallback copy in `{win}\omni.exe`, always adds PATH, App Paths registry.
+- **Inno Setup**: Added `desktopicon` task, fixed `OMNI_VERSION` quoting.
 
 ### Added
 
-- **RPM**: `installer/linux/build-rpm.sh` — `omniscript-1.0.1-1.x86_64.rpm`
-- **macOS**: DMG now includes `Install CLI.command` + `install-cli.sh` + `README.txt`, builds PKG via `pkgbuild` for OS integration
+- **RPM**: `installer/linux/build-rpm.sh`
+- **macOS**: DMG includes `Install CLI.command` + `install-cli.sh` + PKG
 
 ## [1.0.0] - 2026-09-21
 
-Super simple — cleared everything. Native installers: Inno Setup EXE (Windows), DMG (macOS), DEB + RPM + tarball (Linux).
+Super simple — native installers: Inno Setup EXE, DMG, DEB, RPM.
 
 ### Added
 
-- **Imports like Python**: `import draw`, `import draw as d`, `from draw import window`, `from draw import *`
-- **draw module**: `window`, `rect`, `circle`, `line`, `text`, `button`, `save`, `show`, `clear`, callable `draw()` — GUI buttons with shell actions, BMP fallback
-- **cmd module**: `run`, `bg`/`background`, callable `cmd()` — foreground and background shell commands
-- **pathlib module**: `read`, `write`, `append`, `exists`, `is_file`, `is_dir`, `mkdir`, `delete`, `list`, `join`, `name`, `parent`, `suffix`, `Path` object with bound methods
-- **Builtins**: `print`, `input`
-- **Simple language**: only imports, assignments, expressions, calls, attributes, tuples — newline or `;` separated
-- **Installers**: `installer/windows/OmniScript.iss` Inno Setup 6 EXE, `installer/macos/build-dmg.sh` DMG + app bundle + PKG, `installer/linux/build-deb.sh` DEB, `installer/linux/build-rpm.sh` RPM, `installer/build-all.sh` + `make dist/dmg/deb/rpm/exe`
-
-### Removed
-
-- Old `draw()` element syntax, `draw_gui`, `file()`, complex eval, updater, sha256, install.sh/install.ps1 curl-pipe (now native installers)
+- Imports like Python, draw module with GUI buttons, cmd background, pathlib like Python
+- Installers: EXE, DMG, DEB, RPM, build-all.sh

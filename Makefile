@@ -1,4 +1,4 @@
-VERSION := $(shell cat VERSION 2>/dev/null || echo 1.0.1)
+VERSION := $(shell cat VERSION 2>/dev/null || echo 1.0.2)
 CC ?= $(shell command -v cc 2>/dev/null || command -v gcc 2>/dev/null || command -v clang 2>/dev/null || echo cc)
 CFLAGS ?= -O2
 CFLAGS += -std=c11 -Wall -Wextra -DOMNI_VERSION=\"$(VERSION)\"

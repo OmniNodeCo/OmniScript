@@ -17,7 +17,7 @@ installer\windows\build.ps1
 ```
 
 Requires Inno Setup 6 (https://jrsoftware.org/isinfo.php).  
-Output: `dist/OmniScript-1.0.1-Windows-x86_64-Setup.exe`
+Output: `dist/OmniScript-1.0.2-Windows-x86_64-Setup.exe`
 
 Run the EXE — installs to Program Files, adds to PATH (optional), Start Menu shortcuts, uninstaller.
 
@@ -27,7 +27,7 @@ Run the EXE — installs to Program Files, adds to PATH (optional), Start Menu s
 ./installer/macos/build-dmg.sh
 ```
 
-Output: `dist/OmniScript-1.0.1-macOS.dmg`
+Output: `dist/OmniScript-1.0.2-macOS.dmg`
 
 Open DMG, drag `OmniScript.app` to Applications. Contains `omni` binary + examples.
 
@@ -35,22 +35,22 @@ Open DMG, drag `OmniScript.app` to Applications. Contains `omni` binary + exampl
 
 ```bash
 ./installer/linux/build-deb.sh
-sudo dpkg -i dist/omniscript_1.0.1_amd64.deb
+sudo dpkg -i dist/omniscript_1.0.2_amd64.deb
 ```
 
 ## Linux — RPM
 
 ```bash
 ./installer/linux/build-rpm.sh
-sudo rpm -i dist/omniscript-1.0.1-1.x86_64.rpm
+sudo rpm -i dist/omniscript-1.0.2-1.x86_64.rpm
 # or
-sudo dnf install ./dist/omniscript-1.0.1-1.x86_64.rpm
+sudo dnf install ./dist/omniscript-1.0.2-1.x86_64.rpm
 ```
 
 Or tarball:
 
 ```bash
-tar -xzf dist/omniscript-1.0.1-linux-amd64.tar.gz
+tar -xzf dist/omniscript-1.0.2-linux-amd64.tar.gz
 sudo cp usr/bin/omni /usr/local/bin/
 ```
 

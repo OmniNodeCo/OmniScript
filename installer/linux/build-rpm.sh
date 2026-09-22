@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-VERSION="$(cat "$ROOT/VERSION" 2>/dev/null | tr -d ' \t\n\r' || echo 1.0.1)"
+VERSION="$(cat "$ROOT/VERSION" 2>/dev/null | tr -d ' \t\n\r' || echo 1.0.2)"
 ARCH="$(uname -m)"
 RPMARCH="x86_64"
 if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then RPMARCH="aarch64"; fi
