@@ -17,7 +17,7 @@ Three modules, Python-like imports.
 ```bat
 installer\windows\build.bat
 ```
-Output: `dist/OmniScript-1.0.2-Windows-x86_64-Setup.exe` — installs to Program Files, adds to **both SYSTEM and USER PATH**, fallback copies to `C:\Windows\omni.exe` + `C:\Windows\System32\omni.exe`, file association `.omni` → double-click runs file.
+Output: `dist/OmniScript-1.0.3-Windows-x86_64-Setup.exe` — installs to Program Files, adds to **both SYSTEM and USER PATH**, fallback copies to `C:\Windows\omni.exe` + `C:\Windows\System32\omni.exe`, file association `.omni` → double-click runs file.
 
 **After install, REOPEN terminal (CMD, PowerShell, Windows Terminal, Git Bash all work), then:**
 
@@ -36,7 +36,7 @@ C:\Windows\omni.exe --version
 setx PATH "%PATH%;C:\Program Files\OmniScript"
 :: reopen terminal
 ```
-Or install **1.0.2** which fixes it.
+Or install **1.0.3** which fixes it.
 
 ### macOS — DMG + PKG
 
@@ -51,8 +51,8 @@ omni examples/01_hello.omni
 ### Linux — DEB + RPM
 
 ```bash
-sudo dpkg -i dist/omniscript_1.0.2_amd64.deb
-sudo rpm -i dist/omniscript-1.0.2-1.x86_64.rpm
+sudo dpkg -i dist/omniscript_1.0.3_amd64.deb
+sudo rpm -i dist/omniscript-1.0.3-1.x86_64.rpm
 omni --version
 omni examples/01_hello.omni
 ```

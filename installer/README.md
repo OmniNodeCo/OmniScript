@@ -22,7 +22,7 @@ Requires:
 - C compiler (gcc/clang/cc/cl) to build `omni.exe`
 - Inno Setup 6 — https://jrsoftware.org/isinfo.php — provides `iscc`
 
-Output: `dist/OmniScript-1.0.2-Windows-x86_64-Setup.exe`
+Output: `dist/OmniScript-1.0.3-Windows-x86_64-Setup.exe`
 
 What it does:
 - Installs to `{pf}\OmniScript`
@@ -40,8 +40,8 @@ What it does:
 
 Creates `OmniScript.app` bundle + DMG:
 
-- `dist/OmniScript-1.0.2-macOS.dmg` (on macOS with hdiutil)
-- `dist/OmniScript-1.0.2-macOS.tar.gz` fallback on Linux
+- `dist/OmniScript-1.0.3-macOS.dmg` (on macOS with hdiutil)
+- `dist/OmniScript-1.0.3-macOS.tar.gz` fallback on Linux
 
 App bundle contains `omni` binary, README, examples.
 
@@ -56,8 +56,8 @@ On macOS, open DMG and drag to Applications.
 ```
 
 Output:
-- `dist/omniscript_1.0.2_amd64.deb`
-- `dist/omniscript-1.0.2-linux-amd64.tar.gz`
+- `dist/omniscript_1.0.3_amd64.deb`
+- `dist/omniscript-1.0.3-linux-amd64.tar.gz`
 
 DEB installs:
 - `/usr/bin/omni`
@@ -71,7 +71,7 @@ DEB installs:
 ```
 
 Output:
-- `dist/omniscript-1.0.2-1.x86_64.rpm`
+- `dist/omniscript-1.0.3-1.x86_64.rpm`
 
 RPM installs same files. Requires `rpmbuild`:
 ```bash
@@ -82,13 +82,13 @@ sudo dnf install rpm-build # Fedora
 Install:
 
 ```bash
-sudo dpkg -i dist/omniscript_1.0.2_amd64.deb
+sudo dpkg -i dist/omniscript_1.0.3_amd64.deb
 # or
-sudo apt install ./dist/omniscript_1.0.2_amd64.deb
+sudo apt install ./dist/omniscript_1.0.3_amd64.deb
 
-sudo rpm -i dist/omniscript-1.0.2-1.x86_64.rpm
+sudo rpm -i dist/omniscript-1.0.3-1.x86_64.rpm
 # or
-sudo dnf install ./dist/omniscript-1.0.2-1.x86_64.rpm
+sudo dnf install ./dist/omniscript-1.0.3-1.x86_64.rpm
 ```
 
 Uninstall:
@@ -101,7 +101,7 @@ sudo rpm -e omniscript
 Tarball install:
 
 ```bash
-tar -xzf dist/omniscript-1.0.2-linux-amd64.tar.gz -C /tmp
+tar -xzf dist/omniscript-1.0.3-linux-amd64.tar.gz -C /tmp
 sudo cp /tmp/usr/bin/omni /usr/local/bin/
 ```
 
