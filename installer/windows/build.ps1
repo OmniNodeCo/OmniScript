@@ -1,6 +1,6 @@
 # Build OmniScript Windows installer
 $ErrorActionPreference = "Stop"
-$Root = (Resolve-Path "$PSScriptRoot\..\..").Path
+$Root = (Resolve-Path "$PSScriptRoot\..\..\").Path
 $Version = (Get-Content "$Root\VERSION" -First 1).Trim()
 if (-not $Version) { $Version = "1.0.0" }
 
@@ -20,10 +20,13 @@ if (-not $cc) { throw "No C compiler found" }
 
 Write-Host "    Using $cc"
 
+# Properly quoted version for C: -DOMNI_VERSION="1.0.0" needs to be passed as -DOMNI_VERSION=\"1.0.0\"
+$verDefine = "-DOMNI_VERSION=`\"$Version`""
+
 if ($cc -like "*cl.exe") {
-    & $cc /nologo /O2 /W3 /std:c11 /D "OMNI_VERSION=`"$Version`"" /Fe"$Root\omni.exe" $fullSrc /link gdi32.lib user32.lib
+    & $cc /nologo /O2 /W3 /std:c11 /D $verDefine /Fe"$Root\omni.exe" $fullSrc /link gdi32.lib user32.lib
 } else {
-    & $cc -O2 -std=c11 -Wall -Wextra -DOMNI_VERSION="$Version" -o "$Root\omni.exe" $fullSrc -lgdi32 -luser32
+    & $cc -O2 -std=c11 -Wall -Wextra $verDefine -o "$Root\omni.exe" $fullSrc -lgdi32 -luser32
 }
 
 if (-not (Test-Path "$Root\omni.exe")) { throw "Build failed" }
@@ -32,6 +35,10 @@ if (-not (Test-Path "$Root\omni.exe")) { throw "Build failed" }
 # Inno Setup
 $iscc = Get-Command iscc -ErrorAction SilentlyContinue
 if (-not $iscc) { $iscc = Get-Command ISCC -ErrorAction SilentlyContinue }
+if (-not $iscc) {
+    $isccPath = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+    if (Test-Path $isccPath) { $iscc = Get-Item $isccPath }
+}
 if ($iscc) {
     Write-Host "==> Building installer with ISCC"
     Push-Location $PSScriptRoot

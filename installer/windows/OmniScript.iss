@@ -35,7 +35,8 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "envPath"; Description: "Add to PATH"; GroupDescription: "Additional options:"
+Name: "envPath"; Description: "Add to PATH"; GroupDescription: "Additional options:"; Flags: checkedonce
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
 Source: "..\..\omni.exe"; DestDir: "{app}"; Flags: ignoreversion
