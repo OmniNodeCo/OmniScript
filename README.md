@@ -12,14 +12,23 @@ Three modules, Python-like imports.
 
 ## Install — OS integrated, type `omni` and it reacts, runs files
 
-### Windows — EXE (Inno Setup) — works in any terminal
+### Windows — EXE (Inno Setup) — works like git CLI
 
 ```bat
 installer\windows\build.bat
 ```
-Output: `dist/OmniScript-1.0.3-Windows-x86_64-Setup.exe` — installs to Program Files, adds to **both SYSTEM and USER PATH**, fallback copies to `C:\Windows\omni.exe` + `C:\Windows\System32\omni.exe`, file association `.omni` → double-click runs file.
 
-**After install, REOPEN terminal (CMD, PowerShell, Windows Terminal, Git Bash all work), then:**
+**How git CLI works (researched):** Git installer requires admin, adds `C:\Program Files\Git\cmd` to BOTH SYSTEM and USER PATH via registry + setx, broadcasts WM_SETTINGCHANGE, copies wrapper to location always in PATH. After install, **reopen terminal**, then `git --version` works in CMD/PowerShell/Terminal/Git Bash.
+
+**Omni 1.0.3 does same:**
+- `PrivilegesRequired=admin`, adds `C:\Program Files\OmniScript` to SYSTEM+USER PATH always, setx /M + PowerShell SetEnvironmentVariable, broadcast WM_SETTINGCHANGE
+- Fallback copies to `C:\Windows\omni.exe`, `C:\Windows\System32\omni.exe`, `%LOCALAPPDATA%\Microsoft\WindowsApps\omni.exe` (always in PATH like python), plus `omni.bat` wrappers
+- App Paths registry + `.omni` file association double-click runs file
+- Includes `fix-path.ps1` like git troubleshooting
+
+Output: `dist/OmniScript-1.0.3-Windows-x86_64-Setup.exe`
+
+**After install, REOPEN terminal (CMD, PowerShell, Windows Terminal, Git Bash, VS Code terminal all work), then it reacts:**
 
 ```bat
 omni --version
@@ -29,14 +38,14 @@ omni myfile.omni
 omni -e "import draw; draw.window(200,100); draw.rect(0,0,50,50,\"red\"); draw.show()"
 ```
 
-If `'omni' is not recognized` (you installed 1.0.0):
+If `'omni' is not recognized` (old 1.0.0/1.0.1):
 ```bat
 "C:\Program Files\OmniScript\omni.exe" --version
-C:\Windows\omni.exe --version
-setx PATH "%PATH%;C:\Program Files\OmniScript"
+powershell -ExecutionPolicy Bypass -File "C:\Program Files\OmniScript\fix-path.ps1"
 :: reopen terminal
+omni --version
 ```
-Or install **1.0.3** which fixes it.
+Or install **1.0.3** — works like git.
 
 ### macOS — DMG + PKG
 
@@ -130,10 +139,11 @@ print("hi", x)
 
 ```
 src/omni.h, lex.c, parse.c, eval.c, draw.c, gui_*.c, util.c, main.c
-installer/windows/OmniScript.iss   # EXE — OS integrated + file assoc
+installer/windows/OmniScript.iss   # EXE — OS integrated, git-like, file assoc
 installer/macos/build-dmg.sh       # DMG + PKG + Install CLI.command
 installer/linux/build-deb.sh       # DEB
 installer/linux/build-rpm.sh       # RPM
+installer/windows/fix-path.ps1     # fix PATH like git
 ```
 
 MIT
