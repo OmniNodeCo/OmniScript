@@ -141,15 +141,17 @@ jobs:
           ls -lh installer/windows/
           echo "Checking omni.exe"
           if [ -f omni.exe ]; then ./omni.exe --version || true; else echo "omni.exe missing"; fi
-          # Try ISCC
+          # Try ISCC with log
           export PATH="$PATH:/c/Program Files (x86)/Inno Setup 6"
           if command -v iscc >/dev/null 2>&1; then
             echo "iscc found at $(which iscc)"
-            iscc /DMyAppVersion=$ver installer/windows/OmniScript.iss || echo "iscc via bash failed but continuing"
+            iscc /DMyAppVersion=$ver installer/windows/OmniScript.iss 2>&1 | tee /tmp/iscc-bash.log || echo "iscc via bash failed but continuing"
+            cat /tmp/iscc-bash.log || true
           else
             echo "iscc not in bash PATH, trying direct"
             if [ -f "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ]; then
-              "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" /DMyAppVersion=$ver installer/windows/OmniScript.iss || echo "direct ISCC failed but continuing"
+              "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" /DMyAppVersion=$ver installer/windows/OmniScript.iss 2>&1 | tee /tmp/iscc-bash.log || echo "direct ISCC failed but continuing"
+              cat /tmp/iscc-bash.log || true
             else
               echo "ISCC.exe not found"
             fi
@@ -163,22 +165,40 @@ jobs:
           $ErrorActionPreference = "Continue"
           $ver = "${{ needs.verify.outputs.version }}"
           Write-Host "=== Building EXE via pwsh, ver $ver ==="
-          if (Test-Path omni.exe) { try { & ./omni.exe --version } catch { Write-Host "omni --version failed" } } else { Write-Host "omni.exe missing" }
+          Write-Host "PWD: $PWD"
+          Get-ChildItem -Force | Format-Table
+          if (Test-Path omni.exe) { try { & ./omni.exe --version } catch { Write-Host "omni --version failed" } } else { Write-Host "omni.exe missing, trying make"; bash -c "make"; & ./omni.exe --version }
           $iscc = Get-Command iscc -ErrorAction SilentlyContinue
           if (-not $iscc) {
             $p = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
             if (Test-Path $p) { $iscc = Get-Item $p; Write-Host "Found $p" }
           }
           if ($iscc) {
-            Write-Host "Building with $($iscc.Source)"
+            Write-Host "Building with $($iscc.Source) — ver $ver"
             New-Item -ItemType Directory -Force -Path dist | Out-Null
+            Write-Host "ISS content head:"
+            Get-Content installer/windows/OmniScript.iss | Select-Object -First 60
+            Write-Host "Checking source files exist:"
+            Test-Path omni.exe, README.md, LICENSE, VERSION, examples | Format-Table
             try {
-              & $iscc.Source "/DMyAppVersion=$ver" "installer/windows/OmniScript.iss"
+              $log = "dist/iscc.log"
+              & $iscc.Source "/DMyAppVersion=$ver" "installer/windows/OmniScript.iss" | Tee-Object -FilePath $log
               Write-Host "ISCC exit: $LASTEXITCODE"
+              Get-Content $log | Select-Object -Last 100
             } catch {
               Write-Host "ISCC threw: $_"
+              Write-Host $_.Exception.Message
             }
             Get-ChildItem dist -Force | Format-Table
+            # Also try from installer/windows dir
+            if (-not (Test-Path "dist/OmniScript-$ver-Windows-x86_64-Setup.exe")) {
+              Write-Host "EXE not found at root/dist, trying from installer/windows"
+              Push-Location installer/windows
+              & $iscc.Source "/DMyAppVersion=$ver" "OmniScript.iss" | Tee-Object -FilePath "../../dist/iscc2.log"
+              Write-Host "ISCC2 exit: $LASTEXITCODE"
+              Pop-Location
+              Get-ChildItem dist -Force | Format-Table
+            }
           } else {
             Write-Host "ISCC not found"
           }
@@ -190,12 +210,15 @@ jobs:
               Compress-Archive -Path omni.exe, README.md, LICENSE, examples -DestinationPath "dist/OmniScript-$ver-Windows-x86_64.zip" -Force
             } catch {
               Write-Host "Compress-Archive failed: $_"
-              # Try simpler zip
               Compress-Archive -Path omni.exe -DestinationPath "dist/OmniScript-$ver-Windows-x86_64.zip" -Force
             }
+          } else {
+            Write-Host "SUCCESS: EXE installer built at $exe"
+            # Also create zip for convenience
+            try { Compress-Archive -Path omni.exe, README.md, LICENSE, examples -DestinationPath "dist/OmniScript-$ver-Windows-x86_64.zip" -Force } catch {}
           }
           Get-ChildItem dist | Format-Table
-          Write-Host "Windows build step completed (continue-on-error)"
+          Write-Host "Windows build step completed"
           exit 0
       - name: List dist final
         shell: bash
