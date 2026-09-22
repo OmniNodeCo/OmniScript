@@ -5,7 +5,7 @@ VERSION="$(cat "$ROOT/VERSION" 2>/dev/null | tr -d ' \t\n\r' || echo 1.0.0)"
 ARCH="amd64"
 if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then ARCH="arm64"; fi
 
-echo "==> OmniScript $VERSION Linux DEB ($ARCH)"
+echo "==> OmniScript $VERSION Linux DEB ($ARCH) — OS integrated"
 
 # Build omni if needed
 if [ ! -f "$ROOT/omni" ]; then
@@ -35,10 +35,11 @@ Description: OmniScript — very very very simple language
  Tiny language with draw, cmd, pathlib modules.
  Imports like Python: import draw, cmd, pathlib.
  One binary, libc only.
+ After install, type 'omni' in terminal and it reacts.
 Homepage: https://github.com/OmniNodeCo/OmniScript
 CONTROL
 
-# Binary
+# Binary — OS integrated into /usr/bin
 cp "$ROOT/omni" "$BUILD_DIR/usr/bin/omni"
 chmod 755 "$BUILD_DIR/usr/bin/omni"
 
@@ -48,19 +49,53 @@ cp "$ROOT/LICENSE" "$BUILD_DIR/usr/share/doc/omniscript/" 2>/dev/null || true
 cp "$ROOT/VERSION" "$BUILD_DIR/usr/share/doc/omniscript/" 2>/dev/null || true
 cp -r "$ROOT/examples"/* "$BUILD_DIR/usr/share/omniscript/examples/" 2>/dev/null || true
 
-# Desktop file
+# Desktop file — OS integrated launcher
 cat > "$BUILD_DIR/usr/share/applications/omniscript.desktop" <<DESKTOP
 [Desktop Entry]
 Name=OmniScript
 GenericName=OmniScript Language
-Comment=Tiny language — draw, cmd, pathlib
+Comment=Tiny language — draw, cmd, pathlib — type 'omni' in terminal
 Exec=omni
 Icon=omniscript
 Terminal=true
 Type=Application
 Categories=Development;
 Keywords=omni;script;
+StartupNotify=false
 DESKTOP
+
+# Postinst — tell user OS integration works
+cat > "$BUILD_DIR/DEBIAN/postinst" <<POSTINST
+#!/bin/sh
+set -e
+echo "==> OmniScript $VERSION installed into OS"
+echo "    Binary: /usr/bin/omni"
+echo "    Now type in terminal and it reacts:"
+echo "      omni --version"
+echo "      omni"
+echo "      omni /usr/share/omniscript/examples/01_hello.omni"
+# Update desktop database if available
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database /usr/share/applications 2>/dev/null || true
+fi
+# Test that omni reacts
+if [ -x /usr/bin/omni ]; then
+  /usr/bin/omni --version 2>&1 || true
+fi
+exit 0
+POSTINST
+chmod 755 "$BUILD_DIR/DEBIAN/postinst"
+
+cat > "$BUILD_DIR/DEBIAN/postrm" <<POSTRM
+#!/bin/sh
+set -e
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database /usr/share/applications 2>/dev/null || true
+fi
+echo "OmniScript removed. 'omni' command no longer available."
+exit 0
+POSTRM
+chmod 755 "$BUILD_DIR/DEBIAN/postrm"
 
 # Icon — generate via omni if possible
 if [ -x "$ROOT/omni" ]; then
@@ -79,7 +114,7 @@ DEB_FILE="$DIST_DIR/omniscript_${VERSION}_${ARCH}.deb"
 
 if command -v dpkg-deb >/dev/null 2>&1; then
   dpkg-deb --build "$BUILD_DIR" "$DEB_FILE"
-  echo "    DEB created: $DEB_FILE"
+  echo "    DEB created: $DEB_FILE — install then type 'omni' and it reacts"
   ls -lh "$DEB_FILE"
 else
   echo "    dpkg-deb not found, creating tar.gz fallback"
@@ -99,4 +134,4 @@ fi
 # Cleanup
 rm -rf "$DIST_DIR/deb-build"
 
-echo "==> Done"
+echo "==> Done — after 'sudo dpkg -i $DEB_FILE', type 'omni' in terminal and it reacts"

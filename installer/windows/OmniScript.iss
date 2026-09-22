@@ -1,4 +1,4 @@
-; OmniScript Inno Setup installer
+; OmniScript Inno Setup installer — OS integrated, typing 'omni' in terminal reacts
 ; Build with: iscc /DMyAppVersion=1.0.0 OmniScript.iss
 ; Requires Inno Setup 6: https://jrsoftware.org/isinfo.php
 
@@ -30,34 +30,53 @@ WizardStyle=modern
 ArchitecturesInstallIn64BitMode=x64
 ChangesEnvironment=yes
 UninstallDisplayIcon={app}\{#MyAppExeName}
+InfoAfterFile=..\..\README.md
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "envPath"; Description: "Add to PATH"; GroupDescription: "Additional options:"; Flags: checkedonce
+Name: "envPath"; Description: "Add to PATH (so you can type 'omni' in terminal)"; GroupDescription: "OS integration:"; Flags: checkedonce
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
 Source: "..\..\omni.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\..\README.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\..\VERSION"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\README.md"; DestDir: "{app}\"; Flags: ignoreversion
+Source: "..\..\LICENSE"; DestDir: "{app}\"; Flags: ignoreversion
+Source: "..\..\VERSION"; DestDir: "{app}\"; Flags: ignoreversion
 Source: "..\..\examples\*"; DestDir: "{app}\examples"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppExeName}"
-Name: "{group}\{#MyAppName} REPL"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{userdocs}"; IconFilename: "{app}\{#MyAppExeName}"
+Name: "{group}\{#MyAppName} REPL (type omni)"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{userdocs}"; IconFilename: "{app}\{#MyAppExeName}"
 Name: "{group}\Examples"; Filename: "{app}\examples"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; WorkingDir: "{app}"
 
+[Registry]
+; App Paths so Windows can find omni.exe even without PATH (Start -> Run)
+Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{#MyAppExeName}"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName}"; Flags: uninsdeletekey
+Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{#MyAppExeName}"; ValueType: string; ValueName: "Path"; ValueData: "{app}"; Flags: uninsdeletekey
+
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Parameters: "--version"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--version"; Description: "Run 'omni --version' to test OS integration"; Flags: nowait postinstall skipifsilent
 
 [Code]
 const
     EnvironmentKey = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment';
+    WM_SETTINGCHANGE = $001A;
+    SMTO_ABORTIFHUNG = 2;
+    HWND_BROADCAST = $FFFF;
+
+function SendMessageTimeout(hWnd: LongInt; Msg: LongInt; wParam: LongInt; lParam: String; fuFlags: LongInt; uTimeout: LongInt; var lpdwResult: LongInt): LongInt;
+  external 'SendMessageTimeoutA@user32.dll stdcall';
+
+procedure BroadcastEnvChange();
+var
+  Res: LongInt;
+begin
+  SendMessageTimeout(HWND_BROADCAST, WM_SETTINGCHANGE, 0, 'Environment', SMTO_ABORTIFHUNG, 5000, Res);
+end;
 
 function NeedsAddPath(Param: string): boolean;
 var
@@ -85,6 +104,7 @@ begin
     else
       Paths := Path;
     RegWriteExpandStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths);
+    BroadcastEnvChange();
   end;
 end;
 
@@ -99,8 +119,18 @@ begin
   P := Pos(';' + Uppercase(Path) + ';', ';' + Uppercase(Paths) + ';');
   if P = 0 then exit;
 
-  Delete(Paths, P - 1, Length(Path) + 1);
+  // Remove ;Path or Path; or Path
+  if P > 1 then
+  begin
+    Delete(Paths, P, Length(Path) + 1);
+  end else
+  begin
+    Delete(Paths, 1, Length(Path) + 1);
+  end;
+  // Clean double ;;
+  StringChangeEx(Paths, ';;', ';', True);
   RegWriteExpandStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths);
+  BroadcastEnvChange();
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);

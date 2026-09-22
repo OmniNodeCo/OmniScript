@@ -6,7 +6,7 @@ ARCH="$(uname -m)"
 RPMARCH="x86_64"
 if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then RPMARCH="aarch64"; fi
 
-echo "==> OmniScript $VERSION Linux RPM ($RPMARCH)"
+echo "==> OmniScript $VERSION Linux RPM ($RPMARCH) — OS integrated"
 
 # Build omni if needed
 if [ ! -f "$ROOT/omni" ]; then
@@ -39,7 +39,7 @@ if command -v rpmbuild >/dev/null 2>&1; then
 Name:           omniscript
 Version:        $VERSION
 Release:        1%{?dist}
-Summary:        OmniScript — very very very simple language
+Summary:        OmniScript — very very very simple language — type 'omni' and it reacts
 License:        MIT
 URL:            https://github.com/OmniNodeCo/OmniScript
 Source0:        omniscript-%{version}.tar.gz
@@ -49,6 +49,7 @@ BuildArch:      $RPMARCH
 Tiny language with draw, cmd, pathlib modules.
 Imports like Python: import draw, cmd, pathlib.
 One binary, libc only.
+After install, type 'omni' in terminal and it reacts.
 
 %prep
 %setup -q -n omniscript-%{version}
@@ -68,13 +69,33 @@ cat > %{buildroot}/usr/share/applications/omniscript.desktop <<DESKTOP
 [Desktop Entry]
 Name=OmniScript
 GenericName=OmniScript Language
-Comment=Tiny language — draw, cmd, pathlib
+Comment=Tiny language — draw, cmd, pathlib — type 'omni' in terminal
 Exec=omni
 Terminal=true
 Type=Application
 Categories=Development;
 Keywords=omni;script;
 DESKTOP
+
+%post
+echo "==> OmniScript $VERSION installed into OS"
+echo "    Binary: /usr/bin/omni"
+echo "    Now type in terminal and it reacts:"
+echo "      omni --version"
+echo "      omni"
+echo "      omni /usr/share/omniscript/examples/01_hello.omni"
+if [ -x /usr/bin/omni ]; then
+  /usr/bin/omni --version 2>&1 || true
+fi
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database /usr/share/applications 2>/dev/null || true
+fi
+
+%postun
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database /usr/share/applications 2>/dev/null || true
+fi
+echo "OmniScript removed. 'omni' command no longer available."
 
 %files
 /usr/bin/omni
@@ -84,7 +105,7 @@ DESKTOP
 
 %changelog
 * Sun Sep 21 2026 OmniNodeCo - $VERSION-1
-- Super simple rewrite with draw, cmd, pathlib
+- Super simple rewrite with draw, cmd, pathlib — OS integrated, type 'omni' and reacts
 
 SPEC
 
@@ -94,7 +115,7 @@ SPEC
   BUILT_RPM=$(find "$RPMBUILD_ROOT/RPMS" -name "*.rpm" | head -n 1)
   if [ -n "$BUILT_RPM" ] && [ -f "$BUILT_RPM" ]; then
     cp "$BUILT_RPM" "$RPM_FILE"
-    echo "    RPM created: $RPM_FILE"
+    echo "    RPM created: $RPM_FILE — install then type 'omni' and it reacts"
     ls -lh "$RPM_FILE"
   else
     echo "    rpmbuild did not produce RPM, listing:"
@@ -105,7 +126,6 @@ SPEC
 
 else
   echo "    rpmbuild not found, trying to create RPM via tar + rpm spec fallback"
-  # Fallback: create tar.gz that can be used, and try alien or just note
   if command -v alien >/dev/null 2>&1 && [ -f "$DIST_DIR/omniscript_${VERSION}_amd64.deb" ]; then
     echo "    Converting DEB to RPM via alien"
     (cd "$DIST_DIR" && fakeroot alien --to-rpm --scripts "omniscript_${VERSION}_amd64.deb" 2>&1 || alien --to-rpm "omniscript_${VERSION}_amd64.deb" 2>&1) || true
@@ -113,7 +133,6 @@ else
   else
     echo "    No rpmbuild, creating placeholder tar.gz as RPM fallback"
     echo "    Install rpm-build: sudo apt-get install rpm"
-    # Create a simple tar that documents how to install
     tar -czf "$DIST_DIR/omniscript-${VERSION}-linux-${RPMARCH}.tar.gz" -C "$ROOT" omni README.md LICENSE VERSION examples/ 2>/dev/null || true
   fi
 fi
@@ -125,5 +144,5 @@ if [ ! -f "$TAR_FILE" ]; then
   echo "    Tarball created: $TAR_FILE"
 fi
 
-echo "==> Done"
-ls -lh "$DIST_DIR" | grep -E "rpm|tar.gz|deb"
+echo "==> Done — after 'sudo rpm -i $RPM_FILE', type 'omni' in terminal and it reacts"
+ls -lh "$DIST_DIR" | grep -E "rpm|tar.gz|deb" || true
