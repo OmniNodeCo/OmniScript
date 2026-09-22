@@ -69,15 +69,24 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Continue"
-          if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) {
+          Write-Host "Checking for ISCC"
+          $iscc = Get-Command iscc -ErrorAction SilentlyContinue
+          if ($iscc) { Write-Host "ISCC already at $($iscc.Source)"; $iscc | Format-List }
+          else {
             Write-Host "Installing Inno Setup via choco"
-            choco install innosetup --yes --no-progress || Write-Host "choco install failed, trying iscc in PATH"
+            choco install innosetup --yes --no-progress
           }
-          Get-Command iscc -ErrorAction SilentlyContinue | Format-List
-          if (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe") {
-            $env:Path += ";C:\Program Files (x86)\Inno Setup 6"
-            Write-Host "Added Inno Setup 6 to PATH"
+          $iscc = Get-Command iscc -ErrorAction SilentlyContinue
+          if (-not $iscc) {
+            $p = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+            if (Test-Path $p) {
+              $env:Path += ";C:\Program Files (x86)\Inno Setup 6"
+              Write-Host "Added $p to PATH"
+              $iscc = Get-Command iscc -ErrorAction SilentlyContinue
+            }
           }
+          if ($iscc) { Write-Host "ISCC ready: $($iscc.Source)" } else { Write-Host "ISCC not found, will try direct path" }
+          Get-ChildItem "C:\Program Files (x86)\Inno Setup 6\" -ErrorAction SilentlyContinue | Format-Table Name, Length
       - name: Build omni
         shell: bash
         run: |
@@ -85,6 +94,7 @@ jobs:
           if command -v make >/dev/null 2>&1; then MK=make; elif command -v mingw32-make >/dev/null 2>&1; then MK=mingw32-make; else MK=gmake; fi
           $MK
           if [ -f ./omni.exe ]; then ./omni.exe --version; else ./omni --version; fi
+          ls -lh omni* || true
       - name: Platform binary name
         shell: bash
         run: |
@@ -112,7 +122,7 @@ jobs:
           ./installer/linux/build-deb.sh
           ./installer/linux/build-rpm.sh || echo "RPM build failed or skipped"
           ls -lh dist/
-      - name: Build DMG (macOS)
+      - name: Build DMG + PKG (macOS)
         if: runner.os == 'macOS'
         shell: bash
         run: |
@@ -121,37 +131,51 @@ jobs:
           ls -lh dist/
       - name: Build EXE installer (Windows)
         if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Try both ps1 and bat builders
-          if command -v iscc >/dev/null 2>&1 || [ -f "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ]; then
-            echo "ISCC found, building EXE"
-            # Ensure iscc in PATH for bash
-            export PATH="$PATH:/c/Program Files (x86)/Inno Setup 6"
-            ./installer/windows/build.bat || true
-          else
-            echo "ISCC not in bash PATH, trying PowerShell builder"
-          fi
-          ls -lh dist/ || true
-      - name: Build EXE via PowerShell (Windows)
-        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Continue"
-          if (Get-Command iscc -ErrorAction SilentlyContinue) {
-            Write-Host "ISCC found, building EXE installer via PS"
-            & ./installer/windows/build.ps1
-          } else {
+          $ver = "${{ needs.verify.outputs.version }}"
+          Write-Host "=== Building Windows EXE installer $ver ==="
+          Write-Host "PWD: $PWD"
+          Get-ChildItem -Force | Format-Table
+          Write-Host "Checking omni.exe"
+          if (Test-Path omni.exe) { Write-Host "omni.exe exists"; & ./omni.exe --version } else { Write-Host "omni.exe missing, building"; make; & ./omni.exe --version }
+          Write-Host "Checking ISCC"
+          $iscc = Get-Command iscc -ErrorAction SilentlyContinue
+          if (-not $iscc) {
             $isccPath = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-            if (Test-Path $isccPath) {
-              Write-Host "Found $isccPath, building"
-              & $isccPath /DMyAppVersion="${{ needs.verify.outputs.version }}" installer/windows/OmniScript.iss
-            } else {
-              Write-Host "ISCC not found, ISS syntax still valid"
-            }
+            if (Test-Path $isccPath) { $iscc = Get-Item $isccPath; Write-Host "Found $isccPath" }
           }
-          if (Test-Path dist) { Get-ChildItem dist -Force | Format-Table }
+          if ($iscc) {
+            Write-Host "ISCC at $($iscc.Source) — building EXE"
+            Write-Host "ISS file:"
+            Get-Content installer/windows/OmniScript.iss | Select-Object -First 40
+            Push-Location installer/windows
+            # Ensure dist exists
+            New-Item -ItemType Directory -Force -Path ../../dist | Out-Null
+            # Build with explicit version
+            & $iscc.Source "/DMyAppVersion=$ver" OmniScript.iss
+            $exit = $LASTEXITCODE
+            Write-Host "ISCC exit code: $exit"
+            Pop-Location
+            Write-Host "=== dist after ISCC ==="
+            Get-ChildItem dist -Force | Format-Table
+            if (-not (Test-Path "dist/OmniScript-$ver-Windows-x86_64-Setup.exe")) {
+              Write-Host "EXE not found with versioned name, listing dist:"
+              Get-ChildItem dist -Recurse | Format-Table
+            }
+          } else {
+            Write-Host "ISCC not found, cannot build EXE installer"
+            Write-Host "ISS syntax check:"
+            Get-Content installer/windows/OmniScript.iss
+          }
+      - name: List dist final
+        shell: bash
+        run: |
+          echo "=== Final dist ==="
+          ls -lhR dist/ || true
+          echo "=== Searching for EXE installer ==="
+          find dist -type f -name "*.exe" -o -name "*Setup*" | head -n 20
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
@@ -191,74 +215,59 @@ jobs:
           repo="${{ github.repository }}"
           notes="$RUNNER_TEMP/notes.md"
           cat > "$notes" <<MD
-          **OmniScript $ver** — very very very simple.
+          **OmniScript $ver** — very very very simple. Install into OS, then type \`omni\` in terminal and it reacts.
 
-          Three modules: \`import draw, cmd, pathlib\`
-
-          ## Install
+          ## Install — OS integrated
 
           ### Windows — EXE (Inno Setup)
-          Download \`OmniScript-$ver-Windows-x86_64-Setup.exe\` from assets below and run it. Installs to Program Files, adds to PATH, Start Menu + uninstaller.
+          Download \`OmniScript-$ver-Windows-x86_64-Setup.exe\` and run it. Installs to Program Files, adds to PATH (so you can type \`omni\` in terminal), Start Menu + uninstaller.
           \`\`\`bat
           OmniScript-$ver-Windows-x86_64-Setup.exe
+          omni --version
+          omni
           \`\`\`
 
-          ### macOS — DMG
-          Download \`OmniScript-$ver-macOS.dmg\`, open and drag \`OmniScript.app\` to Applications.
+          ### macOS — DMG + PKG
+          Download \`OmniScript-$ver-macOS.dmg\`, open and drag \`OmniScript.app\` to Applications, then double-click \`Install CLI.command\` inside DMG to install \`omni\` to \`/usr/local/bin\`.
+          Or download \`OmniScript-$ver-macOS.pkg\` and run: \`sudo installer -pkg OmniScript-$ver-macOS.pkg -target /\`
+          \`\`\`bash
+          omni --version
+          omni
+          \`\`\`
 
           ### Linux — DEB
           \`\`\`bash
           sudo dpkg -i omniscript_${ver}_amd64.deb
-          sudo apt install ./omniscript_${ver}_amd64.deb
+          omni --version
           \`\`\`
 
           ### Linux — RPM
           \`\`\`bash
           sudo rpm -i omniscript-${ver}-1.x86_64.rpm
-          # or
           sudo dnf install ./omniscript-${ver}-1.x86_64.rpm
-          sudo yum install ./omniscript-${ver}-1.x86_64.rpm
+          omni --version
           \`\`\`
 
           ### Tarball
           \`\`\`bash
           tar -xzf omniscript-$ver-linux-amd64.tar.gz
           sudo cp usr/bin/omni /usr/local/bin/
+          omni --version
           \`\`\`
 
-          ### Build from source
-          \`\`\`bash
-          make
-          ./omni --version
-          make dist   # builds DEB + RPM + DMG + tarball
-          make exe    # info for Windows EXE
-          \`\`\`
-
-          ## What is OmniScript?
-
-          - \`import draw\` — window, rect, circle, line, text, button, save, show
-          - \`import cmd\` — run("ls"), bg("sleep 10")
-          - \`import pathlib\` — like Python pathlib
-
-          \`\`\`omni
-          import draw, cmd, pathlib
-          draw.window(640,400,"Demo")
-          draw.rect(0,0,100,50,"red")
-          draw.button(20,300,120,30,"List", action="ls -la")
-          draw.show()
-          \`\`\`
+          After install, typing \`omni\` in terminal reacts immediately.
 
           Assets below include:
           - Windows EXE installer (Inno Setup)
-          - macOS DMG
+          - macOS DMG + PKG
           - Linux DEB + RPM + tarballs
           - per-platform binaries + SHA256SUMS.txt
           MD
           if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
             echo "$tag exists -- uploading assets"
             gh release upload "$tag" dist/* --repo "$repo" --clobber
-            gh release edit "$tag" --repo "$repo" --title "OmniScript $ver" --notes-file "$notes"
+            gh release edit "$tag" --repo "$repo" --title "OmniScript $ver — OS integrated" --notes-file "$notes"
           else
-            gh release create "$tag" dist/* --repo "$repo" --title "OmniScript $ver" --notes-file "$notes"
+            gh release create "$tag" dist/* --repo "$repo" --title "OmniScript $ver — OS integrated" --notes-file "$notes"
           fi
           echo "https://github.com/$repo/releases/tag/$tag"
