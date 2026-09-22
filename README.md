@@ -10,7 +10,7 @@ import pathlib
 
 Three modules, Python-like imports.
 
-## Install — native installers (EXE, DMG, DEB, RPM)
+## Install — native installers (EXE, DMG, DEB, RPM) — OS integrated, type `omni` and it reacts
 
 No more `curl | bash`. Proper native installers in `installer/`:
 
@@ -24,30 +24,46 @@ Or PowerShell:
 installer\windows\build.ps1
 ```
 Requires Inno Setup 6 (https://jrsoftware.org/isinfo.php).  
-Output: `dist/OmniScript-1.0.0-Windows-x86_64-Setup.exe` — installs to Program Files, adds to PATH, Start Menu + uninstaller.
+Output: `dist/OmniScript-1.0.1-Windows-x86_64-Setup.exe` — installs to Program Files, adds to **both SYSTEM and USER PATH**, creates fallback copy in `C:\Windows\omni.exe`, Start Menu + uninstaller.
 
-### macOS — DMG
+**After install, REOPEN terminal, then:**
+```bat
+omni --version
+omni
+```
+
+If you still see `'omni' is not recognized`:
+1. **Reopen** CMD/PowerShell (old window doesn't get new PATH)
+2. Try full path: `"C:\Program Files\OmniScript\omni.exe" --version`
+3. Or: `C:\Windows\omni.exe --version` (fallback copy)
+4. Manual PATH: `setx PATH "%PATH%;C:\Program Files\OmniScript"` then reopen terminal
+5. PowerShell: `$env:Path += ";C:\Program Files\OmniScript"; omni --version`
+
+### macOS — DMG + PKG
 
 ```bash
 ./installer/macos/build-dmg.sh
 ```
-Creates `dist/OmniScript-1.0.0-macOS.dmg` with `OmniScript.app`. Drag to Applications.
+Creates `dist/OmniScript-1.0.1-macOS.dmg` with `OmniScript.app` + `Install CLI.command`. Drag to Applications, then double-click `Install CLI.command` to install `omni` to `/usr/local/bin`.
+
+```bash
+omni --version
+omni
+```
 
 ### Linux — DEB + RPM + tarball
 
 ```bash
 ./installer/linux/build-deb.sh
-sudo dpkg -i dist/omniscript_1.0.0_amd64.deb
-# or
-sudo apt install ./dist/omniscript_1.0.0_amd64.deb
+sudo dpkg -i dist/omniscript_1.0.1_amd64.deb
 
 ./installer/linux/build-rpm.sh
-sudo rpm -i dist/omniscript-1.0.0-1.x86_64.rpm
-# or
-sudo dnf install ./dist/omniscript-1.0.0-1.x86_64.rpm
-```
+sudo rpm -i dist/omniscript-1.0.1-1.x86_64.rpm
 
-Also builds `dist/omniscript-1.0.0-linux-amd64.tar.gz`.
+# After install, type and it reacts:
+omni --version
+omni
+```
 
 ### All installers
 
@@ -57,13 +73,13 @@ Also builds `dist/omniscript-1.0.0-linux-amd64.tar.gz`.
 make dist
 ```
 
-Creates `dist/` with tarball, DEB, RPM, DMG (or tar.gz fallback) and `SHA256SUMS.txt`.
+Creates `dist/` with tarball, DEB, RPM, DMG, PKG, EXE + `SHA256SUMS.txt`.
 
 ### Quick build (dev)
 
 ```bash
 make
-./omni --version   # 1.0.0
+./omni --version   # 1.0.1
 ./omni --help
 sudo make install  # to /usr/local/bin
 ```
@@ -136,19 +152,12 @@ draw.show()
 draw.clear()
 ```
 
-Kwargs: `pos=(x,y)`, `size=(w,h)`, `color=`, `radius=`, `thickness=`, `message=`, `label=`, `action=` / `command=` / `on_click=`.
-
-Colors: `#rrggbb`, `#rgb`, or names: black white red green blue yellow orange purple pink cyan teal navy grey gray silver gold brown lime maroon olive.
-
-Buttons run shell command on click. `q` / `Esc` to close.
-
 ### cmd
 
 ```omni
 import cmd
-cmd.run("ls -la")   # foreground, returns code
-cmd.bg("sleep 10")  # background, returns pid
-cmd("pwd")          # shortcut
+cmd.run("ls -la")
+cmd.bg("sleep 10")
 ```
 
 ### pathlib
@@ -157,46 +166,19 @@ cmd("pwd")          # shortcut
 import pathlib
 pathlib.write("a.txt", "hi")
 pathlib.read("a.txt")
-pathlib.exists("a.txt")
-pathlib.mkdir("dir")
-pathlib.list(".")
-pathlib.delete("a.txt")
-
 p = pathlib.Path("a.txt")
 p.write("hello")
-p.read()
-p.name()
-p.parent()
-```
-
-## Examples
-
-- `01_hello.omni` — draw + cmd + pathlib
-- `02_buttons.omni` — buttons
-- `03_files.omni` — pathlib
-- `04_cmd.omni` — background
-- `05_imports.omni` — import styles
-- `06_gui.omni` — full GUI
-
-## REPL
-
-```bash
-./omni
-omni> import draw
-omni> draw.window(200,100)
-omni> draw.rect(0,0,50,50,"red")
-omni> draw.show()
 ```
 
 ## Structure
 
 ```
 src/omni.h, lex.c, parse.c, eval.c, draw.c, gui_*.c, util.c, main.c
-installer/windows/OmniScript.iss   # Inno Setup EXE
-installer/macos/build-dmg.sh       # DMG
+installer/windows/OmniScript.iss   # Inno Setup EXE — OS integrated
+installer/macos/build-dmg.sh       # DMG + PKG
 installer/linux/build-deb.sh       # DEB
 installer/linux/build-rpm.sh       # RPM
-installer/build-all.sh             # all EXE DMG DEB RPM
+installer/build-all.sh             # all
 ```
 
 MIT

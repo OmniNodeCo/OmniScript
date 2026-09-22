@@ -2,7 +2,7 @@
 $ErrorActionPreference = "Stop"
 $Root = (Resolve-Path "$PSScriptRoot\..\..\").Path
 $Version = (Get-Content "$Root\VERSION" -First 1).Trim()
-if (-not $Version) { $Version = "1.0.0" }
+if (-not $Version) { $Version = "1.0.1" }
 
 Write-Host "==> OmniScript $Version Windows installer"
 Write-Host "    Building omni.exe"
@@ -20,7 +20,7 @@ if (-not $cc) { throw "No C compiler found" }
 
 Write-Host "    Using $cc"
 
-# Properly quoted version for C: -DOMNI_VERSION="1.0.0" needs to be passed as -DOMNI_VERSION=\"1.0.0\"
+# Properly quoted version for C: -DOMNI_VERSION="1.0.1" needs to be passed as -DOMNI_VERSION=\"1.0.1\"
 $verDefine = "-DOMNI_VERSION=`\"$Version`""
 
 if ($cc -like "*cl.exe") {

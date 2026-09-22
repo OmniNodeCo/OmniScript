@@ -1,6 +1,6 @@
 ; Minimal OmniScript installer for testing
 #define MyAppName "OmniScript"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppExeName "omni.exe"
 
 [Setup]

@@ -1,10 +1,10 @@
-; OmniScript Inno Setup installer — OS integrated, typing 'omni' in terminal reacts
-; Build with: iscc /DMyAppVersion=1.0.0 OmniScript.iss
+; OmniScript Inno Setup installer — OS integrated, typing 'omni' in terminal reacts immediately
+; Build with: iscc /DMyAppVersion=1.0.1 OmniScript.iss
 ; Requires Inno Setup 6: https://jrsoftware.org/isinfo.php
 
 #define MyAppName "OmniScript"
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.0"
+  #define MyAppVersion "1.0.1"
 #endif
 #define MyAppPublisher "OmniNodeCo"
 #define MyAppURL "https://github.com/OmniNodeCo/OmniScript"
@@ -45,6 +45,10 @@ Source: "..\..\README.md"; DestDir: "{app}\"; Flags: ignoreversion
 Source: "..\..\LICENSE"; DestDir: "{app}\"; Flags: ignoreversion
 Source: "..\..\VERSION"; DestDir: "{app}\"; Flags: ignoreversion
 Source: "..\..\examples\*"; DestDir: "{app}\examples"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Wrapper bat to ensure omni works even if PATH not yet reloaded
+Source: "omni-wrapper.bat"; DestDir: "{app}"; DestName: "omni-wrapper.bat"; Flags: ignoreversion
+; Also copy omni.exe to Windows dir as ultimate fallback so 'omni' works immediately
+Source: "..\..\omni.exe"; DestDir: "{win}"; DestName: "omni.exe"; Flags: ignoreversion; Permissions: everyone-modify
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppExeName}"
@@ -54,16 +58,20 @@ Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; WorkingDir: "{app}"
 
 [Registry]
-; App Paths so Windows can find omni.exe even without PATH (Start -> Run)
+; App Paths for Start -> Run and Windows search
 Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{#MyAppExeName}"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName}"; Flags: uninsdeletekey
 Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{#MyAppExeName}"; ValueType: string; ValueName: "Path"; ValueData: "{app}"; Flags: uninsdeletekey
+Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\omni"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName}"; Flags: uninsdeletekey
+Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\omni"; ValueType: string; ValueName: "Path"; ValueData: "{app}"; Flags: uninsdeletekey
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Parameters: "--version"; Description: "Run 'omni --version' to test OS integration"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--version"; Description: "Test: run 'omni --version' (OS integrated)"; Flags: nowait postinstall skipifsilent
+Filename: "{cmd}"; Parameters: "/c echo OmniScript installed! Please REOPEN terminal, then type: omni --version"; Description: "Show how to use omni in terminal"; Flags: nowait postinstall skipifsilent
 
 [Code]
 const
     EnvironmentKey = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment';
+    UserEnvironmentKey = 'Environment';
     WM_SETTINGCHANGE = $001A;
     SMTO_ABORTIFHUNG = 2;
     HWND_BROADCAST = $FFFF;
@@ -82,8 +90,8 @@ function NeedsAddPath(Param: string): boolean;
 var
   OrigPath: string;
 begin
-  if not RegQueryStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', OrigPath)
-  then begin
+  if not RegQueryStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', OrigPath) then
+  begin
     Result := True;
     exit;
   end;
@@ -94,16 +102,42 @@ procedure EnvAddPath(Path: string);
 var
   Paths: string;
 begin
-  if not RegQueryStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths)
-  then Paths := '';
-
-  if Pos(';' + Uppercase(Path) + ';', ';' + Uppercase(Paths) + ';') = 0 then
+  // Try SYSTEM path first
+  if RegQueryStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths) then
   begin
-    if Paths <> '' then
-      Paths := Paths + ';' + Path
-    else
-      Paths := Path;
-    RegWriteExpandStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths);
+    if Pos(';' + Uppercase(Path) + ';', ';' + Uppercase(Paths) + ';') = 0 then
+    begin
+      if Paths <> '' then
+        Paths := Paths + ';' + Path
+      else
+        Paths := Path;
+      if RegWriteExpandStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths) then
+      begin
+        BroadcastEnvChange();
+        exit;
+      end;
+    end else
+    begin
+      exit; // already in system path
+    end;
+  end;
+
+  // Fallback to USER path if system failed (no admin) or not found
+  if RegQueryStringValue(HKEY_CURRENT_USER, UserEnvironmentKey, 'Path', Paths) then
+  begin
+    if Pos(';' + Uppercase(Path) + ';', ';' + Uppercase(Paths) + ';') = 0 then
+    begin
+      if Paths <> '' then
+        Paths := Paths + ';' + Path
+      else
+        Paths := Path;
+      RegWriteExpandStringValue(HKEY_CURRENT_USER, UserEnvironmentKey, 'Path', Paths);
+      BroadcastEnvChange();
+    end;
+  end else
+  begin
+    // No user path yet, create it
+    RegWriteExpandStringValue(HKEY_CURRENT_USER, UserEnvironmentKey, 'Path', Path);
     BroadcastEnvChange();
   end;
 end;
@@ -113,34 +147,53 @@ var
   Paths: string;
   P: Integer;
 begin
-  if not RegQueryStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths)
-  then exit;
-
-  P := Pos(';' + Uppercase(Path) + ';', ';' + Uppercase(Paths) + ';');
-  if P = 0 then exit;
-
-  // Remove ;Path or Path; or Path
-  if P > 1 then
+  // Remove from SYSTEM
+  if RegQueryStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths) then
   begin
-    Delete(Paths, P, Length(Path) + 1);
-  end else
-  begin
-    Delete(Paths, 1, Length(Path) + 1);
+    P := Pos(';' + Uppercase(Path) + ';', ';' + Uppercase(Paths) + ';');
+    if P <> 0 then
+    begin
+      if P > 1 then
+        Delete(Paths, P, Length(Path) + 1)
+      else
+        Delete(Paths, 1, Length(Path) + 1);
+      StringChangeEx(Paths, ';;', ';', True);
+      RegWriteExpandStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths);
+      BroadcastEnvChange();
+    end;
   end;
-  // Clean double ;;
-  StringChangeEx(Paths, ';;', ';', True);
-  RegWriteExpandStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths);
-  BroadcastEnvChange();
+  // Remove from USER
+  if RegQueryStringValue(HKEY_CURRENT_USER, UserEnvironmentKey, 'Path', Paths) then
+  begin
+    P := Pos(';' + Uppercase(Path) + ';', ';' + Uppercase(Paths) + ';');
+    if P <> 0 then
+    begin
+      if P > 1 then
+        Delete(Paths, P, Length(Path) + 1)
+      else
+        Delete(Paths, 1, Length(Path) + 1);
+      StringChangeEx(Paths, ';;', ';', True);
+      RegWriteExpandStringValue(HKEY_CURRENT_USER, UserEnvironmentKey, 'Path', Paths);
+      BroadcastEnvChange();
+    end;
+  end;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  if (CurStep = ssPostInstall) and WizardIsTaskSelected('envPath') then
+  // Always add to PATH on install, regardless of task, to ensure 'omni' works
+  if CurStep = ssPostInstall then
+  begin
     EnvAddPath(ExpandConstant('{app}'));
+  end;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usPostUninstall then
+  begin
     EnvRemovePath(ExpandConstant('{app}'));
+    // Also remove fallback copy in Windows dir
+    DeleteFile(ExpandConstant('{win}\omni.exe'));
+  end;
 end;
