@@ -1,5 +1,5 @@
 #!/bin/sh
-# Simple tests for OmniScript 1.0.3 simple
+# Simple tests for OmniScript 1.0.4 simple
 OMNI="${1:-./omni}"
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 case "$OMNI" in /*) ;; *) OMNI="$(pwd)/$OMNI" ;; esac
@@ -56,7 +56,7 @@ check() {
     pass=$((pass + 1))
 }
 
-VER_EXPECTED="$(cat "$ROOT/VERSION" 2>/dev/null | tr -d ' \t\n\r' || echo 1.0.3)"
+VER_EXPECTED="$(cat "$ROOT/VERSION" 2>/dev/null | tr -d ' \t\n\r' || echo 1.0.4)"
 run "" --version
 check "version" 0 "$VER_EXPECTED" -
 

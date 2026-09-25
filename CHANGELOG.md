@@ -1,27 +1,39 @@
 # Changelog
 
-## [1.0.3] - 2026-09-22
+## [1.0.4] - 2026-09-22
 
-Make it work like `git` CLI does — `omni` runnable in any terminal immediately, runs files.
+Windows installer redesigned like the **Python installer** (python.org) — the proven way for the terminal to react to a new CLI after install.
+
+### Changed (Windows)
+
+- **Like Python: per-user install, NO admin required** — default install dir `%LOCALAPPDATA%\Programs\OmniScript` (exactly where Python puts itself: `%LOCALAPPDATA%\Programs\Python\PythonXY`). No UAC prompt, no failed admin copies, install can never break.
+- **Like Python: adds to USER PATH always** — `C:\Users\You\AppData\Local\Programs\OmniScript` added to the user PATH (machine PATH only when you choose "install for all users", like Python does).
+- **Like Python: `omni.exe` copied to `%LOCALAPPDATA%\Microsoft\WindowsApps`** — a dir always in the user PATH on Win10/11, no admin needed. `omni` resolves even if the PATH edit is slow to apply.
+- **Like Python: App Paths in HKCU** (no admin) — Start-menu search and Win+Run find `omni`.
+- **Like Python: per-user `.omni` file association** via `HKCU\Software\Classes` (no admin) — double-click runs file.
+- **All-users option** (Python "Install for all users"): installs to `C:\Program Files\OmniScript`, adds machine PATH, fallback `C:\Windows\omni.exe` — done safely in code, only when elevated.
+- Removed `setx /M` (truncates PATH) and hard `[Files]` copies to `C:\Windows`/`System32` (broke per-user installs — root cause of "omni not recognized").
 
 ### Fixed
 
-- **Windows like git**: Now works like `git` CLI — installer adds to BOTH SYSTEM and USER PATH, always, broadcasts WM_SETTINGCHANGE, creates fallback copies in `{win}\omni.exe`, `{sys}\omni.exe`, and `{localappdata}\Microsoft\WindowsApps\omni.exe` (which is always in user PATH). Also creates `omni.bat` wrappers in Windows dirs. After install, **reopen terminal** and `omni` works in CMD, PowerShell, Windows Terminal, Git Bash like `git`.
-- **File association**: `.omni` double-click runs file via `"{app}\omni.exe" "%1"`, plus `omni file.omni` and `omni -e "code"` work.
-- Added `fix-path.ps1` — PowerShell script to fix PATH immediately if `omni` not recognized (like `git` troubleshooting).
+- Per-user (non-admin) installs previously failed on `C:\Windows` copies → PATH entry could be lost → `omni` not recognized. Now everything user-writable, like Python.
 
-### Added
+### Usage after install (new terminal)
 
-- `installer/windows/fix-path.ps1` — fixes PATH like git
-- `PrivilegesRequired=admin` with override dialog — ensures PATH and Windows dir copy works like git installer
+```bat
+omni --version
+omni
+omni examples\01_hello.omni
+omni myfile.omni
+```
+
+## [1.0.3] - 2026-09-22
+
+git-like CLI fix attempt: admin + SYSTEM/USER PATH + C:\Windows fallbacks. Superseded by 1.0.4 (Python style).
 
 ## [1.0.2] - 2026-09-22
 
 Make `omni` runnable in any terminal and able to run files — OS integrated, file association.
-
-### Fixed
-
-- Windows PATH adds to SYSTEM+USER, fallback copies, file association .omni
 
 ## [1.0.1] - 2026-09-22
 

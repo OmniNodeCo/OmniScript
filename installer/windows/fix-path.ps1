@@ -1,17 +1,18 @@
-# Fix omni PATH like git does — run if 'omni' not recognized
-# This script makes omni work in any terminal immediately
+# Fix omni PATH like Python does — run if 'omni' not recognized
+# Like Python: per-user PATH + copy to WindowsApps (always in user PATH)
 $ErrorActionPreference = "Continue"
 
-$app = "C:\Program Files\OmniScript"
+# Like Python installer: per-user default is %LOCALAPPDATA%\Programs\OmniScript
+$app = "$env:LOCALAPPDATA\Programs\OmniScript"
 if (-not (Test-Path "$app\omni.exe")) {
-  $app = "$env:LOCALAPPDATA\Programs\OmniScript"
+  $app = "C:\Program Files\OmniScript"
 }
 if (-not (Test-Path "$app\omni.exe")) {
-  $app = (Get-ChildItem -Path "C:\Program Files\" -Filter "omni.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1).DirectoryName
+  $app = (Get-ChildItem -Path "C:\Program Files\", "C:\Program Files (x86)" -Filter "omni.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1).DirectoryName
 }
-if (-not $app) { $app = "C:\Program Files\OmniScript" }
+if (-not $app) { $app = "$env:LOCALAPPDATA\Programs\OmniScript" }
 
-Write-Host "==> OmniScript fix-path like git CLI"
+Write-Host "==> OmniScript fix-path like Python installer"
 Write-Host "    App dir: $app"
 
 # Add to USER PATH
@@ -30,10 +31,10 @@ try {
     [Environment]::SetEnvironmentVariable("Path", "$machinePath;$app", "Machine")
   }
 } catch {
-  Write-Host "    No admin for MACHINE PATH, USER PATH is enough like git"
+  Write-Host "    No admin for MACHINE PATH, USER PATH is enough (like Python per-user)"
 }
 
-# Fallback copies to locations always in PATH (like git does)
+# Fallback copies to locations always in PATH (WindowsApps = like Python launcher dir)
 $win = "$env:WINDIR"
 $sys = "$env:WINDIR\System32"
 $winApps = "$env:LOCALAPPDATA\Microsoft\WindowsApps"

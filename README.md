@@ -12,23 +12,31 @@ Three modules, Python-like imports.
 
 ## Install — OS integrated, type `omni` and it reacts, runs files
 
-### Windows — EXE (Inno Setup) — works like git CLI
+### Windows — EXE (Inno Setup) — works like the Python installer
 
 ```bat
 installer\windows\build.bat
 ```
 
-**How git CLI works (researched):** Git installer requires admin, adds `C:\Program Files\Git\cmd` to BOTH SYSTEM and USER PATH via registry + setx, broadcasts WM_SETTINGCHANGE, copies wrapper to location always in PATH. After install, **reopen terminal**, then `git --version` works in CMD/PowerShell/Terminal/Git Bash.
+**How the Python installer makes `python` work in the terminal (researched, python.org):**
+1. Default is **per-user, NO admin required** — installs to `%LOCALAPPDATA%\Programs\Python\PythonXY`
+2. Optional "install for all users" (admin) → `C:\Program Files\PythonXY` + machine PATH
+3. Adds install dir to **USER PATH** (always) / machine PATH (all-users)
+4. Registers **App Paths** so Start-menu search / Win+Run find `python`
+5. Per-user file association (`.py`) via HKCU — no admin
+6. Open a **new terminal** → `python` works in CMD, PowerShell, Windows Terminal, Git Bash
 
-**Omni 1.0.3 does same:**
-- `PrivilegesRequired=admin`, adds `C:\Program Files\OmniScript` to SYSTEM+USER PATH always, setx /M + PowerShell SetEnvironmentVariable, broadcast WM_SETTINGCHANGE
-- Fallback copies to `C:\Windows\omni.exe`, `C:\Windows\System32\omni.exe`, `%LOCALAPPDATA%\Microsoft\WindowsApps\omni.exe` (always in PATH like python), plus `omni.bat` wrappers
-- App Paths registry + `.omni` file association double-click runs file
-- Includes `fix-path.ps1` like git troubleshooting
+**Omni 1.0.4 does exactly the same:**
+- Per-user default: `%LOCALAPPDATA%\Programs\OmniScript` — no UAC prompt, install never fails
+- Always adds `{app}` to **USER PATH** (machine PATH + `C:\Windows\omni.exe` fallback only for "all users"/admin, done safely in code)
+- Copies `omni.exe` to `%LOCALAPPDATA%\Microsoft\WindowsApps` — always in user PATH on Win10/11, no admin
+- App Paths in HKCU — Start search + Win+Run find `omni`
+- Per-user `.omni` file association (double-click runs file)
+- Includes `fix-path.ps1` troubleshooting
 
-Output: `dist/OmniScript-1.0.3-Windows-x86_64-Setup.exe`
+Output: `dist/OmniScript-1.0.4-Windows-x86_64-Setup.exe`
 
-**After install, REOPEN terminal (CMD, PowerShell, Windows Terminal, Git Bash, VS Code terminal all work), then it reacts:**
+**After install, OPEN A NEW TERMINAL (CMD, PowerShell, Windows Terminal, Git Bash, VS Code terminal all work), then it reacts:**
 
 ```bat
 omni --version
@@ -38,14 +46,14 @@ omni myfile.omni
 omni -e "import draw; draw.window(200,100); draw.rect(0,0,50,50,\"red\"); draw.show()"
 ```
 
-If `'omni' is not recognized` (old 1.0.0/1.0.1):
+If `'omni' is not recognized` (old 1.0.0–1.0.3 installs):
 ```bat
-"C:\Program Files\OmniScript\omni.exe" --version
-powershell -ExecutionPolicy Bypass -File "C:\Program Files\OmniScript\fix-path.ps1"
-:: reopen terminal
+"%LOCALAPPDATA%\Programs\OmniScript\omni.exe" --version
+powershell -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\Programs\OmniScript\fix-path.ps1"
+:: open a new terminal
 omni --version
 ```
-Or install **1.0.3** — works like git.
+Or install **1.0.4** — works like Python.
 
 ### macOS — DMG + PKG
 
@@ -60,8 +68,8 @@ omni examples/01_hello.omni
 ### Linux — DEB + RPM
 
 ```bash
-sudo dpkg -i dist/omniscript_1.0.3_amd64.deb
-sudo rpm -i dist/omniscript-1.0.3-1.x86_64.rpm
+sudo dpkg -i dist/omniscript_1.0.4_amd64.deb
+sudo rpm -i dist/omniscript-1.0.4-1.x86_64.rpm
 omni --version
 omni examples/01_hello.omni
 ```

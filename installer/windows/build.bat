@@ -6,7 +6,7 @@ REM Requires: gcc/clang/cc and ISCC (Inno Setup)
 
 set VERSION=
 for /f "delims=" %%v in (..\..\VERSION) do set VERSION=%%v
-if "%VERSION%"=="" set VERSION=1.0.3
+if "%VERSION%"=="" set VERSION=1.0.4
 
 echo ==> OmniScript %VERSION% Windows installer
 echo     Building omni.exe
